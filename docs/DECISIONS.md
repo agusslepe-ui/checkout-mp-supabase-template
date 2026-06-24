@@ -1,0 +1,277 @@
+# Decisiones técnicas
+
+Este registro distingue decisiones observadas en el código de decisiones todavía pendientes. Las alternativas indicadas como inferidas deben confirmarse antes de rediseñar el sistema.
+
+---
+
+## D-001 Usar Checkout Pro
+
+- Estado: vigente.
+- Decisión: redirigir al comprador al checkout alojado por Mercado Pago.
+- Motivo inferido: reducir el alcance del frontend y delegar la experiencia de pago al proveedor.
+- Alternativas: Checkout API o una integración personalizada.
+- Consecuencia: el sistema depende de preferencias, retornos y webhooks de Mercado Pago.
+
+## D-002 Confirmar pagos desde el backend
+
+- Estado: vigente.
+- Decisión: consultar `Payment.get` ante un webhook y usar esa respuesta para confirmar el estado.
+- Motivo: no confiar únicamente en el cuerpo recibido ni en la redirección del comprador.
+- Alternativas: confiar en el evento o el retorno, descartadas por menor integridad.
+- Pendiente: añadir validación criptográfica del webhook (ver DEC-009).
+
+## D-003 Correlacionar mediante `external_reference`
+
+- Estado: vigente.
+- Decisión: guardar la misma referencia en el pedido y la preferencia.
+- Motivo: relacionar el pago externo con el pedido interno sin depender solo del `payment_id`.
+- Alternativas: tabla de relaciones por ID de preferencia o pago.
+- Pendiente: reemplazar la generación basada solo en tiempo por un identificador robusto (ver T-008).
+
+## D-004 Persistir un pedido antes del checkout
+
+- Estado: vigente.
+- Decisión: crear el pedido en estado `pending` antes de crear la preferencia.
+- Motivo: disponer de una entidad interna que pueda conciliarse posteriormente.
+- Implementación: T-002 completada (2026-06-24). Si la inserción en Supabase falla, el flujo se detiene y Mercado Pago no es llamado.
+
+## D-005 Mantener producto y precio en backend
+
+- Estado: vigente para la demostración.
+- Decisión: definir producto, cantidad, importe y moneda en el servidor.
+- Motivo: impedir que el navegador sea la fuente autoritativa del importe.
+- Alternativas: catálogo en base de datos o servicio de productos.
+- Pendiente: elegir una fuente de catálogo real (ver DEC-013).
+
+## D-006 Usar Supabase con clave de servicio
+
+- Estado: vigente.
+- Decisión: acceder a `orders` desde el backend con `SUPABASE_SERVICE_ROLE_KEY`.
+- Motivo inferido: simplificar el prototipo y mantener la credencial fuera del navegador.
+- Alternativas: cliente autenticado con RLS, API propia sobre otra base o funciones de Supabase.
+- Consecuencia: una exposición de la clave tiene impacto elevado; deben revisarse permisos y RLS.
+
+## D-007 Servir frontend y API desde Express
+
+- Estado: vigente.
+- Decisión: usar un único proceso para archivos estáticos, rutas y webhook.
+- Motivo inferido: simplicidad operativa del prototipo.
+- Alternativas: frontend y backend desplegados por separado.
+
+## D-008 Usar JavaScript, CommonJS y frontend sin framework
+
+- Estado: vigente.
+- Motivo inferido: mantener la plantilla pequeña y con pocas herramientas.
+- Alternativas: ES modules, TypeScript o framework frontend.
+- Revisión: no necesaria hasta que la complejidad o requisitos de tipado lo justifiquen.
+
+---
+
+## Decisiones pendientes
+
+Las siguientes decisiones deben tomarse antes de implementar las tareas relacionadas. Están marcadas como `pendiente` hasta que el usuario las defina y apruebe.
+
+---
+
+## DEC-009 — Estrategia de validación de firma del webhook
+
+**Fecha:** pendiente de definir  
+**Estado:** pendiente
+
+### Contexto
+El endpoint `/webhook` acepta eventos sin validar la firma criptográfica. La consulta posterior a Mercado Pago reduce el riesgo, pero no sustituye la validación requerida. Mercado Pago provee los headers `x-signature` y `x-request-id` para esta verificación.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
+
+### Opciones a evaluar
+- Implementar la validación usando el algoritmo oficial de Mercado Pago (HMAC-SHA256 sobre el cuerpo y headers).
+- Definir qué respuesta HTTP devolver ante firma inválida (401 o 400).
+- Definir si se registra el intento fallido y qué campos se loguean (sin incluir el secreto ni la firma).
+- Definir el nombre de la nueva variable de entorno para el secreto de validación.
+
+### Consecuencias
+- Relacionada con T-001.
+- Requiere agregar una variable de entorno al contrato de configuración.
+
+---
+
+## DEC-010 — Mecanismo atómico para la transición de estado a pagado
+
+**Fecha:** pendiente de definir  
+**Estado:** pendiente
+
+### Contexto
+La lectura del pedido y su actualización son operaciones separadas. Dos webhooks concurrentes pueden superar la comprobación de estado antes de que uno de ellos complete la actualización.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
+
+### Opciones a evaluar
+- Usar `UPDATE ... WHERE status = 'pending'` y verificar el número de filas afectadas (opción sin dependencias adicionales en Supabase).
+- Usar una función SQL de Supabase con lógica transaccional.
+- Combinar la condición de estado con la unicidad del `payment_id` para garantizar idempotencia.
+
+### Consecuencias
+- Relacionada con T-003.
+- La opción elegida debe documentarse en este archivo antes de implementar.
+
+---
+
+## DEC-011 — Representación de importes y reglas de redondeo
+
+**Fecha:** pendiente de definir  
+**Estado:** pendiente
+
+### Contexto
+La comparación de importes usa `Number`, lo que puede producir errores de precisión con valores decimales. El importe actual es 100 ARS (sin decimales), pero esto puede cambiar si se expande el catálogo.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
+
+### Opciones a evaluar
+- Comparar importes como enteros en centavos (multiplicar por 100, comparar con igualdad entera). Sin dependencias nuevas.
+- Usar una librería de aritmética decimal (`decimal.js` u otra). Requiere autorización para instalar.
+- Definir la unidad interna de representación y la regla de redondeo (ej: siempre hacia abajo, siempre hacia arriba, redondeo bancario).
+
+### Consecuencias
+- Relacionada con T-007.
+- La estrategia elegida debe documentarse aquí y reflejarse en los tests de T-005.
+
+---
+
+## DEC-012 — Esquema versionado de Supabase: restricciones, índices y RLS
+
+**Fecha:** pendiente de definir  
+**Estado:** pendiente
+
+### Contexto
+El esquema de `orders` existe solo como DDL en el README. No hay migraciones versionadas, índices documentados ni política RLS definida. La clave `service_role` puede evitar controles de RLS según la configuración.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
+
+### Opciones a evaluar
+- Crear un directorio `supabase/migrations/` con el DDL versionado.
+- Definir índice sobre `external_reference` (ya tiene restricción UNIQUE) y sobre `status` para consultas frecuentes.
+- Definir si se habilita RLS y qué política se aplica (la clave `service_role` la omite por defecto; definir si se restringe para otras claves).
+- Definir si se versiona con Supabase CLI o con archivos SQL manuales.
+
+### Consecuencias
+- Relacionada con T-006.
+- No aplicar en base compartida sin autorización explícita.
+
+---
+
+## DEC-013 — Fuente de catálogo, stock y precios
+
+**Fecha:** pendiente de definir  
+**Estado:** pendiente
+
+### Contexto
+El producto (Remera LEMONT, 1 unidad, 100 ARS) está hardcodeado en `index.js`. Si el proyecto crece hacia un catálogo real, esta definición debe provenir de una fuente autoritativa y configurable.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
+
+### Opciones a evaluar
+- Objeto de configuración en código (sin base de datos). Simple pero requiere redeploy para cambiar precios.
+- Tabla de productos en Supabase. Flexible pero agrega complejidad.
+- Servicio externo de catálogo o CMS. Mayor separación de responsabilidades.
+
+### Consecuencias
+- Relacionada con T-012.
+- El servidor debe seguir siendo la fuente autoritativa del precio, sin importar la opción elegida.
+
+---
+
+## DEC-014 — Autenticación y autorización de compradores u operadores
+
+**Fecha:** pendiente de definir  
+**Estado:** pendiente
+
+### Contexto
+No existe autenticación ni usuario administrador. El flujo actual es completamente anónimo para el comprador. Si el proyecto escala, se necesitará identificar compradores o restringir acceso a operadores.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
+
+### Opciones a evaluar
+- Mantener flujo anónimo (solo para demostración técnica).
+- Autenticación de compradores con Supabase Auth.
+- Panel administrativo con acceso restringido por rol.
+- Autenticación externa (OAuth, magic link, etc.).
+
+### Consecuencias
+- El alcance de esta decisión puede afectar el esquema de `orders`, los requisitos y el diseño general.
+- No implementar hasta tener definición de usuarios y objetivo comercial real (ver `docs/REQUIREMENTS.md`).
+
+---
+
+## DEC-015 — Reembolsos, cancelaciones, expiración y conciliación
+
+**Fecha:** pendiente de definir  
+**Estado:** pendiente
+
+### Contexto
+Solo existe la transición `pending → paid`. No hay estados adicionales ni procesos definidos para reembolsos, cancelaciones, pagos expirados o conciliación periódica.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
+
+### Opciones a evaluar
+- Definir estados adicionales: `refunded`, `cancelled`, `expired`, `failed`.
+- Definir reglas de transición entre estados.
+- Integrar la API de reembolsos de Mercado Pago.
+- Definir proceso de conciliación periódica (reconciliación entre Supabase y Mercado Pago).
+
+### Consecuencias
+- Afecta el esquema de la tabla `orders` y el documento de requisitos.
+- No implementar hasta definir los casos de negocio reales.
+
+---
+
+## DEC-016 — Proveedor de despliegue, entornos y rollback
+
+**Fecha:** pendiente de definir  
+**Estado:** pendiente
+
+### Contexto
+No hay configuración de despliegue documentada. La aplicación usa ngrok para desarrollo, pero no tiene infraestructura de producción ni entorno de staging.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
+
+### Opciones a evaluar
+- Railway, Render, Fly.io, Heroku u otro PaaS.
+- VPS propio (mayor control, mayor responsabilidad operativa).
+- Definir si hay un entorno de staging separado del de producción.
+- Definir el procedimiento de rollback (redeploy de versión anterior, blue-green, etc.).
+
+### Consecuencias
+- Relacionada con T-013.
+- La URL estable de producción debe usarse en `BASE_URL` y como `notification_url` en las preferencias.
+- No ejecutar ningún deploy sin autorización explícita.
+
+---
+
+## DEC-017 — Formato, destino y política de retención de logs
+
+**Fecha:** pendiente de definir  
+**Estado:** pendiente
+
+### Contexto
+Los logs actuales usan `console.log` con diferentes niveles de detalle, incluyendo campos del webhook y del pago. No hay estructura, correlación ni política de retención definida.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
+
+### Opciones a evaluar
+- Logs estructurados en JSON con niveles (info, warn, error) y campo de correlación por request.
+- Librería de logging (`pino`, `winston` u otra). Requiere autorización para instalar.
+- Destino: stdout (y captura por la plataforma de deploy) o servicio externo (Datadog, Logtail, etc.).
+- Política de retención: tiempo máximo de retención y campos a redactar (datos personales, referencias internas).
+
+### Consecuencias
+- Relacionada con T-010.
+- Cualquier log en producción debe cumplir con la política de privacidad que se defina.

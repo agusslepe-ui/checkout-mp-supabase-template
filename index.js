@@ -232,7 +232,10 @@ app.post("/crear-preferencia", async (req, res) => {
 
       console.log("Pedido guardado en Supabase:", externalReference);
     } catch (error) {
-      console.error("Error guardando pedido en Supabase:", error.message);
+      console.error("Error guardando pedido en Supabase");
+      return res.status(500).json({
+        error: "No se pudo iniciar el pago",
+      });
     }
 
     const result = await preference.create({
