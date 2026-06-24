@@ -133,33 +133,87 @@ El servidor no arranca si falta alguna variable de entorno requerida.
 
 ### T-005 — Agregar pruebas automatizadas del dominio de pagos
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P1
 
 #### Objetivo
-Cubrir el dominio de pagos con pruebas automáticas reproducibles que no realicen llamadas externas reales.
+Cubrir el dominio de pagos con pruebas automáticas reproducibles que no realicen llamadas externas reales ni modifiquen datos de ninguna base de datos.
+
+#### Framework recomendado
+
+**Jest** (opción principal). Razón: `jest.mock()` permite reemplazar los módulos `@mercadopago/sdk-js` y `@supabase/supabase-js` a nivel de `require` sin necesidad de refactorizar `index.js` primero. Tiene soporte nativo para CommonJS, `jest.fn()` para spies y un runner integrado. Requiere `npm install --save-dev jest` y autorización del usuario para modificar `package.json`.
+
+**`node:test` + `assert`** (alternativa sin dependencias nuevas). Disponible desde Node.js 18. No requiere cambios en `package.json` más allá del script `test`. Sin embargo, el mocking de módulos CommonJS es manual y requiere inyección de dependencias, lo que implica hacer T-009 antes. Recomendada solo si el usuario prefiere cero dependencias adicionales.
+
+> Pendiente de confirmar con el usuario: ¿Jest o node:test?
+
+#### Qué se debe testear
+
+Los siguientes casos cubren todas las decisiones de seguridad implementadas (DEC-009, DEC-010) y los flujos críticos (T-001 a T-004):
+
+**Inicialización:**
+- TC-01: Proceso termina con error si falta una variable de entorno obligatoria.
+- TC-02: Proceso termina con error si una variable de entorno está vacía.
+- TC-03: Proceso arranca normalmente con todas las variables presentes.
+
+**Creación de preferencia (`POST /crear-preferencia`):**
+- TC-04: Falla de Supabase al insertar pedido → respuesta de error genérica al cliente; Mercado Pago no es llamado.
+
+**Validación de firma del webhook (`POST /webhook`):**
+- TC-05: Webhook sin header `x-signature` → responde HTTP 401 con mensaje genérico.
+- TC-06: Webhook con firma inválida → responde HTTP 401 con mensaje genérico.
+- TC-07: Webhook con firma válida → flujo continúa al procesamiento del pago.
+
+**Procesamiento del pago:**
+- TC-08: Pago `approved` con importe correcto → pedido actualizado a `paid`.
+- TC-09: Pago `approved` con importe incorrecto → pedido no actualizado; respuesta sin detalles sensibles.
+- TC-10: Pago con estado distinto de `approved` → pedido no actualizado.
+- TC-11: Pago con `external_reference` ausente o sin pedido asociado → sin actualización; log genérico.
+- TC-12: Pedido ya en estado `paid` (webhook duplicado) → tratado como idempotente; no produce error ni doble actualización.
+
+**Atomicidad (DEC-010):**
+- TC-13: Dos webhooks concurrentes para el mismo pedido → solo uno produce la actualización a `paid`; el otro recibe cero filas afectadas.
+
+#### Qué NO se debe testear todavía
+
+- Frontend HTML estático y comportamiento visual.
+- Integración real con la API de Mercado Pago (sandbox o producción).
+- Integración real con Supabase.
+- Texto exacto de mensajes de log (puede cambiar sin afectar la lógica).
+- Comportamiento de HTTPS, ngrok ni deploy.
+- Flujos no implementados: reembolsos, cancelaciones, catálogo (T-007 a T-014).
 
 #### Archivos involucrados
-- Nuevo archivo de tests (nombre y ubicación a definir con el usuario)
-- `index.js` (puede requerir refactor previo según T-009)
-- `package.json` (agregar script `test` y dependencia del framework; requiere autorización)
-- `README.md` y `docs/SKILLS.md` (documentar el comando una vez disponible)
+- `package.json` — agregar `jest` como dependencia de desarrollo y script `"test": "jest"`. **Requiere autorización explícita del usuario.**
+- `test/payments.test.js` — archivo nuevo con los 13 casos de prueba.
+- `index.js` — puede requerir refactor mínimo para inyección de dependencias si se usa `node:test`. Con Jest no es necesario.
+- `README.md` y `docs/SKILLS.md` — documentar el comando una vez disponible.
 
 #### Instrucciones para Codex
-Pendiente de confirmar con el usuario: framework de testing (Jest, Mocha, Vitest u otro). Una vez definido y autorizado, implementar dobles de prueba para Mercado Pago y Supabase. No realizar llamadas reales. Cubrir los casos listados en los criterios de aceptación. Documentar el comando en `README.md` y `docs/SKILLS.md`.
+1. Esperar confirmación del usuario sobre el framework elegido y autorización para modificar `package.json`.
+2. Crear `test/payments.test.js` con dobles de prueba para `@mercadopago/sdk-js` y `@supabase/supabase-js`.
+3. No realizar llamadas reales. No cargar `.env`. No conectar a bases de datos ni APIs externas.
+4. Implementar los 13 casos de prueba (TC-01 a TC-13) según las instrucciones de DEC-009 y DEC-010.
+5. Los tests de TC-05 y TC-06 deben verificar que el cuerpo de la respuesta no exponga datos sensibles.
+6. Los tests de TC-08 a TC-12 deben usar un doble de `Payment.get` que devuelva el estado simulado.
+7. Documentar el comando en `README.md` y `docs/SKILLS.md` al finalizar.
 
 #### Criterios de aceptación
-- Se cubren pago aprobado, no aprobado, referencia ausente, pedido inexistente, monto diferente y webhook duplicado.
-- Mercado Pago y Supabase se sustituyen por dobles de prueba; no hay llamadas reales.
-- Existe un comando documentado y reproducible.
+- Los 13 casos de prueba (TC-01 a TC-13) pasan sin llamadas externas reales.
+- Los dobles de Mercado Pago y Supabase reemplazan completamente los módulos reales.
+- Ningún test carga `.env` ni accede a credenciales reales.
+- Existe un comando documentado y reproducible (`npm test`).
+- Los tests de firma (TC-05, TC-06) verifican que la respuesta no expone headers ni datos internos.
+- El test de concurrencia (TC-13) demuestra que solo una actualización es efectiva.
 
 #### Riesgos
-- Requiere autorización para modificar `package.json` e instalar dependencias.
-- T-009 (separación de responsabilidades) facilita esta tarea; considerar el orden de ejecución.
-- Sin refactor previo, los tests pueden ser difíciles de aislar.
+- **Alto**: sin T-009 (separación de responsabilidades) puede ser difícil aislar la lógica de negocio del servidor Express. Con Jest esto es manejable; con `node:test` se vuelve complejo.
+- **Requiere autorización**: modificar `package.json` e instalar Jest necesita aprobación explícita del usuario.
+- **Orden de ejecución**: si se elige `node:test`, conviene hacer T-009 primero para facilitar la inyección de dependencias.
+- Un test mal escrito que pase siempre o falle siempre puede dar una falsa sensación de cobertura.
 
 #### Resultado esperado
-Suite ejecutable que cubre los casos críticos del dominio de pagos sin dependencias externas.
+Suite ejecutable con 13 casos que cubren todos los flujos críticos del dominio de pagos, sin dependencias externas reales y con un comando documentado.
 
 ---
 

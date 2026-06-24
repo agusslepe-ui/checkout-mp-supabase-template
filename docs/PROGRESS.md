@@ -33,7 +33,6 @@ La revisión fue documental y de solo lectura. No se ejecutó la aplicación, no
 
 ## Pendientes principales
 
-- Agregar pruebas automatizadas (T-005).
 - Versionar esquema, restricciones y políticas de Supabase (T-006).
 - Definir una estrategia monetaria segura (T-007, requiere DEC-011).
 - Reducir logs sensibles y retirar diagnóstico temporal de producción (T-010, T-011).
@@ -44,12 +43,26 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-Las tareas P0 T-001 a T-004 están completadas.
+Las tareas P0 T-001 a T-004 están completadas. El alcance de T-005 fue definido.
 
-Orden sugerido para Codex:
-1. Definir el alcance y framework de pruebas para T-005.
+Pendiente de confirmar con el usuario: framework de testing para T-005 (Jest recomendado, o `node:test` sin dependencias nuevas). Sin esa confirmación y la autorización para modificar `package.json`, Codex no puede proceder.
+
+Orden sugerido:
+1. Implementar T-006 para versionar el esquema de Supabase, previa confirmación del alcance de migraciones.
 
 ## Bitácora
+
+### 2026-06-24 — T-005 completada
+
+- Se agregó Jest como dependencia de desarrollo y el comando reproducible `npm test`.
+- Se creó `tests/index.test.js` con mocks de Express, Mercado Pago, Supabase y dotenv para evitar llamadas reales y acceso a `.env`.
+- Casos cubiertos: configuración obligatoria, fallo de Supabase antes de crear preferencia, firma ausente, firma inválida, firma válida, pago aprobado con importe correcto e incorrecto, pago no aprobado, pedido inexistente, pedido ya pagado, webhooks concurrentes y transición atómica.
+- Verificación: `npm test`, `node --check index.js` y `git diff --check`.
+
+### 2026-06-24 — T-005 alcance definido
+
+- Se definieron los 13 casos de prueba (TC-01 a TC-13), el framework recomendado (Jest, con `node:test` como alternativa sin dependencias), los archivos involucrados, los criterios de aceptación y qué no testear todavía.
+- Pendiente: el usuario debe confirmar el framework y autorizar la modificación de `package.json` antes de que Codex implemente.
 
 ### 2026-06-24 — T-003 completada
 
