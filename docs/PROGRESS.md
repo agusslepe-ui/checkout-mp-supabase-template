@@ -33,7 +33,6 @@ La revisión fue documental y de solo lectura. No se ejecutó la aplicación, no
 
 ## Pendientes principales
 
-- Implementar validación de firma del webhook (T-001, desbloqueada por DEC-009).
 - Hacer atómica la transición `pending` a `paid` (T-003, requiere DEC-010).
 - Agregar pruebas automatizadas (T-005).
 - Versionar esquema, restricciones y políticas de Supabase (T-006).
@@ -46,18 +45,21 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-Las tareas P0 pendientes son T-001 y T-003. T-002 y T-004 están completadas.
-
-**T-001** está desbloqueada: DEC-009 fue aceptada el 2026-06-24. Codex puede implementar la validación de firma directamente.
+T-001, T-002 y T-004 están completadas.
 
 **T-003** sigue bloqueada hasta que se defina DEC-010 (mecanismo atómico para la transición de estado).
 
 Orden sugerido para Codex:
-1. Implementar T-001 (DEC-009 aceptada; ver `docs/DECISIONS.md`).
-2. Confirmar DEC-010 → implementar T-003.
-3. Implementar T-004 (no bloquea ninguna decisión pendiente).
+1. Confirmar DEC-010.
+2. Implementar T-003.
 
 ## Bitácora
+
+### 2026-06-24 — T-001 completada
+
+- Se implementó la validación oficial HMAC-SHA256 de Mercado Pago antes de procesar el webhook, usando `x-signature`, `x-request-id`, `data.id` y `MERCADO_PAGO_WEBHOOK_SECRET` según DEC-009.
+- Las firmas ausentes o inválidas reciben HTTP `401` con una respuesta genérica y únicamente los logs autorizados; una firma válida conserva el flujo existente.
+- Verificación: sintaxis correcta y pruebas aisladas de firma ausente, inválida y válida, sin cargar `.env`, realizar llamadas externas ni mostrar datos sensibles.
 
 ### 2026-06-24 — DEC-009 definida
 

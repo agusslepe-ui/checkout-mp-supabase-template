@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+const crypto = require("crypto");
 const path = require("path");
 const express = require("express");
 const { MercadoPagoConfig, Payment, Preference } = require("mercadopago");
@@ -11,6 +12,7 @@ const PORT = 3003;
 // Estas variables son obligatorias tanto en desarrollo como en producción.
 const requiredEnvironmentVariables = [
   "MERCADOPAGO_ACCESS_TOKEN",
+  "MERCADO_PAGO_WEBHOOK_SECRET",
   "BASE_URL",
   "SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
@@ -29,6 +31,7 @@ if (missingEnvironmentVariables.length > 0) {
 }
 
 const mercadoPagoAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+const mercadoPagoWebhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const baseUrl = process.env.BASE_URL;
@@ -39,6 +42,60 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+function isValidWebhookSignature({ signatureHeader, requestId, dataId }) {
+  let timestamp;
+  let receivedSignature;
+
+  for (const part of signatureHeader.split(",")) {
+    const separatorIndex = part.indexOf("=");
+
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = part.slice(0, separatorIndex).trim();
+    const value = part.slice(separatorIndex + 1).trim();
+
+    if (key === "ts") {
+      timestamp = value;
+    } else if (key === "v1") {
+      receivedSignature = value;
+    }
+  }
+
+  if (
+    !timestamp ||
+    !/^\d+$/.test(timestamp) ||
+    !receivedSignature ||
+    !/^[a-fA-F0-9]{64}$/.test(receivedSignature)
+  ) {
+    return false;
+  }
+
+  const manifestParts = [];
+
+  if (dataId !== undefined && dataId !== null && String(dataId) !== "") {
+    manifestParts.push(`id:${String(dataId).toLowerCase()};`);
+  }
+
+  if (typeof requestId === "string" && requestId !== "") {
+    manifestParts.push(`request-id:${requestId};`);
+  }
+
+  manifestParts.push(`ts:${timestamp};`);
+
+  const expectedSignature = crypto
+    .createHmac("sha256", mercadoPagoWebhookSecret)
+    .update(manifestParts.join(""))
+    .digest();
+  const receivedSignatureBuffer = Buffer.from(receivedSignature, "hex");
+
+  return (
+    expectedSignature.length === receivedSignatureBuffer.length &&
+    crypto.timingSafeEqual(expectedSignature, receivedSignatureBuffer)
+  );
+}
 
 async function createPendingOrder({
   external_reference,
@@ -133,6 +190,24 @@ app.get("/pending", (req, res) => {
 });
 
 app.post("/webhook", async (req, res) => {
+  const signatureHeader = req.headers["x-signature"];
+
+  if (typeof signatureHeader !== "string" || signatureHeader.trim() === "") {
+    console.log("firma de webhook ausente");
+    return res.status(401).json({ error: "Webhook inválido" });
+  }
+
+  const signatureIsValid = isValidWebhookSignature({
+    signatureHeader,
+    requestId: req.headers["x-request-id"],
+    dataId: req.query["data.id"],
+  });
+
+  if (!signatureIsValid) {
+    console.log("firma de webhook inválida");
+    return res.status(401).json({ error: "Webhook inválido" });
+  }
+
   console.log("Webhook POST recibido");
   console.log("method:", req.method);
   console.log("originalUrl:", req.originalUrl);

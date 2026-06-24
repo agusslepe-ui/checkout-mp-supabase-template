@@ -8,7 +8,7 @@ Estados posibles: `pendiente`, `en curso`, `bloqueada`, `completada`. Todas las 
 
 ### T-001 — Validar la firma del webhook
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P0
 
 #### Objetivo
