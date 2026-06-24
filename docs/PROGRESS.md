@@ -33,7 +33,6 @@ La revisión fue documental y de solo lectura. No se ejecutó la aplicación, no
 
 ## Pendientes principales
 
-- Hacer atómica la transición `pending` a `paid` (T-003, requiere DEC-010).
 - Agregar pruebas automatizadas (T-005).
 - Versionar esquema, restricciones y políticas de Supabase (T-006).
 - Definir una estrategia monetaria segura (T-007, requiere DEC-011).
@@ -45,15 +44,23 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-T-001, T-002 y T-004 están completadas.
-
-**T-003** sigue bloqueada hasta que se defina DEC-010 (mecanismo atómico para la transición de estado).
+Las tareas P0 T-001 a T-004 están completadas.
 
 Orden sugerido para Codex:
-1. Confirmar DEC-010.
-2. Implementar T-003.
+1. Definir el alcance y framework de pruebas para T-005.
 
 ## Bitácora
+
+### 2026-06-24 — T-003 completada
+
+- La transición `pending` → `paid` ahora usa una actualización condicional por referencia y estado; cero filas actualizadas se trata como webhook duplicado idempotente.
+- Se preservan los controles de pedido inexistente, pago aprobado e importe coincidente, con logs genéricos en este flujo.
+- Verificación: sintaxis correcta y pruebas aisladas de pedido inexistente, ya pagado, importe distinto, pago no aprobado, transición exitosa y dos webhooks concurrentes con una sola actualización efectiva.
+
+### 2026-06-24 — DEC-010 aceptada
+
+- Se definió la estrategia de transición atómica `pending` → `paid`: actualización condicional desde el backend con Supabase, idempotencia por estado, manejo de pedido inexistente, importe diferente y pago no aprobado.
+- DEC-010 quedó aceptada y T-003 está desbloqueada para su implementación.
 
 ### 2026-06-24 — T-001 completada
 

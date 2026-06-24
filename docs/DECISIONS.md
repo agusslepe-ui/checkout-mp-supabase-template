@@ -109,23 +109,33 @@ Sin validación criptográfica, cualquier cliente puede enviar una notificación
 
 ## DEC-010 — Mecanismo atómico para la transición de estado a pagado
 
-**Fecha:** pendiente de definir  
-**Estado:** pendiente
+**Fecha:** 2026-06-24  
+**Estado:** aceptada
 
 ### Contexto
-La lectura del pedido y su actualización son operaciones separadas. Dos webhooks concurrentes pueden superar la comprobación de estado antes de que uno de ellos complete la actualización.
+La lectura del pedido y su actualización son operaciones separadas. Dos webhooks concurrentes pueden superar la comprobación de estado antes de que uno de ellos complete la actualización. Mercado Pago puede enviar más de un webhook para el mismo pago.
 
 ### Decisión
-> Pendiente de confirmar con el usuario.
 
-### Opciones a evaluar
-- Usar `UPDATE ... WHERE status = 'pending'` y verificar el número de filas afectadas (opción sin dependencias adicionales en Supabase).
-- Usar una función SQL de Supabase con lógica transaccional.
-- Combinar la condición de estado con la unicidad del `payment_id` para garantizar idempotencia.
+- La transición a `paid` se ejecuta solo si el estado actual del pedido es `pending`. Si la actualización no afecta ninguna fila, el pedido ya transicionó; el webhook se trata como duplicado idempotente sin interrumpir el flujo.
+- Si el pedido no existe, no se crea un pedido nuevo; se registra un log genérico y se responde sin error catastrófico al cliente.
+- Si el importe del pago no coincide con el del pedido, no se marca como `paid`.
+- Si el estado del pago consultado a Mercado Pago no es `approved`, no se marca como `paid`.
+- No se exponen secretos, firmas completas, headers sensibles ni datos internos en logs ni en respuestas al cliente.
+- La estrategia se implementa desde el backend usando la API de Supabase; no requiere dependencias adicionales ni funciones SQL personalizadas.
+
+### Motivo
+Una actualización no condicional permite que dos webhooks concurrentes lean el estado `pending`, ambos lo superen y ambos ejecuten la transición a `paid`. La condición `WHERE status = 'pending'` convierte la operación en atómica a nivel de fila en Supabase/PostgreSQL: solo uno puede completar la actualización; el otro recibe cero filas afectadas y lo trata como duplicado.
+
+### Alternativas consideradas
+- Usar una función SQL de Supabase con lógica transaccional explícita: más control, pero agrega complejidad de infraestructura y requiere permisos adicionales. Descartada para esta etapa.
+- Usar un lock a nivel de aplicación (mutex en memoria): no funciona con múltiples instancias del servidor. Descartada.
+- Confiar en `payment_id` como única garantía de idempotencia sin condición de estado: no previene la carrera entre dos webhooks antes de la primera actualización. Descartada como garantía única.
 
 ### Consecuencias
 - Relacionada con T-003.
-- La opción elegida debe documentarse en este archivo antes de implementar.
+- La actualización condicional garantiza idempotencia sin dependencias adicionales.
+- T-003 queda desbloqueada.
 
 ---
 

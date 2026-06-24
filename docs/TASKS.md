@@ -71,7 +71,7 @@ No puede existir una preferencia de Mercado Pago sin un pedido correspondiente e
 
 ### T-003 — Hacer atómica la transición a pagado
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P0
 
 #### Objetivo

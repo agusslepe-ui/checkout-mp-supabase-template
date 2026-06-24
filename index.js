@@ -142,7 +142,7 @@ async function markOrderAsPaid({
   }
 
   if (!order) {
-    console.log("Pedido no encontrado para external_reference:", external_reference);
+    console.log("Pedido no encontrado para procesar pago");
     return null;
   }
 
@@ -152,13 +152,11 @@ async function markOrderAsPaid({
   }
 
   if (Number(order.amount) !== Number(transaction_amount)) {
-    console.log("Monto no coincide. Posible error o manipulaci\u00f3n");
-    console.log("monto en Supabase:", order.amount);
-    console.log("monto en Mercado Pago:", transaction_amount);
+    console.log("Monto de pago no coincide con el pedido");
     return null;
   }
 
-  const { data, error } = await supabase
+  const { data: updatedOrder, error } = await supabase
     .from("orders")
     .update({
       status: "paid",
@@ -167,14 +165,20 @@ async function markOrderAsPaid({
       updated_at: new Date().toISOString(),
     })
     .eq("external_reference", external_reference)
+    .eq("status", "pending")
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     throw error;
   }
 
-  return data;
+  if (!updatedOrder) {
+    console.log("Pedido ya procesado, webhook duplicado ignorado");
+    return null;
+  }
+
+  return updatedOrder;
 }
 
 app.get("/success", (req, res) => {
@@ -260,16 +264,10 @@ app.post("/webhook", async (req, res) => {
           });
 
           if (updatedOrder) {
-            console.log(
-              "Pedido actualizado a paid en Supabase:",
-              paymentInfo.external_reference
-            );
+            console.log("Pedido actualizado a paid en Supabase");
           }
         } catch (error) {
-          console.error(
-            "Error actualizando pedido en Supabase:",
-            error.message
-          );
+          console.error("Error actualizando pedido en Supabase");
         }
       }
     } else {
