@@ -33,29 +33,36 @@ La revisión fue documental y de solo lectura. No se ejecutó la aplicación, no
 
 ## Pendientes principales
 
-- Validar la firma del webhook.
-- Detener la preferencia si falla la creación del pedido.
-- Hacer atómica la transición `pending` a `paid`.
-- Agregar pruebas automatizadas.
-- Versionar esquema, restricciones y políticas de Supabase.
-- Definir una estrategia monetaria segura.
-- Validar configuración al iniciar.
-- Reducir logs sensibles y retirar diagnóstico temporal de producción.
-- Definir catálogo, autenticación y requisitos comerciales.
-- Seleccionar y documentar un despliegue de producción.
+- Implementar validación de firma del webhook (T-001, desbloqueada por DEC-009).
+- Hacer atómica la transición `pending` a `paid` (T-003, requiere DEC-010).
+- Agregar pruebas automatizadas (T-005).
+- Versionar esquema, restricciones y políticas de Supabase (T-006).
+- Definir una estrategia monetaria segura (T-007, requiere DEC-011).
+- Reducir logs sensibles y retirar diagnóstico temporal de producción (T-010, T-011).
+- Definir catálogo, autenticación y requisitos comerciales (T-012).
+- Seleccionar y documentar un despliegue de producción (T-013).
 
 El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-Las cuatro tareas P0 (T-001 a T-004) son el trabajo más urgente. La primera en abordar es **T-001** (validación de firma del webhook), pero requiere que el usuario confirme primero **DEC-009** (estrategia de validación y nombre de la nueva variable de entorno). Sin esa decisión, Codex no puede implementar de forma segura.
+Las tareas P0 pendientes son T-001 y T-003. T-002 y T-004 están completadas.
+
+**T-001** está desbloqueada: DEC-009 fue aceptada el 2026-06-24. Codex puede implementar la validación de firma directamente.
+
+**T-003** sigue bloqueada hasta que se defina DEC-010 (mecanismo atómico para la transición de estado).
 
 Orden sugerido para Codex:
-1. Confirmar DEC-009 → implementar T-001.
+1. Implementar T-001 (DEC-009 aceptada; ver `docs/DECISIONS.md`).
 2. Confirmar DEC-010 → implementar T-003.
 3. Implementar T-004 (no bloquea ninguna decisión pendiente).
 
 ## Bitácora
+
+### 2026-06-24 — DEC-009 definida
+
+- Se definieron la variable `MERCADO_PAGO_WEBHOOK_SECRET`, la respuesta HTTP `401` con mensaje genérico y las restricciones de exposición y logs para firmas ausentes o inválidas.
+- DEC-009 quedó definida y T-001 está desbloqueada para su planificación e implementación.
 
 ### 2026-06-24 — T-004 completada
 

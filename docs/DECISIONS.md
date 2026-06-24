@@ -69,30 +69,41 @@ Este registro distingue decisiones observadas en el código de decisiones todav�
 
 ## Decisiones pendientes
 
-Las siguientes decisiones deben tomarse antes de implementar las tareas relacionadas. Están marcadas como `pendiente` hasta que el usuario las defina y apruebe.
+Las siguientes decisiones se registraron inicialmente como pendientes. Cada una conserva el estado `pendiente` hasta que el usuario la defina y apruebe.
 
 ---
 
 ## DEC-009 — Estrategia de validación de firma del webhook
 
-**Fecha:** pendiente de definir  
-**Estado:** pendiente
+**Fecha:** 2026-06-24  
+**Estado:** aceptada
 
 ### Contexto
 El endpoint `/webhook` acepta eventos sin validar la firma criptográfica. La consulta posterior a Mercado Pago reduce el riesgo, pero no sustituye la validación requerida. Mercado Pago provee los headers `x-signature` y `x-request-id` para esta verificación.
 
 ### Decisión
-> Pendiente de confirmar con el usuario.
 
-### Opciones a evaluar
-- Implementar la validación usando el algoritmo oficial de Mercado Pago (HMAC-SHA256 sobre el cuerpo y headers).
-- Definir qué respuesta HTTP devolver ante firma inválida (401 o 400).
-- Definir si se registra el intento fallido y qué campos se loguean (sin incluir el secreto ni la firma).
-- Definir el nombre de la nueva variable de entorno para el secreto de validación.
+- El secreto de validación debe obtenerse exclusivamente de la variable de entorno `MERCADO_PAGO_WEBHOOK_SECRET`.
+- Si la firma del webhook es inválida, el servidor debe responder HTTP `401`.
+- Si la firma está ausente, el servidor también debe responder HTTP `401`.
+- En ambos casos, la respuesta debe ser genérica: `Webhook inválido`.
+- No se deben exponer secretos, firmas completas, headers sensibles ni detalles internos en respuestas o logs.
+- Los logs solo pueden registrar eventos genéricos como `firma de webhook ausente` o `firma de webhook inválida`.
+
+La implementación debe seguir el algoritmo oficial vigente de Mercado Pago y validar la firma antes de consultar pagos o actualizar pedidos.
+
+### Motivo
+Sin validación criptográfica, cualquier cliente puede enviar una notificación falsa que dispare consultas a la API de Mercado Pago o actualizaciones de pedidos. La validación es una precondición de seguridad, no una mejora opcional.
+
+### Alternativas consideradas
+- Confiar únicamente en la consulta posterior a `Payment.get` sin validar la firma: reduce el riesgo pero no elimina el procesamiento innecesario ante notificaciones falsas. Descartada.
+- Responder HTTP `400` en lugar de `401` para firma inválida o ausente: semánticamente menos preciso; `401` indica falla de autenticación, que es el caso exacto. Descartada.
+- Registrar la firma o los headers de autenticación completos para debugging: descartada por política de seguridad. Los logs solo deben registrar eventos genéricos sin valores sensibles.
 
 ### Consecuencias
 - Relacionada con T-001.
-- Requiere agregar una variable de entorno al contrato de configuración.
+- Requiere agregar `MERCADO_PAGO_WEBHOOK_SECRET` al contrato de configuración (`.env.example`), sin incluir ningún valor real.
+- T-001 queda desbloqueada.
 
 ---
 
