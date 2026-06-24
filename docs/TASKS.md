@@ -103,7 +103,7 @@ El pedido pasa a `paid` exactamente una vez, incluso bajo webhooks concurrentes.
 
 ### T-004 — Validar configuración al iniciar
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P0
 
 #### Objetivo

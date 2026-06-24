@@ -57,6 +57,12 @@ Orden sugerido para Codex:
 
 ## Bitácora
 
+### 2026-06-24 — T-004 completada
+
+- El inicio valida las cuatro variables obligatorias antes de crear clientes externos o aceptar tráfico; los valores ausentes o vacíos detienen el proceso mostrando solo sus nombres.
+- Archivos modificados: `index.js`, `docs/TASKS.md` y `docs/PROGRESS.md`.
+- Verificación: sintaxis correcta y pruebas aisladas de variable ausente, vacía y configuración completa, sin cargar `.env` ni realizar llamadas externas.
+
 ### 2026-06-24 — T-002 completada
 
 - Se detiene `POST /crear-preferencia` si Supabase no puede crear el pedido `pending`; el cliente recibe un error HTTP genérico y Mercado Pago no es llamado.

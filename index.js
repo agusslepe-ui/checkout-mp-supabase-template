@@ -7,10 +7,31 @@ const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 const PORT = 3003;
+
+// Estas variables son obligatorias tanto en desarrollo como en producción.
+const requiredEnvironmentVariables = [
+  "MERCADOPAGO_ACCESS_TOKEN",
+  "BASE_URL",
+  "SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY",
+];
+const missingEnvironmentVariables = requiredEnvironmentVariables.filter(
+  (name) => !process.env[name] || process.env[name].trim() === ""
+);
+
+if (missingEnvironmentVariables.length > 0) {
+  console.error(
+    `Configuración inválida. Variables faltantes o vacías: ${missingEnvironmentVariables.join(
+      ", "
+    )}`
+  );
+  process.exit(1);
+}
+
 const mercadoPagoAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+const baseUrl = process.env.BASE_URL;
 const client = new MercadoPagoConfig({ accessToken: mercadoPagoAccessToken });
 const preference = new Preference(client);
 const payment = new Payment(client);
