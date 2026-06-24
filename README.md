@@ -1,27 +1,35 @@
 # Mercado Pago Checkout Pro + Supabase
 
-Proyecto base para probar una integracion de Mercado Pago Checkout Pro con Node.js, Express, webhook y Supabase.
+Aplicación mínima de comercio electrónico para probar un pago de una Remera LEMONT mediante Mercado Pago Checkout Pro. El servidor registra primero un pedido pendiente en Supabase, crea la preferencia de pago y procesa el webhook de Mercado Pago. Un pedido solo pasa a `paid` después de consultar el pago en la API y confirmar que está aprobado y que el importe coincide.
 
-El flujo actual crea un pedido interno en Supabase con estado `pending`, genera una preferencia de pago, recibe la notificacion de Mercado Pago por webhook, consulta el pago por API y marca el pedido como `paid` solo cuando Mercado Pago confirma `approved`.
+## Tecnologías
 
-## Stack usado
+- Node.js y CommonJS.
+- Express 5.
+- SDK oficial de Mercado Pago para Node.js.
+- Supabase JavaScript SDK.
+- HTML, CSS y JavaScript sin framework.
+- `dotenv` para configuración local.
+- ngrok como opción para exponer webhooks durante el desarrollo.
 
-- Node.js
-- Express
-- Mercado Pago SDK para Node.js
-- Supabase JS SDK
-- HTML, CSS y JavaScript vanilla
-- ngrok para exponer el webhook en desarrollo
+## Requisitos previos
 
-## Instalacion
+- Node.js y npm compatibles con las dependencias del proyecto.
+- Una cuenta y credencial de prueba de Mercado Pago.
+- Un proyecto Supabase con una tabla `orders` compatible.
+- Una URL pública HTTPS para recibir webhooks; en desarrollo puede utilizarse ngrok.
 
-```bash
-npm install
+## Instalación
+
+```powershell
+npm.cmd install
 ```
+
+En shells donde `npm` funcione normalmente también puede usarse `npm install`.
 
 ## Variables de entorno
 
-Crear un archivo `.env` tomando como base `.env.example`:
+Crear `.env` a partir de `.env.example`. No copiar valores reales en documentación, código, commits, capturas ni mensajes a agentes.
 
 ```env
 MERCADOPAGO_ACCESS_TOKEN=
@@ -30,111 +38,16 @@ SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 ```
 
-Ejemplo en desarrollo con ngrok:
+- `MERCADOPAGO_ACCESS_TOKEN`: credencial privada de Mercado Pago, exclusiva del backend.
+- `BASE_URL`: origen público HTTPS, sin la ruta `/webhook`. En desarrollo puede ser la URL temporal de ngrok.
+- `SUPABASE_URL`: URL del proyecto Supabase.
+- `SUPABASE_SERVICE_ROLE_KEY`: clave privilegiada, exclusiva del backend.
 
-```env
-MERCADOPAGO_ACCESS_TOKEN=APP_USR_o_TEST_xxx
-BASE_URL=https://tu-url-ngrok.ngrok-free.app
-SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
-```
+`.env` está ignorado por Git y nunca debe compartirse. `.env.example` debe contener únicamente el contrato de nombres, sin secretos.
 
-`BASE_URL` debe ser una URL publica HTTPS cuando uses webhooks y `back_urls` con Mercado Pago. No uses `localhost` para la preferencia si Mercado Pago debe volver a tu servidor.
+## Base de datos
 
-## Ejecucion
-
-```bash
-npm run dev
-```
-
-El servidor corre en:
-
-```text
-http://localhost:3003
-```
-
-## Uso de ngrok en desarrollo
-
-En otra terminal:
-
-```bash
-ngrok http 3003
-```
-
-Copiar la URL HTTPS generada por ngrok y ponerla en `.env`:
-
-```env
-BASE_URL=https://tu-url-ngrok.ngrok-free.app
-```
-
-Despues reiniciar el servidor:
-
-```bash
-npm run dev
-```
-
-## Como probar el checkout
-
-1. Levantar el servidor con `npm run dev`.
-2. Levantar ngrok con `ngrok http 3003`.
-3. Verificar que `BASE_URL` tenga la URL HTTPS de ngrok.
-4. Abrir:
-
-```text
-http://localhost:3003
-```
-
-5. Hacer click en `Pagar con Mercado Pago`.
-6. El frontend llama a `POST /crear-preferencia`.
-7. El backend crea un pedido `pending` en Supabase y genera la preferencia de Mercado Pago.
-8. El navegador redirige a `sandbox_init_point` si existe, o a `init_point`.
-
-Tambien se puede probar desde consola:
-
-```bash
-curl.exe -X POST http://localhost:3003/crear-preferencia
-```
-
-## Como probar el webhook
-
-Con el servidor y ngrok activos, Mercado Pago llama a:
-
-```text
-POST {BASE_URL}/webhook
-```
-
-Tambien se puede probar manualmente:
-
-```bash
-curl.exe -X POST "http://localhost:3003/webhook?id=123456789&topic=payment" -H "Content-Type: application/json" -d "{\"resource\":\"123456789\",\"topic\":\"payment\"}"
-```
-
-Para una prueba real, el `payment_id` debe existir en Mercado Pago. Si no existe, el backend va a imprimir el error de consulta a la API.
-
-## Flujo completo del sistema
-
-1. El usuario abre el frontend y toca `Pagar con Mercado Pago`.
-2. El frontend hace `POST /crear-preferencia`.
-3. El backend genera un `external_reference` tipo `LEMONT-ORDER-${Date.now()}`.
-4. El backend guarda en Supabase un pedido en la tabla `orders` con estado `pending`.
-5. El backend crea una preferencia de Checkout Pro con Mercado Pago.
-6. Mercado Pago redirige al usuario a Checkout Pro.
-7. Mercado Pago notifica al backend en `POST /webhook`.
-8. El webhook detecta eventos `payment` y extrae el `payment_id`.
-9. El backend consulta el pago por API usando el SDK de Mercado Pago.
-10. Si el pago esta `approved`, el backend busca el pedido por `external_reference`.
-11. Antes de actualizar, valida que el pedido exista, que no este ya `paid` y que el monto coincida.
-12. Si todo coincide, actualiza el pedido a `paid` en Supabase.
-
-Resumen:
-
-```text
-pedido pending -> Mercado Pago -> webhook -> consulta API -> pedido paid
-```
-
-## SQL para Supabase
-
-Crear la tabla `orders` en Supabase:
+El código espera una tabla `orders` con, al menos, estos campos:
 
 ```sql
 create table if not exists orders (
@@ -152,58 +65,71 @@ create table if not exists orders (
 );
 ```
 
-Indice recomendado para buscar pedidos por referencia:
+El SQL todavía no está versionado como migración. Antes de aplicarlo en un entorno compartido, revisar esquema, permisos y políticas RLS.
 
-```sql
-create index if not exists orders_external_reference_idx
-on orders (external_reference);
+## Ejecución
+
+```powershell
+npm.cmd run dev
 ```
 
-Si la tabla ya existe y faltan columnas:
+La aplicación queda disponible en `http://localhost:3003`.
 
-```sql
-alter table orders
-add column if not exists mercadopago_payment_id text,
-add column if not exists mercadopago_status text,
-add column if not exists updated_at timestamptz not null default now();
+Para webhooks en desarrollo:
+
+```powershell
+ngrok http 3003
 ```
 
-## external_reference
+Copiar el origen HTTPS generado a `BASE_URL`, reiniciar el servidor y abrir `http://localhost:3003`.
 
-`external_reference` es la referencia interna del pedido. En este proyecto se genera asi:
+## Comandos útiles
 
-```text
-LEMONT-ORDER-${Date.now()}
+```powershell
+# Iniciar el servidor
+npm.cmd run dev
+
+# Inicio equivalente definido para producción
+npm.cmd start
+
+# Crear una preferencia sin usar la interfaz
+curl.exe -X POST http://localhost:3003/crear-preferencia
+
+# Comprobar recepción del webhook con un ID ilustrativo
+curl.exe -X POST "http://localhost:3003/webhook?id=123456789&topic=payment" -H "Content-Type: application/json" -d "{\"resource\":\"123456789\",\"topic\":\"payment\"}"
+
+# Revisar cambios locales
+git status --short
+git diff
 ```
 
-Esa referencia se guarda en Supabase y tambien se envia a Mercado Pago dentro de la preferencia. Cuando Mercado Pago confirma el pago, la API devuelve esa misma referencia en `paymentInfo.external_reference`, y el backend la usa para encontrar el pedido correcto.
+El ID ilustrativo no representa un pago real: la consulta a Mercado Pago fallará salvo que se use un `payment_id` válido de la cuenta configurada.
 
-Esto evita depender solamente del `payment_id` y permite asociar cada pago con un pedido interno.
+## Flujo principal
 
-## Como reutilizar esta plantilla
+1. El navegador solicita `POST /crear-preferencia`.
+2. El backend genera una referencia `LEMONT-ORDER-${Date.now()}`.
+3. Se crea un pedido `pending` en Supabase.
+4. Se crea una preferencia con URLs de retorno y webhook.
+5. El navegador redirige a Mercado Pago.
+6. Mercado Pago llama a `POST /webhook`.
+7. El backend consulta el pago mediante la API oficial.
+8. Si el pago está aprobado, existe el pedido y coincide el importe, el pedido se actualiza a `paid`.
 
-Para usar este proyecto en otra tienda, cambiar:
+Las rutas de retorno son `/success`, `/failure` y `/pending`. Esas páginas informan el resultado del retorno, pero la confirmación autoritativa del pedido ocurre en el webhook.
 
-- `MERCADOPAGO_ACCESS_TOKEN`
-- `BASE_URL`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- Nombre del producto
-- Precio
-- Moneda
-- Branding del frontend
-- Credenciales de produccion de Mercado Pago
-- URL de produccion
-- Proyecto o tabla de Supabase si corresponde
+## Documentación para personas y agentes
 
-Tambien conviene reemplazar el generador de `external_reference` por el identificador real de pedido de la tienda.
+- [AGENTS.md](AGENTS.md): reglas de trabajo para agentes de IA.
+- [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md): alcance y requisitos.
+- [docs/DESIGN.md](docs/DESIGN.md): arquitectura y flujos.
+- [docs/TASKS.md](docs/TASKS.md): trabajo pendiente verificable.
+- [docs/PROGRESS.md](docs/PROGRESS.md): estado y bitácora.
+- [docs/DECISIONS.md](docs/DECISIONS.md): decisiones técnicas.
+- [docs/SKILLS.md](docs/SKILLS.md): procedimientos operativos.
+- [docs/SECURITY.md](docs/SECURITY.md): controles y riesgos.
 
-## Seguridad
+## Limitaciones actuales
 
-- Nunca subir `.env` a GitHub.
-- Nunca poner tokens ni claves directamente en el codigo.
-- Usar `.env.example` solo con nombres de variables y valores vacios.
-- Si una clave fue expuesta, regenerarla inmediatamente en Mercado Pago o Supabase.
-- `SUPABASE_SERVICE_ROLE_KEY` tiene permisos sensibles. Usarla solo en backend, nunca en frontend.
-- En produccion, usar HTTPS y una URL publica estable para `BASE_URL`.
+No hay tests automatizados, migraciones versionadas, autenticación, panel administrativo ni configuración de despliegue. El webhook aún no valida su firma criptográfica. Consultar el pago por API reduce el riesgo, pero no sustituye esa validación.
 
