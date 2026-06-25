@@ -4,13 +4,13 @@
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011) y la corrección UTF-8 del error HTTP 400 por JSON inválido (T-014) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012) y la corrección UTF-8 del error HTTP 400 por JSON inválido (T-014) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
-- **Tests**: Jest instalado. `npm test` pasa con 22 tests.
+- **Tests**: Jest instalado. `npm test` pasa con 29 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: T-012 y T-013 requieren decisiones pendientes.
+- **Pendiente más urgente**: T-013 requiere DEC-016.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -36,6 +36,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - T-009: backend separado en `src/app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js` y `webhookSignature.js`.
 - T-010: logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos y ausencia de payloads sensibles.
 - T-011: `GET /webhook` disponible solo con `NODE_ENV !== "production"`; `POST /webhook` se conserva.
+- T-012: catálogo seguro en `src/catalog.js`; el backend calcula precio, total y moneda desde SKU y cantidad.
 - T-014: respuesta HTTP 400 por JSON inválido con `Content-Type: application/json; charset=utf-8`.
 - Documentación completa: TASKS.md (T-001 a T-014), DECISIONS.md (DEC-009 a DEC-017), CURRENT_CONTEXT.md.
 
@@ -50,22 +51,41 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Pendientes principales
 
-- Definir catálogo, autenticación y requisitos comerciales (T-012).
 - Seleccionar y documentar un despliegue de producción (T-013).
 
 El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**12/14 tareas completadas.** T-001 a T-010 y T-014 completadas, commiteadas y pusheadas a `origin/main`. T-011 completada localmente, sin commit por pedido del usuario. Commits: T-001–T-006 (sesión 2026-06-24), T-007 ("Implementa validacion segura de importes y moneda"), T-008 ("Mejora identificadores unicos de pedidos"), T-009 ("Separa backend en modulos"), T-010 ("Implementa logs estructurados seguros"), T-014 ("Corrige codificacion UTF-8 en error JSON invalido").
+**13/14 tareas completadas.** T-001 a T-010 y T-014 completadas, commiteadas y pusheadas a `origin/main`. T-011 y T-012 completadas localmente, sin commit por pedido del usuario. Commits: T-001–T-006 (sesión 2026-06-24), T-007 ("Implementa validacion segura de importes y moneda"), T-008 ("Mejora identificadores unicos de pedidos"), T-009 ("Separa backend en modulos"), T-010 ("Implementa logs estructurados seguros"), T-014 ("Corrige codificacion UTF-8 en error JSON invalido").
 
 Opciones para continuar:
 
 **A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks, RLS o la separación modular recién completada.
 
-**B — Próxima fase técnica**: T-012 y T-013 requieren decisiones pendientes (DEC-013, DEC-016).
+**B — Próxima fase técnica**: T-013 requiere DEC-016.
 
 ## Bitácora
+
+### 2026-06-25 — T-012 completada
+
+- Objetivo: implementar catálogo seguro del lado del backend para que el frontend no pueda decidir ni manipular precio, importe total ni moneda.
+- Tarea relacionada: T-012.
+- Archivos afectados: `src/catalog.js`, `src/app.js`, `public/app.js`, `tests/index.test.js`, `README.md`, `docs/REQUIREMENTS.md`, `docs/DESIGN.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Cambios realizados:
+  - `src/catalog.js`: nuevo módulo de catálogo según DEC-013, con SKU `REMERA-LEMONT-001`, `unitPrice: 100`, moneda `ARS`, `maxQuantity: 10` y export `getProduct(sku)`.
+  - `src/app.js`: `POST /crear-preferencia` acepta solo `{ sku, quantity }`, valida SKU y cantidad, calcula `total` en backend e ignora `price`, `amount` y `currency` del cliente.
+  - `public/app.js`: envía `{ sku: "REMERA-LEMONT-001", quantity: 1 }`.
+  - `tests/index.test.js`: se agregaron regresiones para SKU inválido, cantidades inválidas, cantidad válida y manipulación de `amount`, `currency` y `price`.
+  - Documentación: se actualizó el contrato de creación de preferencias y el estado de T-012.
+- Verificaciones:
+  - `node --check src/catalog.js`.
+  - `node --check src/app.js`.
+  - `npm.cmd test` — 29 tests pasan.
+  - `git diff --check`.
+  - `git diff`.
+- Resultado: T-012 completada sin leer `.env`, sin exponer secretos, sin dependencias nuevas, sin tablas nuevas en Supabase, sin commits, sin push y sin cambios en `POST /webhook`, firma, consulta real a Mercado Pago, transición `pending → paid` ni validación final de importe/moneda del webhook.
+- Pendientes o riesgos: T-013 sigue pendiente y requiere DEC-016.
 
 ### 2026-06-25 — DEC-013 aceptada — estrategia de catálogo y precios definida
 

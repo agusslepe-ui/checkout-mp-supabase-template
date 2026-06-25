@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25 (12/14 tareas completadas — T-011 y T-014 cerradas).
+> Resumen compacto para agentes. Última actualización: 2026-06-25 (13/14 tareas completadas — T-012 cerrada).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -8,7 +8,7 @@
 
 ## Estado de la fase actual: P2 EN CURSO
 
-Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011) y la corrección UTF-8 del error HTTP 400 (T-014) están **completadas** (12/14). T-001 a T-010 y T-014 están commiteadas y pusheadas a `origin/main`. T-011 está completada localmente sin commit.
+Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012) y la corrección UTF-8 del error HTTP 400 (T-014) están **completadas** (13/14). T-001 a T-010 y T-014 están commiteadas y pusheadas a `origin/main`. T-011 y T-012 están completadas localmente sin commit.
 
 ---
 
@@ -39,7 +39,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 | Tarea | Descripción |
 |---|---|
-| T-005 | Suite Jest; `npm test` pasa con 22 tests. Cubre todos los flujos críticos sin llamadas externas. |
+| T-005 | Suite Jest; `npm test` pasa con 29 tests. Cubre todos los flujos críticos sin llamadas externas. |
 | T-006 | `supabase/migrations/001_create_orders.sql` con DDL, restricciones, índices y RLS. Aplicada y verificada en Supabase el 2026-06-25. (DEC-012) |
 | T-007 | Comparación de importes normalizada a centavos (`Math.round`), validación de moneda contra `order.currency`, logs genéricos. (DEC-011) |
 | T-008 | Identificadores de pedido con `LEMONT-ORDER-${crypto.randomUUID()}` para unicidad bajo concurrencia. |
@@ -50,7 +50,8 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 | Tarea | Descripción |
 |---|---|
-| T-011 | `GET /webhook` registrado solo cuando `NODE_ENV !== "production"`. `POST /webhook` sin cambios. 22 tests pasan. |
+| T-011 | `GET /webhook` registrado solo cuando `NODE_ENV !== "production"`. `POST /webhook` sin cambios. |
+| T-012 | Catálogo seguro en `src/catalog.js`; el frontend envía solo `{ sku, quantity }` y el backend calcula precio, total y moneda. (DEC-013) |
 | T-014 | Respuesta HTTP 400 para JSON inválido con `Content-Type: application/json; charset=utf-8`. |
 
 ---
@@ -59,7 +60,6 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
-| T-012 | Fuente autoritativa de catálogo y precios. | **DEC-013 aceptada.** Lista para implementar. |
 | T-013 | Documentar y validar deploy a producción. | **DEC-016 pendiente.** Resolver antes de implementar. |
 
 ---
@@ -97,7 +97,8 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 - **Logs**: JSON estructurado por helper propio `log()`, con `request_id`, niveles y lista explícita de campos prohibidos.
 - **Base de datos**: Supabase, tabla `orders`, acceso con `service_role` solo desde backend. RLS habilitada. Sin policies públicas para `anon` ni `authenticated`.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada y verificada el 2026-06-25.
-- **Tests**: Jest. `npm test` pasa con **22 tests**. Sin llamadas externas ni acceso a `.env`.
+- **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
+- **Tests**: Jest. `npm test` pasa con **29 tests**. Sin llamadas externas ni acceso a `.env`.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
 - **Versionado**: Git + GitHub. Sin deploy documentado (T-013 pendiente).
 
@@ -109,12 +110,13 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 |---|---|
 | `index.js` | Entrypoint mínimo: carga config, importa app, arranca servidor. |
 | `src/app.js` | Express, middlewares, rutas y handlers. `GET /webhook` condicionado por `NODE_ENV`. |
+| `src/catalog.js` | Catálogo versionado del servidor y `getProduct(sku)`. |
 | `src/config.js` | Validación y export de variables de entorno. |
 | `src/logger.js` | Helper `log()` de DEC-017. |
 | `src/payments.js` | Integración Mercado Pago: `createPreference`, `Payment.get`. |
 | `src/orders.js` | Operaciones Supabase: `createPendingOrder`, `markOrderAsPaid`. Validación importe/moneda. |
 | `src/webhookSignature.js` | Validación de firma HMAC-SHA256 de Mercado Pago. |
-| `tests/index.test.js` | Suite Jest con **22 tests**. Mocks de MP, Supabase, dotenv y Express. |
+| `tests/index.test.js` | Suite Jest con **29 tests**. Mocks de MP, Supabase, dotenv y Express. |
 | `supabase/migrations/001_create_orders.sql` | Migración SQL versionada: DDL, restricciones, índices y RLS. Aplicada el 2026-06-25. |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). Incluye `LOG_LEVEL=info`. |
 | `docs/CURRENT_CONTEXT.md` | Este archivo — resumen compacto para agentes. |
@@ -132,12 +134,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 ### No hay tareas de código disponibles sin decisión previa
 
-Las dos tareas pendientes (T-012 y T-013) están bloqueadas por decisiones sin resolver. El próximo paso es **definir esas decisiones**, no programar.
-
-**T-012 — Lista para implementar (DEC-013 aceptada)**
-
-> Codex debe crear `src/catalog.js`, modificar `POST /crear-preferencia` en `src/app.js` y agregar tests.
-> Ver instrucciones detalladas en `docs/TASKS.md` (T-012) y `docs/DECISIONS.md` (DEC-013).
+La única tarea pendiente es T-013 y está bloqueada por una decisión sin resolver. El próximo paso es **definir DEC-016**, no programar.
 
 **Resolver DEC-016 — Proveedor de deploy y entornos (para desbloquear T-013)**
 

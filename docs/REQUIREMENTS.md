@@ -37,7 +37,7 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 ## Datos de entrada
 
 - Configuración: credencial de Mercado Pago, URL pública, URL de Supabase y clave de servicio.
-- Inicio de compra: actualmente no recibe datos del cliente; el producto está definido en el servidor.
+- Inicio de compra: recibe solo `sku` y `quantity`; el producto, precio y moneda se resuelven desde el catálogo del servidor.
 - Webhook: tipo de evento y `payment_id`, recibidos en query string o cuerpo JSON.
 - API de Mercado Pago: estado, importe, moneda, referencia externa y metadatos del pago.
 
@@ -52,7 +52,7 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 ## Restricciones
 
 - El servidor usa el puerto fijo `3003`.
-- El producto actual es Remera LEMONT, cantidad 1, importe 100 y moneda ARS.
+- El producto actual del catálogo es Remera LEMONT (`REMERA-LEMONT-001`), importe unitario 100, moneda ARS y cantidad máxima 10.
 - La integración requiere una URL pública HTTPS para webhooks y retornos confiables.
 - La clave `service_role` de Supabase solo puede usarse en backend.
 - La confirmación del pago depende de la disponibilidad de Mercado Pago y Supabase.

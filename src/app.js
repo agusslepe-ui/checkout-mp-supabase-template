@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const path = require("path");
 const express = require("express");
+const { getProduct } = require("./catalog");
 const { baseUrl, mercadoPagoAccessToken } = require("./config");
 const { log } = require("./logger");
 const { createPendingOrder, markOrderAsPaid } = require("./orders");
@@ -156,12 +157,32 @@ app.post("/crear-preferencia", async (req, res) => {
     });
   }
 
+  const { sku, quantity } = req.body || {};
+  const product = getProduct(sku);
+
+  if (!product) {
+    return res.status(400).json({
+      error: "Producto no encontrado",
+    });
+  }
+
+  if (
+    !Number.isInteger(quantity) ||
+    quantity < 1 ||
+    quantity > product.maxQuantity
+  ) {
+    return res.status(400).json({
+      error: "Cantidad inválida",
+    });
+  }
+
   try {
-    const product = {
-      title: "Remera LEMONT",
-      quantity: 1,
-      unit_price: 100,
-      currency_id: "ARS",
+    const total = product.unitPrice * quantity;
+    const preferenceItem = {
+      title: product.name,
+      quantity,
+      unit_price: product.unitPrice,
+      currency_id: product.currency,
     };
     const externalReference = `LEMONT-ORDER-${crypto.randomUUID()}`;
 
@@ -170,10 +191,10 @@ app.post("/crear-preferencia", async (req, res) => {
     try {
       await createPendingOrder({
         external_reference: externalReference,
-        product_name: product.title,
-        quantity: product.quantity,
-        amount: product.unit_price,
-        currency: product.currency_id,
+        product_name: product.name,
+        quantity,
+        amount: total,
+        currency: product.currency,
         status: "pending",
       });
 
@@ -193,7 +214,7 @@ app.post("/crear-preferencia", async (req, res) => {
     }
 
     const result = await createPreference({
-      items: [product],
+      items: [preferenceItem],
       external_reference: externalReference,
       notification_url: `${baseUrl}/webhook`,
       back_urls: {

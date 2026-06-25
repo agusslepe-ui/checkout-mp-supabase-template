@@ -12,6 +12,13 @@ payButton.addEventListener("click", async () => {
   try {
     const response = await fetch("/crear-preferencia", {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sku: "REMERA-LEMONT-001",
+        quantity: 1,
+      }),
     });
 
     if (!response.ok) {

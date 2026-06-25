@@ -97,7 +97,7 @@ npm.cmd run dev
 npm.cmd start
 
 # Crear una preferencia sin usar la interfaz
-curl.exe -X POST http://localhost:3003/crear-preferencia
+curl.exe -X POST http://localhost:3003/crear-preferencia -H "Content-Type: application/json" -d "{\"sku\":\"REMERA-LEMONT-001\",\"quantity\":1}"
 
 # Comprobar recepción del webhook con un ID ilustrativo
 curl.exe -X POST "http://localhost:3003/webhook?id=123456789&topic=payment" -H "Content-Type: application/json" -d "{\"resource\":\"123456789\",\"topic\":\"payment\"}"
@@ -111,14 +111,15 @@ El ID ilustrativo no representa un pago real: la consulta a Mercado Pago fallar�
 
 ## Flujo principal
 
-1. El navegador solicita `POST /crear-preferencia`.
-2. El backend genera una referencia `LEMONT-ORDER-${crypto.randomUUID()}`.
-3. Se crea un pedido `pending` en Supabase.
-4. Se crea una preferencia con URLs de retorno y webhook.
-5. El navegador redirige a Mercado Pago.
-6. Mercado Pago llama a `POST /webhook`.
-7. El backend consulta el pago mediante la API oficial.
-8. Si el pago está aprobado, existe el pedido y coinciden el importe y la moneda, el pedido se actualiza a `paid`.
+1. El navegador solicita `POST /crear-preferencia` con `{ "sku": "REMERA-LEMONT-001", "quantity": 1 }`.
+2. El backend resuelve producto, precio y moneda desde `src/catalog.js`.
+3. El backend genera una referencia `LEMONT-ORDER-${crypto.randomUUID()}`.
+4. Se crea un pedido `pending` en Supabase con el importe calculado por el servidor.
+5. Se crea una preferencia con URLs de retorno y webhook.
+6. El navegador redirige a Mercado Pago.
+7. Mercado Pago llama a `POST /webhook`.
+8. El backend consulta el pago mediante la API oficial.
+9. Si el pago está aprobado, existe el pedido y coinciden el importe y la moneda, el pedido se actualiza a `paid`.
 
 Las rutas de retorno son `/success`, `/failure` y `/pending`. Esas páginas informan el resultado del retorno, pero la confirmación autoritativa del pedido ocurre en el webhook.
 

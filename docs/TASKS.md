@@ -613,7 +613,7 @@ Las herramientas de diagnóstico no están expuestas en entornos productivos.
 
 ### T-012 — Definir catálogo y fuente de precios
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P2  
 **DEC-013:** aceptada (2026-06-25). Esta tarea está desbloqueada.
 
@@ -698,6 +698,8 @@ No realizar llamadas externas reales. No cargar `.env`.
 
 #### Resultado esperado
 El frontend solo envía `{ sku, quantity }`. El backend resuelve el producto, valida la cantidad, calcula el importe y lo persiste. El cliente no puede influir en el precio.
+
+> **Completada el 2026-06-25.** Se creó `src/catalog.js` con `getProduct(sku)` según DEC-013. `POST /crear-preferencia` acepta solo `{ sku, quantity }`, rechaza SKU desconocido o cantidad inválida con HTTP 400 genérico, calcula `total = product.unitPrice * quantity` y usa nombre, precio unitario, moneda, cantidad y total del catálogo. `public/app.js` envía `sku` y `quantity`. `tests/index.test.js` cubre SKU inválido, cantidades inválidas, cantidad válida calculada desde catálogo e intento de manipular `amount`, `currency` y `price`. Verificación: `node --check src/catalog.js`, `node --check src/app.js`, `npm.cmd test` (29 tests), `git diff --check` y revisión de `git diff`.
 
 ---
 
