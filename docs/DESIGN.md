@@ -32,7 +32,7 @@ Mercado Pago -- POST /webhook --> Express
 - `public/success.html`, `failure.html`, `pending.html`: páginas de retorno.
 - `package.json`: scripts y dependencias de ejecución.
 - `.env.example`: contrato de configuración, sin valores reales.
-- `tests/index.test.js`: suite Jest con 18 tests.
+- `tests/index.test.js`: suite Jest con 22 tests.
 
 ## Estructura de archivos backend (implementada — T-009 completada)
 
@@ -46,7 +46,7 @@ src/
   orders.js                   # createPendingOrder, markOrderAsPaid — Supabase
   webhookSignature.js         # Validación HMAC-SHA256 de x-signature — DEC-009
 tests/
-  index.test.js               # Suite Jest con 18 tests
+  index.test.js               # Suite Jest con 22 tests
 ```
 
 ## Flujo de creación de pago
@@ -86,9 +86,7 @@ Si falla el alta del pedido en Supabase, la creación de preferencia se detiene 
 
 ## Persistencia
 
-La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. No se observan migraciones, transacciones, funciones SQL ni políticas RLS versionadas.
-
-La lectura previa y la actualización son operaciones separadas. Dos webhooks concurrentes podrían superar la comprobación antes de que uno actualice el registro.
+La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. La migración SQL está versionada en `supabase/migrations/001_create_orders.sql` con restricciones, índices y RLS habilitada (T-006, DEC-012). La transición `pending → paid` es atómica e idempotente mediante `UPDATE WHERE status = 'pending'`; un webhook duplicado recibe cero filas afectadas y se trata como duplicado sin error (T-003, DEC-010).
 
 ## Servicios externos
 

@@ -67,6 +67,18 @@ Opciones para continuar:
 
 ## Bitácora
 
+### 2026-06-25 — Cierre documental de sesión (12/14 tareas)
+
+- Objetivo: actualizar `docs/CURRENT_CONTEXT.md` y `docs/DESIGN.md` para reflejar el estado real del proyecto tras el cierre de T-011, T-014 y las correcciones de la sesión anterior.
+- Archivos revisados: `docs/CURRENT_CONTEXT.md`, `docs/DESIGN.md`, `docs/PROGRESS.md`.
+- Archivos modificados: `docs/CURRENT_CONTEXT.md`, `docs/DESIGN.md`.
+- Cambios realizados:
+  - `docs/CURRENT_CONTEXT.md`: reescritura completa para reflejar 12/14 tareas completadas. T-011 y T-014 incluidas en la sección "P2 — completadas". Tareas pendientes reducidas a T-012 y T-013. Tests corregidos a 22. `GET /webhook` documentado como restringido a no-producción. Commits corregidos (T-001–T-010 y T-014 pusheados; T-011 local sin commit). Próximo paso reenfocado en resolver DEC-013 y DEC-016 antes de programar.
+  - `docs/DESIGN.md`: conteo de tests corregido de 18 a 22 en dos lugares (sección "Módulos principales" y bloque de estructura de archivos).
+- Decisiones tomadas: ninguna nueva. Todas las correcciones son de sincronización documental.
+- Sin cambios de código. Sin commits. Sin acceso a `.env`.
+- Estado al cerrar: 12/14 tareas completadas y documentadas. Próximo paso: resolver DEC-013 (T-012) y DEC-016 (T-013).
+
 ### 2026-06-25 — T-011 completada
 
 - Objetivo: retirar o restringir `GET /webhook` para que no quede disponible en producción.
