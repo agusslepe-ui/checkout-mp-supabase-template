@@ -17,9 +17,15 @@ Mercado Pago -- POST /webhook --> Express
                                    `--> Supabase: actualizar order a paid
 ```
 
-## Módulos principales (estado actual)
+## Módulos principales
 
-- `index.js`: composición completa del backend, clientes externos, persistencia, preferencias, webhook, validaciones, rutas y servidor. Incluye el helper `log` de DEC-017.
+- `index.js`: entrypoint mínimo; carga configuración, importa `app` y arranca el servidor.
+- `src/app.js`: instancia Express, middlewares, rutas y handlers HTTP.
+- `src/config.js`: valida variables de entorno obligatorias y exporta configuración de backend.
+- `src/logger.js`: helper `log(level, event, extra)` de DEC-017.
+- `src/payments.js`: clientes de Mercado Pago, creación de preferencias y consulta de pagos.
+- `src/orders.js`: cliente Supabase, persistencia de pedidos y transición `pending → paid`.
+- `src/webhookSignature.js`: validación HMAC-SHA256 de firma webhook (DEC-009).
 - `public/index.html`: vista del producto.
 - `public/app.js`: inicia la preferencia y redirige al checkout.
 - `public/styles.css`: presentación visual compartida.
@@ -28,11 +34,7 @@ Mercado Pago -- POST /webhook --> Express
 - `.env.example`: contrato de configuración, sin valores reales.
 - `tests/index.test.js`: suite Jest con 18 tests.
 
-No hay todavía capas separadas para rutas, dominio, servicios o acceso a datos.
-
-## Estructura propuesta post-refactor (T-009)
-
-Cuando T-009 se implemente, la organización recomendada es:
+## Estructura de archivos backend
 
 ```
 index.js                      # Entrypoint: carga config, crea app, arranca servidor
@@ -46,10 +48,6 @@ src/
 tests/
   index.test.js               # Suite Jest; mocks deben actualizarse si cambian paths
 ```
-
-**Regla de refactor:** el comportamiento HTTP observable no debe cambiar. Mismas rutas, mismos códigos de respuesta, misma lógica de negocio. Los 18 tests existentes deben pasar sin modificar su lógica.
-
-Ver instrucciones completas en `docs/TASKS.md` (T-009).
 
 ## Flujo de creación de pago
 
@@ -110,8 +108,7 @@ La lectura previa y la actualización son operaciones separadas. Dos webhooks co
 
 ## Limitaciones estructurales
 
-- Puerto, producto y catálogo codificados directamente en `index.js`.
-- `index.js` concentra toda la lógica; no hay módulos separados todavía (T-009 pendiente).
+- Puerto, producto y catálogo codificados directamente en backend.
 - La ruta `GET /webhook` sigue orientada a diagnóstico de desarrollo (T-011 pendiente).
 - No hay manejo explícito de reintentos, timeouts ni rate limits.
 - No hay deploy documentado ni infraestructura como código (T-013 pendiente).
@@ -124,5 +121,6 @@ La lectura previa y la actualización son operaciones separadas. Dos webhooks co
 - Validación de variables de entorno al iniciar (T-004).
 - Comparación monetaria normalizada a centavos; validación de moneda (T-007, DEC-011).
 - Identificadores de pedido con `crypto.randomUUID()` (T-008).
+- Separación de responsabilidades en módulos `src/` (T-009).
 - Logs estructurados JSON con `request_id` y lista de campos prohibidos (T-010, DEC-017).
 - Migración SQL versionada aplicada en Supabase con RLS habilitada (T-006, DEC-012).

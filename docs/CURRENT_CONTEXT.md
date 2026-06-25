@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25 (T-009 corregida a pendiente; estructura de refactor definida).
+> Resumen compacto para agentes. Última actualización: 2026-06-25 (T-009 completada).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -8,7 +8,7 @@
 
 ## Estado de la fase actual: CERRADA
 
-Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008) y la observabilidad segura (T-010) están **completadas**. T-001 a T-006 están commiteadas; T-007, T-008 y T-010 quedaron sin commit por instrucción del usuario.
+Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009) y la observabilidad segura (T-010) están **completadas**. T-001 a T-006 están commiteadas; T-007, T-008, T-009 y T-010 quedaron sin commit por instrucción del usuario.
 
 ---
 
@@ -43,6 +43,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 | T-006 | `supabase/migrations/001_create_orders.sql` creado con DDL completo, restricciones (`status`, `amount`), índices (`status`, `mercadopago_payment_id`) y RLS habilitada. **Aplicada y verificada manualmente el 2026-06-25.** (DEC-012) |
 | T-007 | Estrategia monetaria explícita: comparación de importes normalizada a centavos, validación de moneda contra `order.currency` y logs genéricos en `POST /webhook`. (DEC-011) |
 | T-008 | Identificadores de pedido con `LEMONT-ORDER-${crypto.randomUUID()}` para unicidad bajo concurrencia. |
+| T-009 | Separación de responsabilidades en `src/app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js` y `webhookSignature.js`. |
 | T-010 | Logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos seguros y `LOG_LEVEL=info`. (DEC-017) |
 
 ---
@@ -51,7 +52,6 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
-| T-009 | Separar `index.js` en módulos `src/`: `app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js`, `webhookSignature.js`. Sin bloqueo. Estructura definida en `docs/TASKS.md`. | Sin bloqueo. |
 | T-011 | Retirar `GET /webhook` y herramientas de diagnóstico. | Sin bloqueo. |
 | T-012 | Fuente autoritativa de catálogo y precios. | DEC-013 pendiente. |
 | T-013 | Documentar y validar deploy. | DEC-016 pendiente. |
@@ -95,8 +95,14 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 | Archivo | Propósito |
 |---|---|
-| `index.js` | Backend completo: rutas, webhook, validación de firma, integración MP y Supabase. |
-| `tests/index.test.js` | Suite Jest con 11 tests. Mocks de MP, Supabase, dotenv y Express. |
+| `index.js` | Entrypoint mínimo del backend. |
+| `src/app.js` | Express, middlewares, rutas y handlers. |
+| `src/config.js` | Validación y export de configuración de backend. |
+| `src/logger.js` | Helper `log()` de DEC-017. |
+| `src/payments.js` | Integración Mercado Pago. |
+| `src/orders.js` | Operaciones Supabase y pedidos. |
+| `src/webhookSignature.js` | Validación de firma HMAC-SHA256. |
+| `tests/index.test.js` | Suite Jest con 18 tests. Mocks de MP, Supabase, dotenv y Express. |
 | `supabase/migrations/001_create_orders.sql` | Migración SQL versionada: DDL, restricciones, índices y RLS. **Aplicada el 2026-06-25.** |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). |
 | `docs/CURRENT_CONTEXT.md` | Este archivo — resumen compacto para agentes. |
@@ -122,7 +128,7 @@ Pedir a Claude o ChatGPT una explicación conceptual de lo construido:
 
 ### Opción B — Continuar con la próxima fase
 
-T-010 ya está completada. Tareas sin bloqueo disponibles: T-009, T-011 y T-014. Pueden abordarse en cualquier orden.
+T-009 y T-010 ya están completadas. Tareas sin bloqueo disponibles: T-011 y T-014. Pueden abordarse en cualquier orden.
 
 ---
 

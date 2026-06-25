@@ -4,13 +4,13 @@
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008) y la observabilidad segura (T-010) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009) y la observabilidad segura (T-010) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
 - **Tests**: Jest instalado. `npm test` pasa con 18 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: T-009 (estructura de refactor definida, lista para Codex), T-011 y T-014 (sin bloqueo).
+- **Pendiente más urgente**: T-011 y T-014 (sin bloqueo).
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -33,6 +33,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - T-006: migración SQL manual versionada para `orders`, con restricciones, índices y RLS habilitada.
 - T-007: estrategia monetaria explícita con comparación normalizada a centavos, validación de moneda y logs genéricos del webhook de pago.
 - T-008: referencias de pedido generadas con `crypto.randomUUID()` y prefijo `LEMONT-ORDER-`.
+- T-009: backend separado en `src/app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js` y `webhookSignature.js`.
 - T-010: logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos y ausencia de payloads sensibles.
 - Documentación completa: TASKS.md (T-001 a T-014), DECISIONS.md (DEC-009 a DEC-017), CURRENT_CONTEXT.md.
 
@@ -55,15 +56,37 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Fase P0 + P1 inicial cerrada.** T-001 a T-008 completadas. T-001 a T-006 están commiteadas; T-007 y T-008 quedan pendientes de commit por instrucción del usuario.
+**Fase P0 + P1 inicial cerrada.** T-001 a T-010 completadas, excepto T-011 a T-014 pendientes según prioridad. T-001 a T-006 están commiteadas; T-007, T-008, T-009 y T-010 quedan pendientes de commit por instrucción del usuario.
 
 Opciones para continuar:
 
 **A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks y RLS.
 
-**B — Próxima fase técnica**: continuar con T-009, T-011 o T-014. Las tareas T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
+**B — Próxima fase técnica**: continuar con T-011 o T-014. Las tareas T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
 
 ## Bitácora
+
+### 2026-06-25 — T-009 completada
+
+- Objetivo: separar responsabilidades del backend sin cambiar comportamiento HTTP observable.
+- Tarea relacionada: T-009.
+- Archivos creados: `src/app.js`, `src/config.js`, `src/logger.js`, `src/payments.js`, `src/orders.js`, `src/webhookSignature.js`.
+- Archivos modificados: `index.js`, `docs/TASKS.md`, `docs/DESIGN.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Cambios realizados:
+  - `index.js`: reducido a entrypoint mínimo que carga config, importa app y llama a `app.listen`.
+  - `src/app.js`: concentra Express, middlewares, rutas y handlers.
+  - `src/config.js`: valida y expone variables de entorno.
+  - `src/logger.js`: mueve el helper `log()` de DEC-017.
+  - `src/payments.js`: encapsula Mercado Pago (`Preference.create`, `Payment.get`).
+  - `src/orders.js`: encapsula Supabase, pedidos, comparación de importes y transición `pending → paid`.
+  - `src/webhookSignature.js`: encapsula la validación HMAC-SHA256 de Mercado Pago.
+- Verificaciones:
+  - `node --check index.js`.
+  - `node --check src/*.js`.
+  - `npm.cmd test` — 18 tests pasan.
+  - `git diff --check`.
+- Resultado: T-009 completada sin instalar dependencias, sin modificar `package.json`, sin leer `.env`, sin commits y sin cambiar rutas, respuestas públicas, creación de preferencias, firma webhook, validación de importe/moneda, transición `pending → paid` ni eventos/campos de logs estructurados.
+- Pendientes o riesgos: T-011 sigue pendiente para retirar o restringir `GET /webhook` en producción.
 
 ### 2026-06-25 — T-009 corregida a pendiente; estructura de refactor definida
 

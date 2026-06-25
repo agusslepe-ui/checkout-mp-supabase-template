@@ -443,7 +443,7 @@ Las referencias de pedidos son únicas bajo concurrencia sin depender exclusivam
 
 ### T-009 — Separar responsabilidades del backend
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P1
 
 > **Nota:** Esta tarea aparecía incorrectamente marcada como `completada`. Los módulos separados no existen en el repositorio; `index.js` sigue concentrando toda la lógica. El estado fue corregido a `pendiente` el 2026-06-25.
@@ -527,6 +527,8 @@ Actualizar mocks en `tests/index.test.js` si los módulos cambiaron de ruta. Eje
 
 #### Resultado esperado
 El backend tiene módulos separados con responsabilidades claras. Cada módulo puede probarse de forma aislada. Los 18 tests existentes pasan sin cambios en su lógica.
+
+> **Completada el 2026-06-25.** `index.js` quedó como entrypoint mínimo y se crearon `src/app.js`, `src/config.js`, `src/logger.js`, `src/payments.js`, `src/orders.js` y `src/webhookSignature.js`. El refactor movió responsabilidades sin cambiar rutas, respuestas públicas, creación de preferencias, validación de firma, validación de importe/moneda, transición `pending → paid` ni eventos/campos de logs estructurados. Verificación: `node --check index.js`, `node --check src/*.js`, `npm.cmd test` (18 tests) y `git diff --check`.
 
 ---
 
