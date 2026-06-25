@@ -332,21 +332,123 @@ No hay configuración de despliegue documentada. La aplicación usa ngrok para d
 
 ## DEC-017 — Formato, destino y política de retención de logs
 
-**Fecha:** pendiente de definir  
-**Estado:** pendiente
+**Fecha:** 2026-06-25  
+**Estado:** aceptada
 
 ### Contexto
-Los logs actuales usan `console.log` con diferentes niveles de detalle, incluyendo campos del webhook y del pago. No hay estructura, correlación ni política de retención definida.
+Los logs actuales usan `console.log` con diferentes niveles de detalle, incluyendo campos del webhook y del pago. No hay estructura, correlación ni política de retención definida. El backend ya tiene validación de firma, comparación de importes y transición atómica; los logs de esos flujos deben revisarse para eliminar campos sensibles antes de crecer más.
 
 ### Decisión
-> Pendiente de confirmar con el usuario.
 
-### Opciones a evaluar
-- Logs estructurados en JSON con niveles (info, warn, error) y campo de correlación por request.
-- Librería de logging (`pino`, `winston` u otra). Requiere autorización para instalar.
-- Destino: stdout (y captura por la plataforma de deploy) o servicio externo (Datadog, Logtail, etc.).
-- Política de retención: tiempo máximo de retención y campos a redactar (datos personales, referencias internas).
+**1. Librería externa o logging propio**
+
+No se instala librería externa. Se usa un helper propio `log(level, event, extra)` que serializa un objeto JSON con `console.log`, `console.warn` o `console.error` según el nivel. Sin dependencias nuevas, sin cambios en `package.json`.
+
+Estructura del helper (referencia para Codex):
+
+```js
+function log(level, event, extra = {}) {
+  const entry = { level, event, timestamp: new Date().toISOString(), ...extra };
+  if (level === 'error') console.error(JSON.stringify(entry));
+  else if (level === 'warn') console.warn(JSON.stringify(entry));
+  else console.log(JSON.stringify(entry));
+}
+```
+
+Uso: `log('warn', 'importe no coincide', { request_id, route: '/webhook', method: 'POST' })`
+
+**2. Formato mínimo de log**
+
+Todos los logs emiten un objeto JSON con al menos estos campos:
+
+```json
+{
+  "level": "info",
+  "event": "descripción genérica",
+  "request_id": "uuid-o-x-request-id",
+  "route": "/webhook",
+  "method": "POST",
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}
+```
+
+`status_code` se agrega únicamente cuando la respuesta HTTP ya fue determinada y es relevante para el evento.
+
+**3. Niveles permitidos**
+
+- `info`: flujo normal completado (pedido creado, pago procesado correctamente, webhook duplicado ignorado sin error).
+- `warn`: situación esperada pero rechazada (firma ausente, firma inválida, importe no coincide, moneda no coincide, pago no aprobado, pedido no encontrado).
+- `error`: fallo inesperado (Supabase no responde, MP no responde, excepción no controlada).
+
+**4. Campos permitidos**
+
+Siempre presentes: `level`, `event`, `request_id`, `route`, `method`, `timestamp`.
+
+Opcionales según contexto:
+- `status_code` — código HTTP de la respuesta (ej: `401`, `200`).
+- `payment_status` — estado genérico del pago (ej: `"approved"`, `"pending"`). Solo el estado, sin ID ni importes.
+- `order_status` — estado genérico del pedido (ej: `"pending"`, `"paid"`).
+- `error_type` — categoría del error (ej: `"supabase_error"`, `"mp_api_error"`). Sin detalles internos del SDK.
+
+**5. Campos prohibidos en todos los logs**
+
+- Valores de cualquier variable de entorno (`MERCADO_PAGO_ACCESS_TOKEN`, `SUPABASE_SERVICE_ROLE_KEY`, `MERCADO_PAGO_WEBHOOK_SECRET`, etc.).
+- Header `x-signature` completo ni parcial.
+- Headers completos de requests o responses.
+- Body completo del webhook recibido.
+- Payload completo de `Payment.get` (incluyendo datos personales del comprador: email, nombre, documento).
+- Valores reales de importes (`transaction_amount`, `order.amount`).
+- Valor de `external_reference`.
+- IDs internos de Supabase.
+- Datos personales del comprador.
+
+**6. Estrategia de correlación (request_id)**
+
+- En `POST /webhook`: usar el header `x-request-id` de Mercado Pago si está presente; si no, generar `crypto.randomUUID()`.
+- En otros endpoints (`POST /crear-preferencia`, `GET /`): generar `crypto.randomUUID()` al inicio del handler.
+- El `request_id` se propaga como campo a todos los logs del mismo request.
+- `x-request-id` se usa solo como correlator; nunca se loguea su valor fuera de este campo `request_id`.
+
+**7. Política de retención**
+
+- Los logs se emiten a `stdout` (captura del proveedor de hosting).
+- No retener logs en archivos locales ni en Supabase.
+- En producción: configurar retención máxima de 30 días en el proveedor. Los logs de `warn` y `error` pueden retenerse hasta 90 días para auditoría.
+- No reutilizar logs de desarrollo en producción.
+- Si el proveedor de hosting captura logs automáticamente, revisar su política de privacidad antes de poner en producción.
+
+**8. Verbosidad adicional de forma segura**
+
+- Variable de entorno opcional: `LOG_LEVEL` (valores: `debug`, `info`, `warn`, `error`). Valor por defecto: `info`.
+- En desarrollo local, `LOG_LEVEL=debug` puede activar logs adicionales de flujo (por ejemplo, confirmar que se entró al handler del webhook).
+- Los logs de nivel `debug` **nunca** pueden incluir campos prohibidos listados en el punto 5.
+- Agregar `LOG_LEVEL=info` a `.env.example`.
+- En producción, `LOG_LEVEL` debe ser `info` o superior.
+
+**9. Tareas desbloqueadas**
+
+T-010.
+
+**10. Riesgos de logs inseguros**
+
+- Exposición de `SUPABASE_SERVICE_ROLE_KEY` o `MERCADO_PAGO_ACCESS_TOKEN` en logs → acceso no autorizado a la base de datos o a la cuenta de Mercado Pago.
+- Exposición del header `x-signature` completo → permite a un atacante con acceso a los logs construir firmas válidas y falsificar webhooks.
+- Exposición del body completo del webhook → puede incluir datos personales del comprador (nombre, email, número de documento).
+- Exposición de `transaction_amount` y `external_reference` → permite enumerar pedidos y montos; riesgo de privacidad y reconocimiento.
+- Logs persistidos sin límite de retención → acumulación de datos sensibles históricos con riesgo ante brechas futuras.
+
+### Motivo
+No se requieren dependencias nuevas. Un helper propio que serializa JSON es suficiente para estructurar logs y aplicar la lista de campos prohibidos de forma controlada. Las librerías como `pino` o `winston` aportan valor en proyectos más grandes o con múltiples destinos; pueden adoptarse en una decisión futura si la observabilidad lo justifica.
+
+### Alternativas consideradas
+- Usar `pino` o `winston`: más funcionalidad (transports, niveles configurables, redacción automática), pero agrega dependencia y configuración. Descartada para esta etapa; puede reconsiderarse si el proyecto crece o se adopta un servicio externo de logs.
+- Destino externo (Datadog, Logtail, etc.): relevante solo si el proveedor de hosting no captura stdout adecuadamente. Descartada sin proveedor de deploy definido (ver DEC-016).
+- Mantener `console.log` sin estructura: no permite filtrado, correlación ni auditoría. Descartada.
 
 ### Consecuencias
 - Relacionada con T-010.
-- Cualquier log en producción debe cumplir con la política de privacidad que se defina.
+- Codex debe crear la función `log(level, event, extra)` en `index.js` y reemplazar todos los `console.log` existentes por llamadas a esa función.
+- Agregar `LOG_LEVEL=info` a `.env.example`.
+- Los tests de T-010 deben verificar que ningún log emite campos prohibidos en los flujos críticos (webhook, creación de preferencia).
+- Cualquier log en producción debe cumplir con la política de privacidad vigente.
+- T-010 queda desbloqueada.

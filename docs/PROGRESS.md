@@ -10,7 +10,7 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Tests**: Jest instalado. `npm test` pasa con 18 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: T-011 — retirar herramientas temporales de producción, o T-009/T-014 según prioridad del usuario.
+- **Pendiente más urgente**: T-010 (DEC-017 aceptada, lista para Codex), T-009, T-011 y T-014 (sin bloqueo).
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -63,6 +63,21 @@ Opciones para continuar:
 **B — Próxima fase técnica**: continuar con T-009, T-011 o T-014. Las tareas T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
 
 ## Bitácora
+
+### 2026-06-25 — DEC-017 aceptada — estrategia de observabilidad segura definida
+
+- Objetivo: documentar DEC-017 para desbloquear T-010.
+- Tareas relacionadas: T-010.
+- Archivos revisados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`, `docs/SECURITY.md`, `CLAUDE.md`.
+- Archivos modificados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `docs/DECISIONS.md`: DEC-017 pasó de `pendiente` a `aceptada`. Se documentaron los 10 puntos: helper propio `log(level, event, extra)`, formato JSON mínimo, niveles `info`/`warn`/`error`, campos permitidos, campos prohibidos, correlación por `request_id` (usando `x-request-id` de MP o `crypto.randomUUID()`), política de retención (stdout, 30–90 días según proveedor), verbosidad adicional segura con `LOG_LEVEL`, tareas desbloqueadas (T-010) y riesgos de logs inseguros.
+  - `docs/TASKS.md`: T-010 actualizada con instrucciones concretas para Codex: crear el helper, reemplazar todos los `console.*`, agregar `LOG_LEVEL` a `.env.example` y tests de ausencia de campos prohibidos.
+  - `docs/CURRENT_CONTEXT.md`: DEC-017 movida a decisiones aceptadas, T-010 marcada sin bloqueo, próximo paso actualizado.
+  - `docs/PROGRESS.md`: estado actual y esta entrada.
+- Decisiones tomadas: DEC-017 aceptada. Sin librería externa. Sin cambios en `package.json`.
+- Sin cambios de código. Sin commits. Sin acceso a `.env`.
+- Próximos pasos: Codex implementa T-010 usando `docs/TASKS.md` (T-010) y `docs/DECISIONS.md` (DEC-017).
 
 ### 2026-06-25 — T-008 completada
 

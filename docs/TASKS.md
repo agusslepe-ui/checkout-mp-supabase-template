@@ -477,30 +477,83 @@ El backend tiene módulos separados y testables sin necesidad de levantar el ser
 ### T-010 — Preparar observabilidad segura
 
 **Estado:** pendiente  
-**Prioridad:** P2
+**Prioridad:** P2  
+**DEC-017:** aceptada (2026-06-25). Esta tarea está desbloqueada.
 
 #### Objetivo
-Estructurar los logs para que tengan niveles, correlación y no incluyan información sensible.
+Reemplazar todos los `console.log` del backend por llamadas a un helper de log estructurado que garantice campos fijos, niveles definidos, correlación por request y ausencia de datos sensibles.
 
 #### Archivos involucrados
 - `index.js`
-- `docs/DECISIONS.md` (DEC-017)
-- Posible librería de logging estructurado (requiere autorización para instalar)
+- `.env.example` (agregar `LOG_LEVEL=info`)
+- `tests/index.test.js` (agregar casos de prueba de T-010)
+- `docs/DECISIONS.md` (DEC-017 — ya aceptada)
 
 #### Instrucciones para Codex
-Revisar todos los `console.log` actuales. Reemplazar los que registren cuerpos completos de webhooks o campos sensibles por logs con nivel (info, warn, error) y un identificador de correlación por request. No registrar valores de credenciales, datos personales ni payloads completos. Si se introduce una librería (ej: `pino`, `winston`), requiere autorización.
+
+Consultar DEC-017 antes de implementar. Sin dependencias nuevas.
+
+**Paso 1 — Crear el helper `log`**
+
+Agregar al inicio de `index.js`, antes de cualquier uso:
+
+```js
+function log(level, event, extra = {}) {
+  const entry = { level, event, timestamp: new Date().toISOString(), ...extra };
+  if (level === 'error') console.error(JSON.stringify(entry));
+  else if (level === 'warn') console.warn(JSON.stringify(entry));
+  else console.log(JSON.stringify(entry));
+}
+```
+
+**Paso 2 — Reemplazar console.log existentes**
+
+Recorrer cada `console.log`, `console.warn` y `console.error` en `index.js` y reemplazarlos por `log(level, event, { request_id, route, method, ...})`.
+
+Reglas obligatorias al reemplazar:
+- Usar `request_id` derivado de `x-request-id` (en webhook) o `crypto.randomUUID()` (en otros handlers), generado al inicio del handler.
+- Incluir siempre `route` (ej: `'/webhook'`) y `method` (ej: `'POST'`).
+- Nunca incluir valores de: `x-signature`, headers completos, body del webhook, payload de `Payment.get`, `transaction_amount`, `order.amount`, `external_reference`, credenciales.
+- Para el estado del pago: usar `payment_status` con el valor genérico (ej: `payment.status`), solo si no expone dato sensible.
+- Para errores de Supabase o MP: usar `error_type` con un nombre de categoría (ej: `'supabase_error'`), nunca el mensaje completo del SDK.
+
+Ejemplos de eventos genéricos válidos:
+- `"firma de webhook ausente"`, `"firma de webhook inválida"`, `"pago no aprobado"`, `"importe no coincide"`, `"moneda no coincide"`, `"pedido no encontrado"`, `"webhook duplicado ignorado"`, `"pedido actualizado a pagado"`, `"preferencia creada"`, `"pedido persistido"`, `"error al persistir pedido"`.
+
+**Paso 3 — Agregar LOG_LEVEL a .env.example**
+
+Agregar la línea:
+```
+LOG_LEVEL=info
+```
+
+El helper puede leer `process.env.LOG_LEVEL` para decidir si emitir logs de nivel `debug` en desarrollo. En producción, debe ser `info` o superior.
+
+**Paso 4 — Tests**
+
+En `tests/index.test.js`, agregar al menos:
+- Que en el flujo de firma ausente o inválida, ningún log incluye el valor del header `x-signature`.
+- Que en el flujo de importe no coincide, ningún log incluye valores de importe real.
+- Que el log emitido en el flujo exitoso contiene `level`, `event` y `request_id`.
+
+No realizar llamadas externas reales. No cargar `.env`.
 
 #### Criterios de aceptación
-- Los logs tienen estructura, niveles y un identificador de correlación.
-- No contienen cuerpos completos de webhooks, credenciales ni datos sensibles innecesarios.
-- Se define una política de retención.
+- Existe la función `log(level, event, extra)` en `index.js`.
+- Todos los `console.log`, `console.warn` y `console.error` directos fueron reemplazados por llamadas a `log`.
+- Cada log incluye `level`, `event`, `request_id`, `route`, `method` y `timestamp`.
+- Ningún log contiene: valores de credenciales, `x-signature`, headers completos, body del webhook, payload completo de MP, `transaction_amount`, `external_reference` ni datos personales.
+- `.env.example` incluye `LOG_LEVEL=info`.
+- Los tests de T-010 verifican ausencia de campos prohibidos en flujos críticos y pasan en `npm test`.
+- No se instala ninguna dependencia nueva.
 
 #### Riesgos
-- Si se agrega una librería externa, requiere autorización para modificar `package.json`.
-- Reducción de logs puede dificultar debugging; documentar cómo activar más verbosidad de forma segura.
+- Reemplazar un `console.log` que registraba información útil de debugging puede dificultar la resolución de incidentes; documentar en el evento qué ocurrió de forma genérica.
+- Si quedan `console.log` directos sin reemplazar, los campos prohibidos pueden volver a aparecer. Buscar con grep todos los `console.` antes de marcar la tarea como completada.
+- Un error en el helper (por ejemplo, serialización de objetos circulares) puede silenciar logs. Verificar con un caso básico antes de desplegar.
 
 #### Resultado esperado
-Los logs son estructurados, con niveles, con correlación y sin información sensible innecesaria.
+Los logs del backend son objetos JSON estructurados, con niveles explícitos, correlación por `request_id` y sin campos sensibles en ningún flujo.
 
 ---
 

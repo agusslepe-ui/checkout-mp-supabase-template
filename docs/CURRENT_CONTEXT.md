@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25 (T-008 completada).
+> Resumen compacto para agentes. Última actualización: 2026-06-25 (DEC-017 aceptada, T-010 desbloqueada).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -51,7 +51,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
 | T-009 | Separar responsabilidades de `index.js` en módulos. | Sin bloqueo; conviene después de T-005. |
-| T-010 | Logs estructurados y sin datos sensibles. | DEC-017 pendiente. |
+| T-010 | Logs estructurados y sin datos sensibles. | **Sin bloqueo.** DEC-017 aceptada el 2026-06-25. |
 | T-011 | Retirar `GET /webhook` y herramientas de diagnóstico. | Sin bloqueo. |
 | T-012 | Fuente autoritativa de catálogo y precios. | DEC-013 pendiente. |
 | T-013 | Documentar y validar deploy. | DEC-016 pendiente. |
@@ -67,6 +67,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 | DEC-010 | Transición `pending → paid` con `UPDATE WHERE status = 'pending'`. Cero filas afectadas = duplicado idempotente. Sin dependencias adicionales. |
 | DEC-011 | Comparar importes como enteros en centavos: `Math.round(a * 100) === Math.round(b * 100)`. Validar `currency_id` contra `order.currency`. Logs solo genéricos. Sin dependencias nuevas. |
 | DEC-012 | SQL manual versionado en `supabase/migrations/`. Sin Supabase CLI. El usuario aplica el archivo manualmente. |
+| DEC-017 | Helper `log(level, event, extra)` propio. Formato JSON. Niveles: `info`, `warn`, `error`. Campos fijos + `request_id` por correlación. Lista explícita de campos prohibidos. Sin librería externa. |
 
 ## Decisiones pendientes relevantes para la próxima fase
 
@@ -74,7 +75,6 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 |---|---|---|
 | DEC-013 | T-012 | Fuente de catálogo y precios. |
 | DEC-016 | T-013 | Proveedor de deploy y entornos. |
-| DEC-017 | T-010 | Formato y política de retención de logs. |
 
 ---
 
@@ -121,7 +121,17 @@ Pedir a Claude o ChatGPT una explicación conceptual de lo construido:
 
 ### Opción B — Continuar con la próxima fase
 
-T-008 ya está completada. Las siguientes tareas sin bloqueo son T-009, T-011 y T-014.
+**DEC-017 aceptada (2026-06-25).** T-010 está desbloqueada y lista para Codex.
+
+Tareas sin bloqueo disponibles: T-009, T-010, T-011, T-014. Pueden abordarse en cualquier orden.
+
+Para T-010, Codex debe:
+1. Crear el helper `log(level, event, extra)` en `index.js`.
+2. Reemplazar todos los `console.log/warn/error` directos.
+3. Agregar `LOG_LEVEL=info` a `.env.example`.
+4. Verificar ausencia de campos prohibidos en tests.
+
+Ver instrucciones completas en `docs/TASKS.md` (T-010) y decisión en `docs/DECISIONS.md` (DEC-017).
 
 ---
 
