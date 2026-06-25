@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25.
+> Resumen compacto para agentes. Última actualización: 2026-06-25 (DEC-011 aceptada, T-007 desbloqueada).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -48,7 +48,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migra
 
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
-| T-007 | Estrategia monetaria segura (comparación sin `Number`). | **DEC-011 pendiente.** Próxima decisión recomendada. |
+| T-007 | Estrategia monetaria segura (comparación sin `Number`, validación de moneda). | **Sin bloqueo.** DEC-011 aceptada el 2026-06-25. |
 | T-008 | Identificadores de pedidos únicos bajo concurrencia. | Sin bloqueo. |
 | T-009 | Separar responsabilidades de `index.js` en módulos. | Sin bloqueo; conviene después de T-005. |
 | T-010 | Logs estructurados y sin datos sensibles. | DEC-017 pendiente. |
@@ -65,13 +65,13 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migra
 |---|---|
 | DEC-009 | Validar firma webhook con `MERCADO_PAGO_WEBHOOK_SECRET`. HTTP 401 + mensaje genérico para firma ausente o inválida. Sin exponer secretos en logs. |
 | DEC-010 | Transición `pending → paid` con `UPDATE WHERE status = 'pending'`. Cero filas afectadas = duplicado idempotente. Sin dependencias adicionales. |
+| DEC-011 | Comparar importes como enteros en centavos: `Math.round(a * 100) === Math.round(b * 100)`. Validar `currency_id` contra `order.currency`. Logs solo genéricos. Sin dependencias nuevas. |
 | DEC-012 | SQL manual versionado en `supabase/migrations/`. Sin Supabase CLI. El usuario aplica el archivo manualmente. |
 
 ## Decisiones pendientes relevantes para la próxima fase
 
 | Decisión | Tarea relacionada | Descripción |
 |---|---|---|
-| **DEC-011** | **T-007** | Representación de importes sin punto flotante (centavos enteros vs `decimal.js`). **Primera a resolver.** |
 | DEC-013 | T-012 | Fuente de catálogo y precios. |
 | DEC-016 | T-013 | Proveedor de deploy y entornos. |
 | DEC-017 | T-010 | Formato y política de retención de logs. |
@@ -121,12 +121,15 @@ Pedir a Claude o ChatGPT una explicación conceptual de lo construido:
 
 ### Opción B — Continuar con la próxima fase
 
-**Resolver DEC-011** para desbloquear **T-007** (estrategia monetaria segura):
+**DEC-011 aceptada (2026-06-25).** T-007 está desbloqueada y lista para que Codex la implemente.
 
-> ¿Cómo comparar importes de pago sin errores de punto flotante?
-> Opciones: comparar como enteros en centavos (sin dependencias), o usar `decimal.js` (requiere autorización de instalación).
+Estrategia definida:
+- Función `importesCoinciden(a, b)` con `Math.round(a * 100) === Math.round(b * 100)`.
+- Validación de `payment.currency_id` contra `order.currency` en el mismo bloque.
+- Logs genéricos sin valores reales.
+- Sin dependencias nuevas.
 
-Una vez resuelta DEC-011, Codex puede implementar T-007.
+Ver instrucciones completas en `docs/TASKS.md` (T-007) y decisión en `docs/DECISIONS.md` (DEC-011).
 
 ---
 

@@ -141,23 +141,68 @@ Una actualización no condicional permite que dos webhooks concurrentes lean el 
 
 ## DEC-011 — Representación de importes y reglas de redondeo
 
-**Fecha:** pendiente de definir  
-**Estado:** pendiente
+**Fecha:** 2026-06-25  
+**Estado:** aceptada
 
 ### Contexto
-La comparación de importes usa `Number`, lo que puede producir errores de precisión con valores decimales. El importe actual es 100 ARS (sin decimales), pero esto puede cambiar si se expande el catálogo.
+La comparación de importes usa `Number`, lo que puede producir errores de precisión con valores decimales. El importe actual es 100 ARS (sin decimales), pero el catálogo puede crecer hacia precios con centavos. Mercado Pago devuelve `transaction_amount` como decimal en la unidad principal de la moneda (pesos ARS). El campo `amount` en Supabase está definido como `numeric` y almacena pesos.
 
 ### Decisión
-> Pendiente de confirmar con el usuario.
 
-### Opciones a evaluar
-- Comparar importes como enteros en centavos (multiplicar por 100, comparar con igualdad entera). Sin dependencias nuevas.
-- Usar una librería de aritmética decimal (`decimal.js` u otra). Requiere autorización para instalar.
-- Definir la unidad interna de representación y la regla de redondeo (ej: siempre hacia abajo, siempre hacia arriba, redondeo bancario).
+**1. Formato interno recomendado para importes**
+
+Los importes circulan en la unidad principal de la moneda (pesos ARS) entre el backend, la base de datos y Mercado Pago. La conversión a centavos enteros ocurre exclusivamente en el momento de comparación, usando `Math.round(importe * 100)`. No se usa una representación en centavos como convención global del sistema.
+
+**2. Esquema de Supabase: sin migración en esta etapa**
+
+La columna `amount numeric` de la migración ya aplicada conserva su tipo y semántica actual (valor en pesos, ej: `100` para 100 ARS). No se requiere migración a `amount_cents integer`. Si el catálogo crece y se detecta necesidad de mayor control, una migración futura puede reconsiderarse como decisión separada.
+
+**3. Conversión a Mercado Pago**
+
+El precio del producto se pasa como `unit_price` en pesos (ej: `100`). Mercado Pago espera y devuelve importes en la unidad principal de la moneda; no se convierte a centavos al construir la preferencia ni al leer el pago.
+
+**4. Comparación de transaction_amount contra el pedido**
+
+La comparación usa enteros en centavos en ambos lados:
+
+```js
+Math.round(payment.transaction_amount * 100) === Math.round(order.amount * 100)
+```
+
+Si no coinciden, el pedido no pasa a `paid`. Esta función debe encapsularse como una utilidad nombrada en `index.js` para que sea fácil de testear y auditar.
+
+**5. Manejo de moneda**
+
+La moneda esperada se define exclusivamente en el backend (constante `'ARS'`). Al procesar el webhook, se valida que `payment.currency_id` coincida con la moneda registrada en el pedido. Si no coincide, el pedido no pasa a `paid`.
+
+**6. Logs permitidos**
+
+- Permitido: eventos genéricos como `"importe no coincide"`, `"moneda no coincide"`, `"pago no aprobado"`.
+- No permitido: valores reales de importe (`transaction_amount`, `order.amount`), identificadores de moneda, `external_reference` ni datos del pago en texto libre.
+
+**7. Tareas desbloqueadas**
+
+T-007.
+
+**8. Riesgos del punto flotante sin control**
+
+En JavaScript, `0.1 + 0.2 === 0.3` devuelve `false`. Una comparación directa con `===` sobre valores decimales puede rechazar pagos válidos o aprobar importes erróneos cuando los valores difieren en fracciones de centavo por representación binaria. La multiplicación por 100 seguida de `Math.round` elimina este riesgo para valores con hasta dos decimales, que es el caso de ARS y de Checkout Pro.
+
+### Motivo
+No se requieren nuevas dependencias. La estrategia de multiplicación por 100 y comparación entera es suficiente para pagos con hasta dos decimales, no requiere autorización adicional de paquetes y es fácil de auditar y testear. `decimal.js` u otras librerías están justificadas solo si el proyecto maneja múltiples monedas o más de dos decimales significativos.
+
+### Alternativas consideradas
+- Usar `decimal.js` u otra librería de aritmética decimal: más robusta para múltiples monedas o más de dos decimales, pero requiere autorización de instalación y agrega una dependencia. Descartada por complejidad innecesaria para ARS en esta etapa.
+- Comparar directamente con `===` usando `Number`: riesgo conocido de fallos con decimales. Descartada.
+- Cambiar `amount` en Supabase a `amount_cents integer` y almacenar centavos: requiere nueva migración, cambio de convención en el backend y ajuste del valor enviado a Mercado Pago. Descartada para esta etapa; puede reconsiderarse si el catálogo crece.
 
 ### Consecuencias
 - Relacionada con T-007.
-- La estrategia elegida debe documentarse aquí y reflejarse en los tests de T-005.
+- Codex debe encapsular la comparación en una función nombrada (ej: `importesCoinciden(a, b)`) y usarla al procesar el webhook.
+- La validación de moneda debe agregarse en el mismo bloque de validación del importe.
+- Los tests de T-007 deben cubrir: importe exacto, importe con diferencia mínima (ej: 99.99 vs 100.00), decimales (ej: 99.995 redondeado), moneda incorrecta y moneda correcta.
+- Los logs del bloque de validación deben emitir solo eventos genéricos sin valores reales.
+- T-007 queda desbloqueada.
 
 ---
 

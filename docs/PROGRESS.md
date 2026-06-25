@@ -10,7 +10,7 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Tests**: Jest instalado. `npm test` pasa con 11 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: DEC-011 — estrategia de importes sin punto flotante, para desbloquear T-007.
+- **Pendiente más urgente**: T-007 — implementar estrategia monetaria segura (DEC-011 aceptada el 2026-06-25, listo para Codex).
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -62,6 +62,21 @@ Opciones para continuar:
 **B — Próxima fase técnica**: confirmar DEC-011 (estrategia de importes sin punto flotante) para desbloquear T-007. Sin esa decisión, T-007 no puede implementarse. Las tareas T-008, T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
 
 ## Bitácora
+
+### 2026-06-25 — DEC-011 aceptada — estrategia monetaria definida
+
+- Objetivo: documentar DEC-011 para desbloquear T-007.
+- Tareas relacionadas: T-007.
+- Archivos revisados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`, `docs/SECURITY.md`, `CLAUDE.md`.
+- Archivos modificados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `docs/DECISIONS.md`: DEC-011 pasó de `pendiente` a `aceptada`. Se documentaron los 8 puntos: formato interno (pesos ARS), esquema Supabase sin migración, conversión a Mercado Pago (pesos), función de comparación (`Math.round(a * 100) === Math.round(b * 100)`), validación de moneda (`currency_id` vs `order.currency`), logs genéricos permitidos, tareas desbloqueadas (T-007) y riesgos del punto flotante.
+  - `docs/TASKS.md`: T-007 actualizada con instrucciones concretas para Codex: función `importesCoinciden`, reemplazo de comparación actual, validación de moneda y casos de prueba requeridos.
+  - `docs/CURRENT_CONTEXT.md`: DEC-011 movida a decisiones aceptadas, T-007 marcada sin bloqueo, próximo paso actualizado.
+  - `docs/PROGRESS.md`: esta entrada.
+- Decisiones tomadas: DEC-011 aceptada con estrategia sin dependencias nuevas.
+- Sin cambios de código. Sin commits. Sin acceso a `.env`.
+- Próximos pasos: Codex implementa T-007 usando las instrucciones de `docs/TASKS.md` (T-007) y la decisión en `docs/DECISIONS.md` (DEC-011).
 
 ### 2026-06-25 — Migración manual de Supabase aplicada y verificada
 

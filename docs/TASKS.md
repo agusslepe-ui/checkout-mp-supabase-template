@@ -327,31 +327,85 @@ El esquema de `orders` está versionado en SQL, con restricciones de dominio, í
 ### T-007 — Usar una estrategia monetaria explícita
 
 **Estado:** pendiente  
-**Prioridad:** P1
+**Prioridad:** P1  
+**DEC-011:** aceptada (2026-06-25). Esta tarea está desbloqueada.
 
 #### Objetivo
-Reemplazar la comparación de importes basada en `Number` por una estrategia que evite problemas de punto flotante.
+Reemplazar la comparación de importes basada en `Number` por una función explícita que evite problemas de punto flotante, y agregar validación de moneda en el mismo bloque.
 
 #### Archivos involucrados
 - `index.js`
-- `docs/DECISIONS.md` (DEC-011)
-- Nuevo archivo de tests (si T-005 ya existe)
+- `tests/index.test.js` (agregar casos de prueba de T-007)
+- `docs/DECISIONS.md` (DEC-011 — ya aceptada)
 
 #### Instrucciones para Codex
-Consultar DEC-011 antes de implementar. Opción sin nueva dependencia: comparar importes como enteros en centavos multiplicando por 100 y usando comparación entera. Si se opta por una librería como `decimal.js`, requiere autorización para instalar. Documentar la unidad y reglas de redondeo elegidas en `docs/DECISIONS.md`.
+
+Consultar DEC-011 antes de implementar. Estrategia definida: sin dependencias nuevas.
+
+**Paso 1 — Función de comparación de importes**
+
+Crear una función nombrada en `index.js`:
+
+```js
+function importesCoinciden(a, b) {
+  return Math.round(a * 100) === Math.round(b * 100);
+}
+```
+
+**Paso 2 — Reemplazar la comparación actual**
+
+Localizar en `index.js` la validación que compara `transaction_amount` del pago contra `amount` del pedido. Reemplazarla por:
+
+```js
+if (!importesCoinciden(payment.transaction_amount, order.amount)) {
+  // log genérico sin valores reales
+  return;
+}
+```
+
+No registrar los valores reales en el log; solo un evento genérico como `"importe no coincide"`.
+
+**Paso 3 — Validación de moneda**
+
+En el mismo bloque de validación, después o antes de la comparación de importe, agregar:
+
+```js
+const MONEDA_ESPERADA = 'ARS';
+if (payment.currency_id !== order.currency) {
+  // log genérico: "moneda no coincide"
+  return;
+}
+```
+
+El campo `currency` del pedido en Supabase ya almacena `'ARS'`. No hardcodear la moneda en la comparación directamente; usar el campo del pedido.
+
+**Paso 4 — Tests**
+
+En `tests/index.test.js`, agregar casos de prueba para el webhook con:
+
+- Importe exacto coincidente → pedido pasa a `paid`.
+- Importe diferente (ej: 99.99 vs 100.00) → pedido no cambia.
+- Importe con diferencia de centavo mínimo (ej: 100.001 vs 100.00) → pedido no cambia.
+- Moneda incorrecta (ej: `USD` vs `ARS`) → pedido no cambia.
+- Moneda correcta → flujo continúa.
+
+No realizar llamadas externas reales. No cargar `.env`.
 
 #### Criterios de aceptación
-- Los importes se comparan sin depender de igualdad de punto flotante.
-- La unidad y reglas de redondeo están documentadas.
-- Hay pruebas para decimales y límites relevantes.
+- Existe la función `importesCoinciden(a, b)` con lógica `Math.round(a * 100) === Math.round(b * 100)`.
+- La comparación de importes en el webhook usa esa función.
+- Se valida `payment.currency_id` contra `order.currency`; moneda incorrecta no produce actualización.
+- Los logs emiten solo eventos genéricos sin valores de importe ni moneda.
+- Los casos de prueba de T-007 pasan en `npm test`.
+- No se instala ninguna dependencia nueva.
 
 #### Riesgos
 - Cambio en la validación de pagos; una implementación incorrecta puede rechazar pagos válidos.
-- Requiere que DEC-011 esté definida y aprobada.
-- Si se usa una librería externa, requiere autorización adicional.
+- Verificar que `order.currency` esté correctamente recuperado de Supabase antes de comparar.
+- Los casos de prueba deben cubrir valores con decimales para verificar que `Math.round` funciona como se espera.
 
 #### Resultado esperado
-La comparación de importes es explícita, documentada y libre de errores de punto flotante.
+La comparación de importes es explícita, encapsulada en una función nombrada, libre de errores de punto flotante y acompañada de validación de moneda. Los tests cubren los casos definidos en DEC-011.
 
 ---
 
