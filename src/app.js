@@ -126,20 +126,22 @@ app.post("/webhook", async (req, res) => {
   res.json({ received: true });
 });
 
-app.get("/webhook", (req, res) => {
-  const logContext = {
-    request_id: crypto.randomUUID(),
-    route: "/webhook",
-    method: "GET",
-  };
+if (process.env.NODE_ENV !== "production") {
+  app.get("/webhook", (req, res) => {
+    const logContext = {
+      request_id: crypto.randomUUID(),
+      route: "/webhook",
+      method: "GET",
+    };
 
-  log("info", "webhook get recibido", {
-    ...logContext,
-    status_code: 200,
+    log("info", "webhook get recibido", {
+      ...logContext,
+      status_code: 200,
+    });
+
+    res.json({ received: true });
   });
-
-  res.json({ received: true });
-});
+}
 
 app.post("/crear-preferencia", async (req, res) => {
   const logContext = {

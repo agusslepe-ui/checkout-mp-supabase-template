@@ -122,7 +122,7 @@ function createQueryBuilder(supabaseMock) {
 function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
   jest.resetModules();
 
-  for (const name of Object.keys(requiredEnv)) {
+  for (const name of [...Object.keys(requiredEnv), "NODE_ENV"]) {
     delete process.env[name];
   }
 
@@ -261,6 +261,52 @@ describe("errores de entrada HTTP", () => {
       "application/json; charset=utf-8"
     );
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe("diagnostico GET /webhook", () => {
+  let logSpy;
+
+  beforeEach(() => {
+    logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+  });
+
+  test("registra GET /webhook en test y responde como diagnostico", () => {
+    const { routes } = loadApp({ env: { NODE_ENV: "test" } });
+    const response = createResponse();
+
+    routes.get["/webhook"]({}, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ received: true });
+    expect(parseLogEntries(logSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "info",
+          event: "webhook get recibido",
+          route: "/webhook",
+          method: "GET",
+          status_code: 200,
+        }),
+      ])
+    );
+  });
+
+  test("registra GET /webhook en development", () => {
+    const { routes } = loadApp({ env: { NODE_ENV: "development" } });
+
+    expect(routes.get["/webhook"]).toEqual(expect.any(Function));
+  });
+
+  test("no registra GET /webhook en production y conserva POST /webhook", () => {
+    const { routes } = loadApp({ env: { NODE_ENV: "production" } });
+
+    expect(routes.get["/webhook"]).toBeUndefined();
+    expect(routes.post["/webhook"]).toEqual(expect.any(Function));
   });
 });
 

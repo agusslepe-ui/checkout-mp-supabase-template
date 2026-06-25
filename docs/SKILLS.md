@@ -47,6 +47,8 @@ curl.exe -X POST "http://localhost:3003/webhook?id=123456789&topic=payment" -H "
 
 El ID es ilustrativo. La recepción puede comprobarse, pero la consulta a Mercado Pago fallará si no corresponde a un pago real de la cuenta de prueba. No inventar una aprobación ni alterar pedidos manualmente para simularla.
 
+En entornos no productivos también puede comprobarse que el servidor responde al diagnóstico `GET /webhook`. Esta ruta no se registra cuando `NODE_ENV=production`; en producción solo debe usarse `POST /webhook` para eventos de Mercado Pago.
+
 ## Comprobar retornos visuales
 
 ```text
@@ -99,4 +101,3 @@ Auditá el flujo del webhook. No realices llamadas externas ni muestres valores 
 ```
 
 Para tareas de pagos, base de datos, autenticación, dependencias o deploy, pedir primero análisis y plan, y autorizar explícitamente los cambios permitidos.
-

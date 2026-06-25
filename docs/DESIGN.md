@@ -79,7 +79,7 @@ Si falla el alta del pedido en Supabase, la creación de preferencia se detiene 
 | GET | `/` | Frontend estático principal |
 | POST | `/crear-preferencia` | Crear pedido y preferencia de pago |
 | POST | `/webhook` | Recibir eventos de Mercado Pago |
-| GET | `/webhook` | Diagnóstico temporal de desarrollo |
+| GET | `/webhook` | Diagnóstico temporal, solo con `NODE_ENV !== "production"` |
 | GET | `/success` | Retorno visual de pago aprobado |
 | GET | `/failure` | Retorno visual de pago rechazado |
 | GET | `/pending` | Retorno visual de pago pendiente |
@@ -109,7 +109,7 @@ La lectura previa y la actualización son operaciones separadas. Dos webhooks co
 ## Limitaciones estructurales
 
 - Puerto, producto y catálogo codificados directamente en backend.
-- La ruta `GET /webhook` sigue orientada a diagnóstico de desarrollo (T-011 pendiente).
+- La ruta `GET /webhook` queda restringida a entornos no productivos.
 - No hay manejo explícito de reintentos, timeouts ni rate limits.
 - No hay deploy documentado ni infraestructura como código (T-013 pendiente).
 
@@ -124,3 +124,4 @@ La lectura previa y la actualización son operaciones separadas. Dos webhooks co
 - Separación de responsabilidades en módulos `src/` (T-009).
 - Logs estructurados JSON con `request_id` y lista de campos prohibidos (T-010, DEC-017).
 - Migración SQL versionada aplicada en Supabase con RLS habilitada (T-006, DEC-012).
+- `GET /webhook` condicionado a `NODE_ENV !== "production"` (T-011).

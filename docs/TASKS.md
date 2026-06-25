@@ -583,7 +583,7 @@ Los logs del backend son objetos JSON estructurados, con niveles explícitos, co
 
 ### T-011 — Retirar herramientas temporales de producción
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P2
 
 #### Objetivo
@@ -606,6 +606,8 @@ Eliminar o condicionar la ruta `GET /webhook` a `NODE_ENV !== 'production'`. Rev
 
 #### Resultado esperado
 Las herramientas de diagnóstico no están expuestas en entornos productivos.
+
+> **Completada el 2026-06-25.** `GET /webhook` queda registrado solo cuando `NODE_ENV !== "production"` y conserva `{ received: true }` en entornos no productivos. En producción no se registra la ruta GET; `POST /webhook` permanece disponible y sin cambios. `tests/index.test.js` verifica comportamiento en `test`, `development` y `production`. Verificación: `node --check src/app.js`, `npm.cmd test` (22 tests), `git diff --check` y revisión de `git diff`.
 
 ---
 

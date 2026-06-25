@@ -4,13 +4,13 @@
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010) y la corrección UTF-8 del error HTTP 400 por JSON inválido (T-014) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011) y la corrección UTF-8 del error HTTP 400 por JSON inválido (T-014) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
-- **Tests**: Jest instalado. `npm test` pasa con 19 tests.
+- **Tests**: Jest instalado. `npm test` pasa con 22 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: T-011 (sin bloqueo).
+- **Pendiente más urgente**: T-012 y T-013 requieren decisiones pendientes.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -35,6 +35,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - T-008: referencias de pedido generadas con `crypto.randomUUID()` y prefijo `LEMONT-ORDER-`.
 - T-009: backend separado en `src/app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js` y `webhookSignature.js`.
 - T-010: logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos y ausencia de payloads sensibles.
+- T-011: `GET /webhook` disponible solo con `NODE_ENV !== "production"`; `POST /webhook` se conserva.
 - T-014: respuesta HTTP 400 por JSON inválido con `Content-Type: application/json; charset=utf-8`.
 - Documentación completa: TASKS.md (T-001 a T-014), DECISIONS.md (DEC-009 a DEC-017), CURRENT_CONTEXT.md.
 
@@ -49,7 +50,6 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Pendientes principales
 
-- Retirar diagnóstico temporal de producción (T-011).
 - Definir catálogo, autenticación y requisitos comerciales (T-012).
 - Seleccionar y documentar un despliegue de producción (T-013).
 
@@ -57,15 +57,33 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**11/14 tareas completadas.** T-001 a T-010 completadas, commiteadas y pusheadas a `origin/main`. T-014 completada localmente, sin commit por pedido del usuario. Commits: T-001–T-006 (sesión 2026-06-24), T-007 ("Implementa validacion segura de importes y moneda"), T-008 ("Mejora identificadores unicos de pedidos"), T-009 ("Separa backend en modulos"), T-010 ("Implementa logs estructurados seguros").
+**12/14 tareas completadas.** T-001 a T-010 y T-014 completadas, commiteadas y pusheadas a `origin/main`. T-011 completada localmente, sin commit por pedido del usuario. Commits: T-001–T-006 (sesión 2026-06-24), T-007 ("Implementa validacion segura de importes y moneda"), T-008 ("Mejora identificadores unicos de pedidos"), T-009 ("Separa backend en modulos"), T-010 ("Implementa logs estructurados seguros"), T-014 ("Corrige codificacion UTF-8 en error JSON invalido").
 
 Opciones para continuar:
 
 **A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks, RLS o la separación modular recién completada.
 
-**B — Próxima fase técnica**: continuar con T-011 (retirar `GET /webhook`). T-012 y T-013 requieren decisiones pendientes (DEC-013, DEC-016).
+**B — Próxima fase técnica**: T-012 y T-013 requieren decisiones pendientes (DEC-013, DEC-016).
 
 ## Bitácora
+
+### 2026-06-25 — T-011 completada
+
+- Objetivo: retirar o restringir `GET /webhook` para que no quede disponible en producción.
+- Tarea relacionada: T-011.
+- Archivos afectados: `src/app.js`, `tests/index.test.js`, `docs/DESIGN.md`, `docs/SKILLS.md`, `docs/TASKS.md`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `src/app.js`: `GET /webhook` se registra solo cuando `NODE_ENV !== "production"`.
+  - `tests/index.test.js`: se agregaron pruebas para `test`, `development` y `production`, confirmando que `POST /webhook` sigue registrado en producción.
+  - `docs/DESIGN.md` y `docs/SKILLS.md`: se documentó que el diagnóstico GET solo existe fuera de producción.
+  - `docs/TASKS.md` y `docs/PROGRESS.md`: T-011 marcada como completada y verificaciones registradas.
+- Verificaciones:
+  - `node --check src/app.js`.
+  - `npm.cmd test` — 22 tests pasan.
+  - `git diff --check`.
+  - `git diff`.
+- Resultado: T-011 completada sin leer `.env`, sin exponer secretos, sin dependencias nuevas, sin commits, sin push y sin cambios en pagos, validación de firma, Mercado Pago, Supabase ni arquitectura.
+- Pendientes o riesgos: T-012 y T-013 siguen pendientes y requieren decisiones.
 
 ### 2026-06-25 — T-014 completada
 

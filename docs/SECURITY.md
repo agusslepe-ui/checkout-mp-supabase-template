@@ -59,7 +59,7 @@ Mitigado por T-010/DEC-017: el backend emite logs JSON mediante `log(level, even
 
 ### Configuración y diagnóstico de desarrollo
 
-No se validan tempranamente todas las variables. `GET /webhook`, logs verbosos y ngrok son útiles localmente, pero deben eliminarse, restringirse o sustituirse en producción.
+`GET /webhook` está restringido a entornos no productivos mediante `NODE_ENV !== "production"`. Los logs verbosos, ngrok y cualquier otro diagnóstico siguen siendo útiles localmente, pero deben eliminarse, restringirse o sustituirse en producción.
 
 ### Ausencia de controles operativos
 
