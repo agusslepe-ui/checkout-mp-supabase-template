@@ -52,13 +52,13 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-T-001 a T-006 están completadas. DEC-012 fue aceptada.
+**Fase P0 + P1 inicial cerrada.** T-001 a T-006 completadas y commiteadas.
 
-**T-007** requiere definir DEC-011 antes de implementar una estrategia monetaria segura.
+Opciones para continuar:
 
-Orden sugerido para Codex:
-1. Definir DEC-011 para desbloquear T-007.
-2. Implementar una tarea sin bloqueo si se prefiere avanzar antes: T-008, T-009, T-011 o T-014.
+**A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks y RLS.
+
+**B — Próxima fase técnica**: confirmar DEC-011 (estrategia de importes sin punto flotante) para desbloquear T-007. Sin esa decisión, T-007 no puede implementarse. Las tareas T-008, T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
 
 ## Bitácora
 
@@ -68,6 +68,13 @@ Orden sugerido para Codex:
 - No se crearon policies para `anon` ni `authenticated`; el archivo documenta que `SUPABASE_SERVICE_ROLE_KEY` debe permanecer solo en backend.
 - La migración no fue aplicada en ninguna base de datos. El usuario debe revisarla y aplicarla manualmente cuando corresponda.
 - Verificación: `git diff --check`.
+
+### 2026-06-24 — Cierre de fase P0 + P1 inicial
+
+- T-001 a T-006 completadas y commiteadas. La primera fase de seguridad, calidad y versionado está cerrada.
+- Estado técnico final: validación HMAC-SHA256, transición atómica, tests Jest (11 tests), migración SQL versionada, variables de entorno validadas.
+- `docs/CURRENT_CONTEXT.md` actualizado como resumen compacto de cierre.
+- Próxima fase sugerida: modo aprendizaje → definir DEC-011 → implementar T-007 (estrategia monetaria).
 
 ### 2026-06-24 — Contexto estable consolidado
 

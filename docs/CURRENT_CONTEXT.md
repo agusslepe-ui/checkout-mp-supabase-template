@@ -2,6 +2,13 @@
 
 > Resumen compacto para agentes. Última actualización: 2026-06-24.
 > Si el chat fue compactado, este archivo es el punto de entrada.
+> Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
+
+---
+
+## Estado de la fase actual: CERRADA
+
+Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migración SQL (T-006) están **completadas y commiteadas**. La fase inicial está cerrada.
 
 ---
 
@@ -17,9 +24,9 @@
 
 ---
 
-## Estado de tareas
+## Estado de tareas completadas
 
-### Completadas (P0 — Seguridad e integridad)
+### P0 — Seguridad e integridad (todas completadas)
 
 | Tarea | Descripción |
 |---|---|
@@ -28,27 +35,24 @@
 | T-003 | Transición `pending → paid` atómica e idempotente con `UPDATE WHERE status = 'pending'`. (DEC-010) |
 | T-004 | Validación de las cuatro variables de entorno obligatorias antes de aceptar tráfico. |
 
-### Completadas (P1 — Calidad)
+### P1 — Calidad y mantenibilidad (completadas en esta fase)
 
 | Tarea | Descripción |
 |---|---|
 | T-005 | Suite Jest con 11 tests; `npm test` pasa. Cubre todos los flujos críticos sin llamadas externas. |
+| T-006 | `supabase/migrations/001_create_orders.sql` creado con DDL completo, restricciones (`status`, `amount`), índices (`status`, `mercadopago_payment_id`) y RLS habilitada. El usuario aplica manualmente. (DEC-012) |
 
-### Próxima (desbloqueada)
+---
 
-| Tarea | Descripción | Bloqueador |
-|---|---|---|
-| T-006 | Crear `supabase/migrations/001_create_orders.sql` con DDL, restricciones, índices y RLS. | Ninguno — DEC-012 aceptada. |
-
-### Pendientes con bloqueo
+## Tareas pendientes para fases futuras
 
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
-| T-007 | Estrategia monetaria segura (comparación sin `Number`). | DEC-011 pendiente. |
-| T-008 | Identificadores de pedidos únicos bajo concurrencia. | Sin bloqueo, bajo riesgo. |
+| T-007 | Estrategia monetaria segura (comparación sin `Number`). | **DEC-011 pendiente.** Próxima decisión recomendada. |
+| T-008 | Identificadores de pedidos únicos bajo concurrencia. | Sin bloqueo. |
 | T-009 | Separar responsabilidades de `index.js` en módulos. | Sin bloqueo; conviene después de T-005. |
 | T-010 | Logs estructurados y sin datos sensibles. | DEC-017 pendiente. |
-| T-011 | Retirar herramientas de diagnóstico de producción (`GET /webhook`). | Sin bloqueo. |
+| T-011 | Retirar `GET /webhook` y herramientas de diagnóstico. | Sin bloqueo. |
 | T-012 | Fuente autoritativa de catálogo y precios. | DEC-013 pendiente. |
 | T-013 | Documentar y validar deploy. | DEC-016 pendiente. |
 | T-014 | Corregir codificación UTF-8 en mensajes de error. | Sin bloqueo. |
@@ -63,57 +67,75 @@
 | DEC-010 | Transición `pending → paid` con `UPDATE WHERE status = 'pending'`. Cero filas afectadas = duplicado idempotente. Sin dependencias adicionales. |
 | DEC-012 | SQL manual versionado en `supabase/migrations/`. Sin Supabase CLI. El usuario aplica el archivo manualmente. |
 
-## Decisiones pendientes relevantes
+## Decisiones pendientes relevantes para la próxima fase
 
-| Decisión | Tarea relacionada |
-|---|---|
-| DEC-011 | T-007 (importes sin punto flotante) |
-| DEC-013 | T-012 (catálogo y precios) |
-| DEC-016 | T-013 (deploy y entornos) |
-| DEC-017 | T-010 (logs estructurados) |
+| Decisión | Tarea relacionada | Descripción |
+|---|---|---|
+| **DEC-011** | **T-007** | Representación de importes sin punto flotante (centavos enteros vs `decimal.js`). **Primera a resolver.** |
+| DEC-013 | T-012 | Fuente de catálogo y precios. |
+| DEC-016 | T-013 | Proveedor de deploy y entornos. |
+| DEC-017 | T-010 | Formato y política de retención de logs. |
 
 ---
 
 ## Estado técnico actual
 
 - **Backend**: Node.js + CommonJS + Express 5.
-- **Pagos**: Mercado Pago Checkout Pro (SDK oficial).
-- **Base de datos**: Supabase, tabla `orders`, acceso con `service_role` solo desde backend.
-- **Tests**: Jest instalado. `npm test` pasa con 11 tests. Archivo: `tests/index.test.js`.
+- **Pagos**: Mercado Pago Checkout Pro (SDK oficial). Webhook con validación HMAC-SHA256.
+- **Base de datos**: Supabase, tabla `orders`, acceso con `service_role` solo desde backend. RLS habilitada en migración.
+- **Transición de pagos**: Atómica e idempotente (`UPDATE WHERE status = 'pending'`).
+- **Tests**: Jest instalado. `npm test` pasa con 11 tests. Sin llamadas externas ni acceso a `.env`.
+- **Migración SQL**: `supabase/migrations/001_create_orders.sql` versionado. No aplicado aún en base de datos.
 - **Versionado**: Git + GitHub. No hay deploy documentado.
-- **Sin implementar todavía**: RLS de Supabase, migración SQL, estrategia monetaria, catálogo, autenticación, logs estructurados, deploy.
 
 ---
 
-## Próximo paso inmediato
-
-**Codex debe implementar T-006.**
-
-Instrucciones clave:
-1. Crear `supabase/migrations/001_create_orders.sql`.
-2. Extraer el DDL de `README.md` (tabla `orders`).
-3. Agregar `CHECK (status IN ('pending', 'paid'))`.
-4. Agregar `CHECK (amount > 0)`.
-5. Agregar índice en `status`.
-6. Agregar índice en `mercadopago_payment_id`.
-7. Agregar `ALTER TABLE orders ENABLE ROW LEVEL SECURITY` + policy para `service_role`.
-8. **No aplicar el SQL en ninguna base de datos.**
-9. **No incluir secretos, credenciales ni datos reales.**
-10. **No leer `.env`.**
-
-Referencia completa: `docs/TASKS.md` (T-006) y `docs/DECISIONS.md` (DEC-012).
-
----
-
-## Archivos de referencia rápida
+## Archivos clave del proyecto
 
 | Archivo | Propósito |
 |---|---|
-| `docs/CURRENT_CONTEXT.md` | Este archivo — resumen compacto para agentes |
-| `docs/TASKS.md` | Detalle de todas las tareas con criterios de aceptación |
-| `docs/DECISIONS.md` | Decisiones técnicas tomadas y pendientes |
-| `docs/PROGRESS.md` | Bitácora y estado histórico |
-| `docs/DESIGN.md` | Arquitectura y flujos |
-| `docs/SECURITY.md` | Controles y riesgos |
-| `AGENTS.md` | Reglas de trabajo para agentes |
-| `CLAUDE.md` | Rol y restricciones de Claude Code |
+| `index.js` | Backend completo: rutas, webhook, validación de firma, integración MP y Supabase. |
+| `tests/index.test.js` | Suite Jest con 11 tests. Mocks de MP, Supabase, dotenv y Express. |
+| `supabase/migrations/001_create_orders.sql` | Migración SQL versionada: DDL, restricciones, índices y RLS. **No aplicada aún.** |
+| `.env.example` | Contrato de variables de entorno (sin valores reales). |
+| `docs/CURRENT_CONTEXT.md` | Este archivo — resumen compacto para agentes. |
+| `docs/TASKS.md` | Detalle de todas las tareas con criterios de aceptación. |
+| `docs/DECISIONS.md` | Decisiones técnicas tomadas y pendientes. |
+| `docs/PROGRESS.md` | Bitácora y estado histórico. |
+| `docs/DESIGN.md` | Arquitectura y flujos. |
+| `docs/SECURITY.md` | Controles y riesgos. |
+| `AGENTS.md` | Reglas de trabajo para agentes. |
+| `CLAUDE.md` | Rol y restricciones de Claude Code. |
+
+---
+
+## Próximo paso recomendado
+
+### Opción A — Modo aprendizaje (antes de continuar)
+
+Pedir a Claude o ChatGPT una explicación conceptual de lo construido:
+- ¿Qué es HMAC-SHA256 y por qué valida el webhook?
+- ¿Cómo funciona la transición atómica con `UPDATE WHERE status = 'pending'`?
+- ¿Qué cubre la suite Jest y qué queda sin cubrir?
+- ¿Qué hace exactamente la política RLS que se creó?
+
+### Opción B — Continuar con la próxima fase
+
+**Resolver DEC-011** para desbloquear **T-007** (estrategia monetaria segura):
+
+> ¿Cómo comparar importes de pago sin errores de punto flotante?
+> Opciones: comparar como enteros en centavos (sin dependencias), o usar `decimal.js` (requiere autorización de instalación).
+
+Una vez resuelta DEC-011, Codex puede implementar T-007.
+
+---
+
+## Reglas vigentes para todos los agentes
+
+- No leer ni mostrar `.env`.
+- No exponer secretos, tokens, credenciales ni claves en documentación, logs, commits ni mensajes.
+- No usar `git add .` sin revisar qué archivos se incluyen.
+- No aplicar la migración SQL en ninguna base de datos sin autorización explícita del usuario.
+- No hacer commit ni push sin instrucción del usuario.
+- GitHub es la fuente de verdad del código.
+- Claude Code documenta. Codex programa. Usuario aprueba.
