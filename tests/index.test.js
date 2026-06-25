@@ -139,6 +139,7 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
         id: "PAYMENTTEST",
         status: "pending",
         transaction_amount: 100,
+        currency_id: "ARS",
         external_reference: "ORDERTEST",
       }))
   );
@@ -153,7 +154,7 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
 
   const supabaseMock = {
     insertOrder: jest.fn(supabase.insertOrder || (async () => ({ data: { id: 1 }, error: null }))),
-    findOrder: jest.fn(supabase.findOrder || (async () => ({ data: { status: "pending", amount: 100 }, error: null }))),
+    findOrder: jest.fn(supabase.findOrder || (async () => ({ data: { status: "pending", amount: 100, currency: "ARS" }, error: null }))),
     updateOrder: jest.fn(supabase.updateOrder || (async () => ({ data: { status: "paid" }, error: null }))),
   };
   const QueryBuilder = createQueryBuilder(supabaseMock);
@@ -312,6 +313,7 @@ describe("webhook de pagos", () => {
           id: "PAYMENTTEST",
           status: "approved",
           transaction_amount: 100,
+          currency_id: "ARS",
           external_reference: "ORDERTEST",
         }),
       },
@@ -338,13 +340,40 @@ describe("webhook de pagos", () => {
     );
   });
 
+  test("marca como paid un importe equivalente con decimal normalizado", async () => {
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENTTEST",
+          status: "approved",
+          transaction_amount: 100.001,
+          currency_id: "ARS",
+          external_reference: "ORDERTEST",
+        }),
+      },
+      supabase: {
+        findOrder: async () => ({ data: { status: "pending", amount: "100.00", currency: "ARS" }, error: null }),
+      },
+    });
+
+    await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
+
+    expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(1);
+  });
+
   test("no marca como paid si el importe no coincide", async () => {
     const { routes, supabaseMock } = loadApp({
       mercadoPago: {
-        paymentGet: async () => ({ id: "PAYMENTTEST", status: "approved", transaction_amount: 100, external_reference: "ORDERTEST" }),
+        paymentGet: async () => ({
+          id: "PAYMENTTEST",
+          status: "approved",
+          transaction_amount: 99.99,
+          currency_id: "ARS",
+          external_reference: "ORDERTEST",
+        }),
       },
       supabase: {
-        findOrder: async () => ({ data: { status: "pending", amount: 200 }, error: null }),
+        findOrder: async () => ({ data: { status: "pending", amount: "100.00", currency: "ARS" }, error: null }),
       },
     });
 
@@ -444,5 +473,73 @@ describe("webhook de pagos", () => {
     expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(2);
     expect(successfulUpdates).toBe(1);
     expect(logSpy).toHaveBeenCalledWith("Pedido ya procesado, webhook duplicado ignorado");
+  });
+
+  test("no marca como paid si la moneda no coincide", async () => {
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENTTEST",
+          status: "approved",
+          transaction_amount: 100,
+          currency_id: "USD",
+          external_reference: "ORDERTEST",
+        }),
+      },
+      supabase: {
+        findOrder: async () => ({ data: { status: "pending", amount: "100.00", currency: "ARS" }, error: null }),
+      },
+    });
+
+    await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
+
+    expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith("Moneda de pago no coincide con el pedido");
+  });
+
+  test("la moneda coincidente permite continuar el flujo de pago", async () => {
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENTTEST",
+          status: "approved",
+          transaction_amount: 100,
+          currency_id: "ARS",
+          external_reference: "ORDERTEST",
+        }),
+      },
+      supabase: {
+        findOrder: async () => ({ data: { status: "pending", amount: "100.00", currency: "ARS" }, error: null }),
+      },
+    });
+
+    await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
+
+    expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("no registra importes ni monedas reales cuando no coinciden", async () => {
+    const { routes } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENTTEST",
+          status: "approved",
+          transaction_amount: 99.99,
+          currency_id: "USD",
+          external_reference: "ORDERTEST",
+        }),
+      },
+      supabase: {
+        findOrder: async () => ({ data: { status: "pending", amount: "100.00", currency: "ARS" }, error: null }),
+      },
+    });
+
+    await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
+
+    const logOutput = logSpy.mock.calls.flat().join(" ");
+    expect(logOutput).not.toContain("99.99");
+    expect(logOutput).not.toContain("100.00");
+    expect(logOutput).not.toContain("USD");
+    expect(logOutput).not.toContain("ARS");
   });
 });

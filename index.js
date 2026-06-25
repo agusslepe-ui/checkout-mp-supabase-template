@@ -97,6 +97,10 @@ function isValidWebhookSignature({ signatureHeader, requestId, dataId }) {
   );
 }
 
+function importesCoinciden(a, b) {
+  return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
+}
+
 async function createPendingOrder({
   external_reference,
   product_name,
@@ -130,6 +134,7 @@ async function markOrderAsPaid({
   mercadopago_payment_id,
   mercadopago_status,
   transaction_amount,
+  currency_id,
 }) {
   const { data: order, error: findError } = await supabase
     .from("orders")
@@ -151,7 +156,12 @@ async function markOrderAsPaid({
     return null;
   }
 
-  if (Number(order.amount) !== Number(transaction_amount)) {
+  if (currency_id !== order.currency) {
+    console.log("Moneda de pago no coincide con el pedido");
+    return null;
+  }
+
+  if (!importesCoinciden(transaction_amount, order.amount)) {
     console.log("Monto de pago no coincide con el pedido");
     return null;
   }
@@ -213,11 +223,6 @@ app.post("/webhook", async (req, res) => {
   }
 
   console.log("Webhook POST recibido");
-  console.log("method:", req.method);
-  console.log("originalUrl:", req.originalUrl);
-  console.log("query:", req.query);
-  console.log("body:", req.body);
-  console.log("content-type:", req.headers["content-type"]);
 
   const eventType =
     req.query.topic || req.body?.topic || req.query.type || req.body?.type;
@@ -228,26 +233,16 @@ app.post("/webhook", async (req, res) => {
     req.query["data.id"];
 
   if (eventType !== "payment") {
-    console.log("Evento ignorado:", eventType);
+    console.log("Evento ignorado");
     return res.json({ received: true });
   }
 
-  console.log("Payment ID detectado:", paymentId);
+  console.log("Pago detectado en webhook");
 
   try {
     const paymentInfo = await payment.get({ id: paymentId });
 
-    console.log("Datos del pago:");
-    console.log("id:", paymentInfo.id);
-    console.log("status:", paymentInfo.status);
-    console.log("status_detail:", paymentInfo.status_detail);
-    console.log("transaction_amount:", paymentInfo.transaction_amount);
-    console.log("currency_id:", paymentInfo.currency_id);
-    console.log("description:", paymentInfo.description);
-    console.log("external_reference:", paymentInfo.external_reference);
-    console.log("date_approved:", paymentInfo.date_approved);
-    console.log("payment_method_id:", paymentInfo.payment_method_id);
-    console.log("payment_type_id:", paymentInfo.payment_type_id);
+    console.log("Pago consultado en Mercado Pago");
 
     if (paymentInfo.status === "approved") {
       console.log("PAGO APROBADO CONFIRMADO POR API");
@@ -261,6 +256,7 @@ app.post("/webhook", async (req, res) => {
             mercadopago_payment_id: paymentInfo.id,
             mercadopago_status: paymentInfo.status,
             transaction_amount: paymentInfo.transaction_amount,
+            currency_id: paymentInfo.currency_id,
           });
 
           if (updatedOrder) {
@@ -271,13 +267,10 @@ app.post("/webhook", async (req, res) => {
         }
       }
     } else {
-      console.log("Pago recibido pero no aprobado:", paymentInfo.status);
+      console.log("Pago recibido pero no aprobado");
     }
   } catch (error) {
-    console.error(
-      "Error consultando pago en Mercado Pago:",
-      error.message
-    );
+    console.error("Error consultando pago en Mercado Pago");
   }
 
   res.json({ received: true });

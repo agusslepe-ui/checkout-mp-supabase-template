@@ -1,16 +1,16 @@
 # Progreso
 
-Última revisión documental: 2026-06-24.
+Última revisión documental: 2026-06-25.
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005) y la migración SQL versionada (T-006) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006) y la estrategia monetaria explícita (T-007) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
-- **Tests**: Jest instalado. `npm test` pasa con 11 tests.
+- **Tests**: Jest instalado. `npm test` pasa con 15 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: T-007 — implementar estrategia monetaria segura (DEC-011 aceptada el 2026-06-25, listo para Codex).
+- **Pendiente más urgente**: T-008 — mejorar identificadores de pedidos únicos bajo concurrencia.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -31,6 +31,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - T-004: validación de variables de entorno obligatorias al arrancar.
 - T-005: suite Jest con 11 tests; `npm test` pasa sin llamadas externas.
 - T-006: migración SQL manual versionada para `orders`, con restricciones, índices y RLS habilitada.
+- T-007: estrategia monetaria explícita con comparación normalizada a centavos, validación de moneda y logs genéricos del webhook de pago.
 - Documentación completa: TASKS.md (T-001 a T-014), DECISIONS.md (DEC-009 a DEC-017), CURRENT_CONTEXT.md.
 
 ## Problemas resueltos documentados
@@ -44,7 +45,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Pendientes principales
 
-- Definir una estrategia monetaria segura (T-007, requiere DEC-011).
+- Mejorar identificadores de pedidos únicos bajo concurrencia (T-008).
 - Reducir logs sensibles y retirar diagnóstico temporal de producción (T-010, T-011).
 - Definir catálogo, autenticación y requisitos comerciales (T-012).
 - Seleccionar y documentar un despliegue de producción (T-013).
@@ -53,15 +54,32 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Fase P0 + P1 inicial cerrada.** T-001 a T-006 completadas y commiteadas.
+**Fase P0 + P1 inicial cerrada.** T-001 a T-007 completadas. T-001 a T-006 están commiteadas; T-007 queda pendiente de commit por instrucción del usuario.
 
 Opciones para continuar:
 
 **A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks y RLS.
 
-**B — Próxima fase técnica**: confirmar DEC-011 (estrategia de importes sin punto flotante) para desbloquear T-007. Sin esa decisión, T-007 no puede implementarse. Las tareas T-008, T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
+**B — Próxima fase técnica**: continuar con T-008, T-009, T-011 o T-014. Las tareas T-008, T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
 
 ## Bitácora
+
+### 2026-06-25 — T-007 completada
+
+- Objetivo: implementar DEC-011 como fuente de verdad para comparación de importes y validación de moneda.
+- Tarea relacionada: T-007.
+- Archivos afectados: `index.js`, `tests/index.test.js`, `README.md`, `docs/REQUIREMENTS.md`, `docs/DESIGN.md`, `docs/SECURITY.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Cambios realizados:
+  - `index.js`: se agregó `importesCoinciden(a, b)` con normalización a centavos usando `Math.round(Number(valor) * 100)`.
+  - `index.js`: la transición a `paid` ahora valida `payment.currency_id` contra `order.currency` y usa `importesCoinciden` para el importe.
+  - `index.js`: el `POST /webhook` dejó de registrar payloads y campos reales del pago; conserva logs genéricos.
+  - `tests/index.test.js`: se agregaron casos para decimal normalizado, importe distinto, moneda distinta, moneda correcta y no exposición de importe/moneda en logs.
+- Verificaciones:
+  - `node --check index.js`.
+  - `npm.cmd test` — 15 tests pasan.
+  - `git diff --check`.
+- Resultado: T-007 completada sin instalar dependencias, sin leer `.env`, sin commits y sin cambiar creación de preferencias, validación de firma ni la condición atómica `pending → paid`.
+- Pendientes o riesgos: quedan logs de diagnóstico fuera de `POST /webhook` para revisar en T-010/T-011.
 
 ### 2026-06-25 — DEC-011 aceptada — estrategia monetaria definida
 

@@ -326,7 +326,7 @@ El esquema de `orders` está versionado en SQL, con restricciones de dominio, í
 
 ### T-007 — Usar una estrategia monetaria explícita
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P1  
 **DEC-011:** aceptada (2026-06-25). Esta tarea está desbloqueada.
 
@@ -406,6 +406,8 @@ No realizar llamadas externas reales. No cargar `.env`.
 
 #### Resultado esperado
 La comparación de importes es explícita, encapsulada en una función nombrada, libre de errores de punto flotante y acompañada de validación de moneda. Los tests cubren los casos definidos en DEC-011.
+
+> **Completada el 2026-06-25.** Se agregó `importesCoinciden(a, b)` en `index.js`, se valida `payment.currency_id` contra `order.currency`, el webhook usa logs genéricos en el flujo de pago y `tests/index.test.js` cubre importes normalizados, importes distintos, moneda distinta, moneda correcta y ausencia de valores reales de importe/moneda en logs. Verificación: `node --check index.js`, `npm.cmd test` (15 tests) y `git diff --check`.
 
 ---
 

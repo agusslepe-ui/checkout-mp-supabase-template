@@ -1,6 +1,6 @@
 # Mercado Pago Checkout Pro + Supabase
 
-Aplicación mínima de comercio electrónico para probar un pago de una Remera LEMONT mediante Mercado Pago Checkout Pro. El servidor registra primero un pedido pendiente en Supabase, crea la preferencia de pago y procesa el webhook de Mercado Pago. Un pedido solo pasa a `paid` después de consultar el pago en la API y confirmar que está aprobado y que el importe coincide.
+Aplicación mínima de comercio electrónico para probar un pago de una Remera LEMONT mediante Mercado Pago Checkout Pro. El servidor registra primero un pedido pendiente en Supabase, crea la preferencia de pago y procesa el webhook de Mercado Pago. Un pedido solo pasa a `paid` después de consultar el pago en la API y confirmar que está aprobado y que el importe y la moneda coinciden.
 
 ## Tecnologías
 
@@ -114,7 +114,7 @@ El ID ilustrativo no representa un pago real: la consulta a Mercado Pago fallar�
 5. El navegador redirige a Mercado Pago.
 6. Mercado Pago llama a `POST /webhook`.
 7. El backend consulta el pago mediante la API oficial.
-8. Si el pago está aprobado, existe el pedido y coincide el importe, el pedido se actualiza a `paid`.
+8. Si el pago está aprobado, existe el pedido y coinciden el importe y la moneda, el pedido se actualiza a `paid`.
 
 Las rutas de retorno son `/success`, `/failure` y `/pending`. Esas páginas informan el resultado del retorno, pero la confirmación autoritativa del pedido ocurre en el webhook.
 
@@ -132,4 +132,3 @@ Las rutas de retorno son `/success`, `/failure` y `/pending`. Esas páginas info
 ## Limitaciones actuales
 
 No hay tests automatizados, migraciones versionadas, autenticación, panel administrativo ni configuración de despliegue. El webhook aún no valida su firma criptográfica. Consultar el pago por API reduce el riesgo, pero no sustituye esa validación.
-

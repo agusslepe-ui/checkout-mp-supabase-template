@@ -47,7 +47,7 @@ La lectura del pedido y la actualización ocurren por separado. Webhooks concurr
 
 ### Manejo monetario
 
-La igualdad usa `Number`. Los valores decimales requieren una representación y política de redondeo explícitas.
+La comparación de importes del webhook está mitigada por T-007/DEC-011: ambos valores se normalizan a centavos con `Math.round(Number(valor) * 100)` antes de comparar y la moneda se valida contra `order.currency`. Mantener esta regla si se agregan productos o precios con centavos.
 
 ### Clave privilegiada de Supabase
 
@@ -88,4 +88,3 @@ Si aparece un secreto en Git, un log o una conversación:
 4. Revisar accesos y actividad relacionados.
 5. Eliminar el valor de los artefactos permitidos sin asumir que eso invalida copias históricas.
 6. Registrar el incidente sin incluir el secreto.
-

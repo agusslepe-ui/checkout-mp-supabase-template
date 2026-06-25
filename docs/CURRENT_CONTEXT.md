@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25 (DEC-011 aceptada, T-007 desbloqueada).
+> Resumen compacto para agentes. Última actualización: 2026-06-25 (T-007 completada).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -8,7 +8,7 @@
 
 ## Estado de la fase actual: CERRADA
 
-Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migración SQL (T-006) están **completadas y commiteadas**. La fase inicial está cerrada.
+Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006) y la estrategia monetaria explícita (T-007) están **completadas**. T-001 a T-006 están commiteadas; T-007 quedó sin commit por instrucción del usuario.
 
 ---
 
@@ -39,8 +39,9 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migra
 
 | Tarea | Descripción |
 |---|---|
-| T-005 | Suite Jest con 11 tests; `npm test` pasa. Cubre todos los flujos críticos sin llamadas externas. |
+| T-005 | Suite Jest; `npm test` pasa. Cubre todos los flujos críticos sin llamadas externas y quedó ampliada a 15 tests con T-007. |
 | T-006 | `supabase/migrations/001_create_orders.sql` creado con DDL completo, restricciones (`status`, `amount`), índices (`status`, `mercadopago_payment_id`) y RLS habilitada. **Aplicada y verificada manualmente el 2026-06-25.** (DEC-012) |
+| T-007 | Estrategia monetaria explícita: comparación de importes normalizada a centavos, validación de moneda contra `order.currency` y logs genéricos en `POST /webhook`. (DEC-011) |
 
 ---
 
@@ -48,7 +49,6 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migra
 
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
-| T-007 | Estrategia monetaria segura (comparación sin `Number`, validación de moneda). | **Sin bloqueo.** DEC-011 aceptada el 2026-06-25. |
 | T-008 | Identificadores de pedidos únicos bajo concurrencia. | Sin bloqueo. |
 | T-009 | Separar responsabilidades de `index.js` en módulos. | Sin bloqueo; conviene después de T-005. |
 | T-010 | Logs estructurados y sin datos sensibles. | DEC-017 pendiente. |
@@ -84,7 +84,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migra
 - **Pagos**: Mercado Pago Checkout Pro (SDK oficial). Webhook con validación HMAC-SHA256.
 - **Base de datos**: Supabase, tabla `orders`, acceso con `service_role` solo desde backend. RLS habilitada en migración.
 - **Transición de pagos**: Atómica e idempotente (`UPDATE WHERE status = 'pending'`).
-- **Tests**: Jest instalado. `npm test` pasa con 11 tests. Sin llamadas externas ni acceso a `.env`.
+- **Tests**: Jest instalado. `npm test` pasa con 15 tests. Sin llamadas externas ni acceso a `.env`.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` versionado y **aplicado en Supabase el 2026-06-25**. Tabla `public.orders` confirmada: columnas, constraints, índices y RLS (`rowsecurity = true`) activa. Sin policies públicas.
 - **Versionado**: Git + GitHub. No hay deploy documentado.
 
@@ -121,15 +121,7 @@ Pedir a Claude o ChatGPT una explicación conceptual de lo construido:
 
 ### Opción B — Continuar con la próxima fase
 
-**DEC-011 aceptada (2026-06-25).** T-007 está desbloqueada y lista para que Codex la implemente.
-
-Estrategia definida:
-- Función `importesCoinciden(a, b)` con `Math.round(a * 100) === Math.round(b * 100)`.
-- Validación de `payment.currency_id` contra `order.currency` en el mismo bloque.
-- Logs genéricos sin valores reales.
-- Sin dependencias nuevas.
-
-Ver instrucciones completas en `docs/TASKS.md` (T-007) y decisión en `docs/DECISIONS.md` (DEC-011).
+T-007 ya está completada. Las siguientes tareas sin bloqueo son T-008, T-009, T-011 y T-014.
 
 ---
 

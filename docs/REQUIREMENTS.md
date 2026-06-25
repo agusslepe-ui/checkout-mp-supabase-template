@@ -29,7 +29,7 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 - Recibir eventos de tipo `payment` en el webhook.
 - Consultar el pago real mediante la API de Mercado Pago.
 - Ignorar eventos que no correspondan a pagos.
-- Actualizar a `paid` solo un pedido existente, no pagado y con importe coincidente.
+- Actualizar a `paid` solo un pedido existente, no pagado y con importe y moneda coincidentes.
 - Responder a webhooks duplicados sin volver a marcar el pedido.
 - Mostrar páginas de retorno para pago aprobado, rechazado o pendiente.
 - Rechazar solicitudes con JSON inválido mediante una respuesta `400`.
@@ -64,7 +64,7 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 - Confirmar pedidos basándose únicamente en el retorno del navegador.
 - Confiar ciegamente en el cuerpo del webhook.
 - Exponer secretos al frontend, repositorio, logs o respuestas HTTP.
-- Marcar como pagado un pedido inexistente, ya pagado o con importe diferente.
+- Marcar como pagado un pedido inexistente, ya pagado o con importe o moneda diferente.
 - Permitir que el navegador determine libremente el producto o precio sin validación del servidor.
 - Ejecutar pagos reales como parte de pruebas automatizadas ordinarias.
 - Tratar las páginas `/success`, `/failure` o `/pending` como fuente autoritativa del estado.
@@ -79,4 +79,3 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 - Requisitos de disponibilidad, rendimiento, auditoría y retención.
 - Política de privacidad y tratamiento de datos personales.
 - Entornos de prueba, staging y producción.
-

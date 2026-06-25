@@ -48,7 +48,7 @@ Actualmente, si falla el alta del pedido, el error se registra pero se intenta c
 4. Para pagos, `Payment.get` consulta la fuente autoritativa.
 5. Solo se procesa `status === "approved"`.
 6. Se exige `external_reference`.
-7. `markOrderAsPaid` busca el pedido, descarta duplicados y compara el importe.
+7. `markOrderAsPaid` busca el pedido, descarta duplicados y valida moneda e importe normalizado a centavos.
 8. Actualiza estado, ID de pago, estado externo y fecha.
 9. El endpoint responde `{ "received": true }` aun cuando la consulta o actualización falle, después de registrar el error.
 
@@ -89,10 +89,9 @@ La lectura previa y la actualización son operaciones separadas. Dos webhooks co
 ## Limitaciones estructurales
 
 - Puerto, producto y catálogo codificados directamente.
-- Comparación monetaria con `Number`.
+- Comparación monetaria explícita con normalización a centavos y validación de moneda en el webhook.
 - Webhook sin validación criptográfica de firma.
 - Validación incompleta de configuración al iniciar.
 - Logs detallados y ruta `GET /webhook` orientados a desarrollo.
 - No hay manejo explícito de reintentos, timeouts, rate limits u observabilidad.
 - No hay deploy documentado ni infraestructura como código.
-
