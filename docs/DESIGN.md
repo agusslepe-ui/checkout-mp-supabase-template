@@ -34,7 +34,7 @@ Mercado Pago -- POST /webhook --> Express
 - `.env.example`: contrato de configuración, sin valores reales.
 - `tests/index.test.js`: suite Jest con 18 tests.
 
-## Estructura de archivos backend
+## Estructura de archivos backend (implementada — T-009 completada)
 
 ```
 index.js                      # Entrypoint: carga config, crea app, arranca servidor
@@ -46,7 +46,7 @@ src/
   orders.js                   # createPendingOrder, markOrderAsPaid — Supabase
   webhookSignature.js         # Validación HMAC-SHA256 de x-signature — DEC-009
 tests/
-  index.test.js               # Suite Jest; mocks deben actualizarse si cambian paths
+  index.test.js               # Suite Jest con 18 tests
 ```
 
 ## Flujo de creación de pago

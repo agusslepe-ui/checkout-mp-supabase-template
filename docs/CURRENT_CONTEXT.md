@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25 (T-009 completada).
+> Resumen compacto para agentes. Última actualización: 2026-06-25 (T-001–T-010 completadas y commiteadas — 10/14 tareas).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -8,7 +8,7 @@
 
 ## Estado de la fase actual: CERRADA
 
-Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009) y la observabilidad segura (T-010) están **completadas**. T-001 a T-006 están commiteadas; T-007, T-008, T-009 y T-010 quedaron sin commit por instrucción del usuario.
+Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009) y la observabilidad segura (T-010) están **completadas, commiteadas y pusheadas a `origin/main`** (10/14).
 
 ---
 
@@ -128,7 +128,7 @@ Pedir a Claude o ChatGPT una explicación conceptual de lo construido:
 
 ### Opción B — Continuar con la próxima fase
 
-T-009 y T-010 ya están completadas. Tareas sin bloqueo disponibles: T-011 y T-014. Pueden abordarse en cualquier orden.
+T-001 a T-010 completadas, commiteadas y pusheadas. Tareas sin bloqueo disponibles: T-011 (retirar `GET /webhook`) y T-014 (UTF-8). Pueden abordarse en cualquier orden.
 
 ---
 

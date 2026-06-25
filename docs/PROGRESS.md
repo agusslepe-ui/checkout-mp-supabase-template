@@ -56,15 +56,26 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Fase P0 + P1 inicial cerrada.** T-001 a T-010 completadas, excepto T-011 a T-014 pendientes según prioridad. T-001 a T-006 están commiteadas; T-007, T-008, T-009 y T-010 quedan pendientes de commit por instrucción del usuario.
+**10/14 tareas completadas.** T-001 a T-010 completadas, commiteadas y pusheadas a `origin/main`. Commits: T-001–T-006 (sesión 2026-06-24), T-007 ("Implementa validacion segura de importes y moneda"), T-008 ("Mejora identificadores unicos de pedidos"), T-009 ("Separa backend en modulos"), T-010 ("Implementa logs estructurados seguros").
 
 Opciones para continuar:
 
-**A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks y RLS.
+**A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks, RLS o la separación modular recién completada.
 
-**B — Próxima fase técnica**: continuar con T-011 o T-014. Las tareas T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
+**B — Próxima fase técnica**: continuar con T-011 (retirar `GET /webhook`) o T-014 (UTF-8). Ambas sin bloqueo y de bajo impacto. T-012 y T-013 requieren decisiones pendientes (DEC-013, DEC-016).
 
 ## Bitácora
+
+### 2026-06-25 — Cierre documental de T-009
+
+- Objetivo: registrar documentalmente el cierre real de T-009 tras su implementación y commit.
+- Archivos revisados: `docs/TASKS.md`, `docs/DESIGN.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Archivos modificados: `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Correcciones realizadas:
+  - `docs/TASKS.md`: eliminada la nota obsoleta sobre "marcación prematura". "Estructura propuesta" renombrada a "Estructura implementada". "Instrucciones para Codex" reemplazadas por "Verificaciones realizadas" y "Criterios de aceptación cumplidos". Commit referenciado.
+  - `docs/PROGRESS.md`: entrada T-009 completada con commit "Separa backend en modulos" y push a `origin/main`. "Próxima acción recomendada" actualizada a 10/14 tareas; T-009 ya no figura como pendiente de commit.
+  - `docs/CURRENT_CONTEXT.md`: estado de commits actualizado; T-009 figura como commiteada junto con T-001 a T-006.
+- Estado del proyecto al cerrar: 10/14 tareas completadas y commiteadas. T-001–T-010 pusheadas a `origin/main`. T-011, T-012, T-013, T-014 pendientes. **Corrección posterior (misma sesión):** la versión inicial de esta entrada indicaba incorrectamente que T-007, T-008 y T-010 estaban sin commit; en realidad ya tenían sus propios commits ("Implementa validacion segura de importes y moneda", "Mejora identificadores unicos de pedidos", "Implementa logs estructurados seguros").
 
 ### 2026-06-25 — T-009 completada
 
@@ -81,11 +92,14 @@ Opciones para continuar:
   - `src/orders.js`: encapsula Supabase, pedidos, comparación de importes y transición `pending → paid`.
   - `src/webhookSignature.js`: encapsula la validación HMAC-SHA256 de Mercado Pago.
 - Verificaciones:
-  - `node --check index.js`.
-  - `node --check src/*.js`.
+  - `node --check index.js` — sin errores de sintaxis.
+  - `node --check src/*.js` — sin errores en ningún módulo.
   - `npm.cmd test` — 18 tests pasan.
-  - `git diff --check`.
-- Resultado: T-009 completada sin instalar dependencias, sin modificar `package.json`, sin leer `.env`, sin commits y sin cambiar rutas, respuestas públicas, creación de preferencias, firma webhook, validación de importe/moneda, transición `pending → paid` ni eventos/campos de logs estructurados.
+  - `git diff --check` — sin problemas de espaciado.
+  - Búsqueda de `console.*` — solo queda en `src/logger.js`.
+  - Búsqueda de secretos — solo nombres de variables/placeholders/documentación, sin valores reales.
+- Commit: "Separa backend en modulos" — pusheado a `origin/main`.
+- Resultado: T-009 completada. Backend modularizado sin instalar dependencias, sin modificar `package.json`, sin leer `.env`, sin cambiar rutas, respuestas públicas, creación de preferencias, firma webhook, validación de importe/moneda, transición `pending → paid` ni eventos/campos de logs. Repo limpio y sincronizado con `origin/main`.
 - Pendientes o riesgos: T-011 sigue pendiente para retirar o restringir `GET /webhook` en producción.
 
 ### 2026-06-25 — T-009 corregida a pendiente; estructura de refactor definida

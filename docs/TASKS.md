@@ -443,90 +443,52 @@ Las referencias de pedidos son únicas bajo concurrencia sin depender exclusivam
 
 ### T-009 — Separar responsabilidades del backend
 
-**Estado:** completada
-**Prioridad:** P1
-
-> **Nota:** Esta tarea aparecía incorrectamente marcada como `completada`. Los módulos separados no existen en el repositorio; `index.js` sigue concentrando toda la lógica. El estado fue corregido a `pendiente` el 2026-06-25.
+**Estado:** completada  
+**Prioridad:** P1  
+**Commit:** "Separa backend en modulos" — pusheado a `origin/main` el 2026-06-25.
 
 #### Objetivo
 Dividir `index.js` en módulos con responsabilidades claras, sin cambiar el comportamiento HTTP observable ni romper los tests existentes.
 
-#### Estructura propuesta
+#### Estructura implementada
 
 ```
 index.js                   # Entrypoint: carga config, crea app, arranca servidor
 src/
   app.js                   # Instancia Express: middlewares, rutas, handlers
   config.js                # Lee y valida variables de entorno; exporta constantes
-  logger.js                # Helper log(level, event, extra) de DEC-017
-  payments.js              # Crear preferencia, consultar Payment.get
+  logger.js                # Helper log(level, event, extra) — DEC-017
+  payments.js              # createPreference, Payment.get — Mercado Pago
   orders.js                # createPendingOrder, markOrderAsPaid, cliente Supabase
-  webhookSignature.js      # Validación HMAC-SHA256 de x-signature (DEC-009)
+  webhookSignature.js      # Validación HMAC-SHA256 de x-signature — DEC-009
 ```
 
-#### Archivos involucrados
-- `index.js` — reducir a entrypoint mínimo; mover lógica a `src/`
-- `src/app.js` — nuevo; configura Express
-- `src/config.js` — nuevo; valida variables de entorno (lógica de T-004)
-- `src/logger.js` — nuevo; exporta el helper `log` de T-010
-- `src/payments.js` — nuevo; lógica de preferencia y consulta a MP
-- `src/orders.js` — nuevo; lógica de pedidos y cliente Supabase
-- `src/webhookSignature.js` — nuevo; validación de firma (lógica de T-001)
-- `tests/index.test.js` — actualizar imports y mocks si cambian las rutas de módulos
-- `docs/DESIGN.md` — actualizar "Módulos principales" cuando la estructura esté aplicada
+#### Archivos creados / modificados
+- `index.js` — reducido a entrypoint mínimo
+- `src/app.js` — creado; Express, middlewares, rutas y handlers
+- `src/config.js` — creado; valida y exporta configuración
+- `src/logger.js` — creado; exporta el helper `log` de DEC-017
+- `src/payments.js` — creado; encapsula Mercado Pago
+- `src/orders.js` — creado; encapsula Supabase, pedidos, comparación de importes/moneda y transición `pending → paid`
+- `src/webhookSignature.js` — creado; validación HMAC-SHA256
 
-#### Instrucciones para Codex
+#### Verificaciones realizadas
+- `node --check index.js` — sin errores de sintaxis.
+- `node --check src/*.js` — sin errores de sintaxis en ningún módulo.
+- `npm test` — 18 tests pasan. Comportamiento HTTP idéntico al anterior.
+- `git diff --check` — sin problemas de espaciado.
+- Búsqueda de `console.*` — solo queda dentro de `src/logger.js`.
+- Búsqueda de secretos — solo nombres de variables, placeholders y documentación; sin valores reales.
 
-**Regla principal:** el comportamiento HTTP observable no debe cambiar. Las rutas, los códigos de respuesta, los cuerpos de respuesta y la lógica de negocio deben ser idénticos antes y después del refactor. Los 18 tests existentes deben seguir pasando.
+#### Criterios de aceptación cumplidos
+- Existen `src/app.js`, `src/config.js`, `src/logger.js`, `src/payments.js`, `src/orders.js` y `src/webhookSignature.js`.
+- `index.js` es entrypoint mínimo.
+- Comportamiento HTTP idéntico: mismas rutas, mismos códigos de respuesta, misma lógica de negocio.
+- 18 tests pasan sin cambios en su lógica.
+- Sin dependencias nuevas. Sin cambios en `package.json` ni `.env.example`.
 
-**Paso 1 — Crear `src/config.js`**
-
-Mover la validación de variables de entorno (actualmente al inicio de `index.js`) a `src/config.js`. Exportar las constantes necesarias (`PORT`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, etc.). `index.js` importa y llama a `config.js` antes de cualquier otra cosa.
-
-**Paso 2 — Crear `src/logger.js`**
-
-Mover el helper `log(level, event, extra)` (implementado en T-010) a `src/logger.js`. Exportar como `module.exports = { log }`. Todos los módulos que necesiten loguear importan desde aquí.
-
-**Paso 3 — Crear `src/webhookSignature.js`**
-
-Extraer la función de validación HMAC-SHA256 de `x-signature` a un módulo independiente. Exportar una función `validateWebhookSignature(req)` que devuelva `true` o `false`. No exponer el secreto fuera del módulo; leerlo de `config.js`.
-
-**Paso 4 — Crear `src/orders.js`**
-
-Mover el cliente Supabase y las funciones `createPendingOrder` y `markOrderAsPaid` a `src/orders.js`. Exportar ambas funciones. La conexión a Supabase se inicializa dentro de este módulo con valores de `config.js`.
-
-**Paso 5 — Crear `src/payments.js`**
-
-Mover el cliente de Mercado Pago y la función de creación de preferencias a `src/payments.js`. Exportar la función `createPreference`. La inicialización del SDK usa el token de `config.js`.
-
-**Paso 6 — Crear `src/app.js`**
-
-Crear la instancia de Express, registrar middlewares y definir los handlers de rutas usando los módulos anteriores. Exportar `app` para que `index.js` pueda llamar a `app.listen`. Los handlers llaman a `orders.js`, `payments.js` y `webhookSignature.js`; no implementan lógica de negocio directamente.
-
-**Paso 7 — Reducir `index.js` a entrypoint mínimo**
-
-`index.js` solo debe: importar `config.js`, importar `src/app.js` y llamar a `app.listen(PORT)`. Sin lógica de negocio ni rutas.
-
-**Paso 8 — Verificar tests**
-
-Actualizar mocks en `tests/index.test.js` si los módulos cambiaron de ruta. Ejecutar `npm test` y confirmar que los 18 tests pasan sin modificar su lógica.
-
-#### Criterios de aceptación
-- Existen los archivos `src/app.js`, `src/config.js`, `src/logger.js`, `src/payments.js`, `src/orders.js` y `src/webhookSignature.js`.
-- `index.js` queda reducido a entrypoint: carga config, importa app, llama a `app.listen`.
-- El comportamiento HTTP es idéntico al anterior: mismas rutas, mismos códigos de respuesta, misma lógica de negocio.
-- Los 18 tests existentes siguen pasando sin modificar su lógica de negocio.
-- No se instalan dependencias nuevas.
-- No se cambia el contrato de `.env.example`.
-- `docs/DESIGN.md` refleja la nueva estructura de módulos.
-
-#### Riesgos
-- **Alto impacto**: mover toda la lógica de `index.js` puede introducir errores sutiles en imports, inicialización de clientes o orden de ejecución. Verificar con `node --check` y `npm test` después de cada paso.
-- Los mocks de Jest están ligados a los paths de módulos. Si los paths cambian, los mocks deben actualizarse o los tests fallarán silenciosamente.
-- No fusionar cambios sin que `npm test` pase completamente.
-
-#### Resultado esperado
-El backend tiene módulos separados con responsabilidades claras. Cada módulo puede probarse de forma aislada. Los 18 tests existentes pasan sin cambios en su lógica.
+#### Resultado
+Backend modularizado. Cada módulo tiene una responsabilidad única y puede ser importado y testeado de forma independiente.
 
 > **Completada el 2026-06-25.** `index.js` quedó como entrypoint mínimo y se crearon `src/app.js`, `src/config.js`, `src/logger.js`, `src/payments.js`, `src/orders.js` y `src/webhookSignature.js`. El refactor movió responsabilidades sin cambiar rutas, respuestas públicas, creación de preferencias, validación de firma, validación de importe/moneda, transición `pending → paid` ni eventos/campos de logs estructurados. Verificación: `node --check index.js`, `node --check src/*.js`, `npm.cmd test` (18 tests) y `git diff --check`.
 
