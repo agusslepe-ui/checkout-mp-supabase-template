@@ -59,7 +59,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
-| T-012 | Fuente autoritativa de catálogo y precios. | **DEC-013 pendiente.** Resolver antes de implementar. |
+| T-012 | Fuente autoritativa de catálogo y precios. | **DEC-013 aceptada.** Lista para implementar. |
 | T-013 | Documentar y validar deploy a producción. | **DEC-016 pendiente.** Resolver antes de implementar. |
 
 ---
@@ -74,11 +74,16 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 | DEC-012 | SQL manual versionado en `supabase/migrations/`. Sin Supabase CLI. El usuario aplica el archivo manualmente. |
 | DEC-017 | Helper `log(level, event, extra)` propio. Formato JSON. Niveles: `info`, `warn`, `error`. Campos fijos + `request_id` por correlación. Lista explícita de campos prohibidos. Sin librería externa. |
 
-## Decisiones pendientes — bloquean T-012 y T-013
+## Decisiones técnicas aceptadas (continuación)
+
+| Decisión | Resumen |
+|---|---|
+| DEC-013 | Catálogo como módulo `src/catalog.js`. Frontend envía solo `{ sku, quantity }`. Backend resuelve precio, moneda y valida cantidad. Sin dependencias nuevas ni tabla Supabase adicional. |
+
+## Decisiones pendientes — bloquean T-013
 
 | Decisión | Tarea relacionada | Descripción |
 |---|---|---|
-| **DEC-013** | **T-012** | Fuente de catálogo y precios. Opciones: objeto en código, tabla Supabase o servicio externo. Debe definirse antes de implementar T-012. |
 | **DEC-016** | **T-013** | Proveedor de deploy, entornos y rollback. Opciones: Railway, Render, Fly.io, VPS. Debe definirse antes de implementar T-013. |
 
 ---
@@ -129,12 +134,10 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 Las dos tareas pendientes (T-012 y T-013) están bloqueadas por decisiones sin resolver. El próximo paso es **definir esas decisiones**, no programar.
 
-**Resolver DEC-013 — Fuente de catálogo y precios (para desbloquear T-012)**
+**T-012 — Lista para implementar (DEC-013 aceptada)**
 
-> ¿Dónde vive el catálogo? Opciones:
-> - Objeto de configuración en código (simple, requiere redeploy para cambiar precios).
-> - Tabla en Supabase (flexible, agrega complejidad).
-> - Servicio externo o CMS (mayor separación, mayor complejidad).
+> Codex debe crear `src/catalog.js`, modificar `POST /crear-preferencia` en `src/app.js` y agregar tests.
+> Ver instrucciones detalladas en `docs/TASKS.md` (T-012) y `docs/DECISIONS.md` (DEC-013).
 
 **Resolver DEC-016 — Proveedor de deploy y entornos (para desbloquear T-013)**
 

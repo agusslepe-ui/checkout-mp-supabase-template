@@ -240,23 +240,79 @@ El proyecto es pequeño y controlado. No se requieren herramientas adicionales e
 
 ## DEC-013 — Fuente de catálogo, stock y precios
 
-**Fecha:** pendiente de definir  
-**Estado:** pendiente
+**Fecha:** 2026-06-25  
+**Estado:** aceptada
 
 ### Contexto
-El producto (Remera LEMONT, 1 unidad, 100 ARS) está hardcodeado en `index.js`. Si el proyecto crece hacia un catálogo real, esta definición debe provenir de una fuente autoritativa y configurable.
+
+El producto (Remera LEMONT, 1 unidad, 100 ARS) está definido directamente en el código de `src/app.js`. Esta definición no proviene de ninguna fuente configurable ni validada externamente. El problema central de seguridad es que si el frontend tuviera algún mecanismo para influir sobre el importe final, un usuario malicioso podría enviar un precio arbitrario y provocar un cobro incorrecto.
+
+El flujo actual ya protege el importe en la etapa de confirmación (DEC-011/T-007): compara `transaction_amount` del pago contra `order.amount` almacenado en Supabase. Sin embargo, `order.amount` se origina hoy en valores hardcodeados. Si esa constante no está aislada en una fuente autoritativa, el modelo de seguridad queda incompleto: el importe en el pedido podría quedar desincronizado con cualquier lógica futura que resuelva el precio.
 
 ### Decisión
-> Pendiente de confirmar con el usuario.
 
-### Opciones a evaluar
-- Objeto de configuración en código (sin base de datos). Simple pero requiere redeploy para cambiar precios.
-- Tabla de productos en Supabase. Flexible pero agrega complejidad.
-- Servicio externo de catálogo o CMS. Mayor separación de responsabilidades.
+**Catálogo como módulo de configuración versionado en el servidor (`src/catalog.js`).**
+
+El catálogo se define como un objeto JavaScript en un archivo `src/catalog.js` dedicado. El backend lee el catálogo al resolver cada pedido y calcula el importe final. El frontend solo envía el identificador del producto (`sku`) y la cantidad (`quantity`). El backend no acepta un importe enviado por el cliente.
+
+**Estructura mínima del catálogo:**
+
+```js
+// src/catalog.js
+const CATALOG = {
+  'REMERA-LEMONT-001': {
+    name: 'Remera LEMONT',
+    unitPrice: 100,
+    currency: 'ARS',
+    maxQuantity: 10,
+  },
+};
+
+function getProduct(sku) {
+  return CATALOG[sku] || null;
+}
+
+module.exports = { getProduct };
+```
+
+**Reglas de validación en el handler `POST /crear-preferencia`:**
+
+1. El cliente envía `{ sku, quantity }`. No envía `price`, `amount` ni `currency`.
+2. El backend resuelve el producto con `getProduct(sku)`.
+3. Si el SKU no existe → respuesta genérica HTTP 400. No exponer detalles del catálogo.
+4. `quantity` debe ser un entero entre 1 y `product.maxQuantity` inclusive. Fuera de rango → HTTP 400.
+5. El backend calcula: `total = product.unitPrice * quantity`.
+6. El campo `amount` del pedido en Supabase se almacena como `product.unitPrice * quantity` (en pesos ARS).
+7. La moneda del pedido proviene de `product.currency`, no del cliente.
+8. Mercado Pago recibe `unit_price: product.unitPrice`, `quantity`, `title: product.name` y `currency_id: product.currency`.
+
+**Estrategia de migración futura:**
+
+Esta estructura es reemplazable en el futuro por una tabla `products` en Supabase sin cambiar el contrato del handler. La firma de `getProduct(sku)` puede mantenerse aunque la fuente cambie. Cuando el proyecto crezca, se puede crear DEC-018 para formalizar esa migración.
+
+### Motivo
+
+- Un módulo `src/catalog.js` en código es suficiente para esta etapa: el proyecto tiene un producto y no requiere panel de administración ni base de datos adicional.
+- Centralizar la definición en un módulo dedicado aísla el catálogo del resto de la lógica de pagos, facilita los tests unitarios y hace explícito el contrato del servidor.
+- No requiere nuevas dependencias, nuevas tablas en Supabase ni cambios en `.env.example`.
+- La validación de `sku` y `quantity` en el handler protege el sistema ante solicitudes malformadas o manipuladas.
+- El importe calculado en backend es la continuación coherente de la política ya implementada en DEC-011: el servidor siempre es fuente de verdad del importe.
+
+### Alternativas consideradas
+
+- **Tabla `products` en Supabase**: flexible y administrable sin redeploy, pero agrega una nueva tabla, una nueva migración (DEC-018 futura), queries adicionales en el flujo crítico de pago y superficie de error. Descartada para esta etapa; puede adoptarse si el catálogo crece.
+- **Servicio externo o CMS**: mayor separación de responsabilidades, pero introduce dependencia externa en el flujo de pago. Una caída del CMS podría bloquear la creación de preferencias. Descartada por complejidad innecesaria en esta etapa.
+- **Mantener hardcoding distribuido en `src/app.js` sin módulo dedicado**: simple pero no aislable, no testeable de forma independiente y dificulta la migración futura. Descartada.
 
 ### Consecuencias
+
 - Relacionada con T-012.
-- El servidor debe seguir siendo la fuente autoritativa del precio, sin importar la opción elegida.
+- Codex debe crear `src/catalog.js` con la estructura definida.
+- Codex debe modificar el handler `POST /crear-preferencia` en `src/app.js` para aceptar `{ sku, quantity }` y calcular el importe desde el catálogo.
+- Codex debe agregar tests en `tests/index.test.js` para: SKU inválido, cantidad fuera de rango, cantidad válida con precio calculado correctamente.
+- No se acepta `amount` enviado por el cliente en ningún endpoint.
+- La validación de importe en el webhook (DEC-011) sigue vigente e inalterada.
+- T-012 queda desbloqueada.
 
 ---
 

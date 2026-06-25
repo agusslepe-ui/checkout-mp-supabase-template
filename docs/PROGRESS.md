@@ -67,6 +67,21 @@ Opciones para continuar:
 
 ## Bitácora
 
+### 2026-06-25 — DEC-013 aceptada — estrategia de catálogo y precios definida
+
+- Objetivo: documentar DEC-013 para desbloquear T-012.
+- Tareas relacionadas: T-012.
+- Archivos revisados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`, `docs/SECURITY.md`.
+- Archivos modificados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `docs/DECISIONS.md`: DEC-013 pasó de `pendiente` a `aceptada`. Se documentó la decisión completa: catálogo como módulo `src/catalog.js`, contrato del handler `POST /crear-preferencia` (acepta `{ sku, quantity }`, rechaza importe del cliente), reglas de validación, cálculo de importe en backend, estrategia de migración futura a tabla Supabase y alternativas descartadas.
+  - `docs/TASKS.md`: T-012 actualizada con instrucciones concretas para Codex: crear `src/catalog.js`, modificar `src/app.js`, agregar tests de SKU inválido, cantidad fuera de rango y precio calculado correctamente.
+  - `docs/CURRENT_CONTEXT.md`: DEC-013 movida a decisiones aceptadas, T-012 marcada como lista para implementar, próximo paso actualizado.
+  - `docs/PROGRESS.md`: esta entrada.
+- Decisiones tomadas: DEC-013 aceptada. Catálogo en módulo `src/catalog.js`. Sin dependencias nuevas. Sin tabla Supabase adicional en esta etapa.
+- Sin cambios de código. Sin commits. Sin acceso a `.env`.
+- Próximos pasos: Codex implementa T-012 usando `docs/TASKS.md` (T-012) y `docs/DECISIONS.md` (DEC-013).
+
 ### 2026-06-25 — Cierre documental de sesión (12/14 tareas)
 
 - Objetivo: actualizar `docs/CURRENT_CONTEXT.md` y `docs/DESIGN.md` para reflejar el estado real del proyecto tras el cierre de T-011, T-014 y las correcciones de la sesión anterior.

@@ -614,31 +614,90 @@ Las herramientas de diagnóstico no están expuestas en entornos productivos.
 ### T-012 — Definir catálogo y fuente de precios
 
 **Estado:** pendiente  
-**Prioridad:** P2
+**Prioridad:** P2  
+**DEC-013:** aceptada (2026-06-25). Esta tarea está desbloqueada.
 
 #### Objetivo
-Reemplazar el producto hardcodeado en `index.js` por una fuente autoritativa del servidor.
+Reemplazar el producto hardcodeado en `src/app.js` por un módulo de catálogo `src/catalog.js` que actúe como fuente autoritativa del servidor. El handler `POST /crear-preferencia` debe aceptar solo `{ sku, quantity }` del cliente y calcular el importe internamente.
 
 #### Archivos involucrados
-- `index.js`
-- `docs/DECISIONS.md` (DEC-013)
-- Posible nuevo módulo de catálogo o tabla en Supabase (a definir)
+- `src/catalog.js` — nuevo archivo; define el catálogo y exporta `getProduct(sku)`.
+- `src/app.js` — modificar el handler `POST /crear-preferencia` para usar `getProduct`.
+- `src/orders.js` — verificar que `createPendingOrder` reciba `amount` calculado por backend (sin cambio de firma si ya lo hace).
+- `tests/index.test.js` — agregar casos de prueba de T-012.
+- `docs/DECISIONS.md` — DEC-013 ya aceptada.
 
 #### Instrucciones para Codex
-Pendiente de confirmar con el usuario: ¿el catálogo se define en código (objeto de configuración), en Supabase o en otro servicio? El servidor debe seguir siendo la fuente autoritativa del precio. No implementar hasta tener definición clara de la fuente y DEC-013 aprobada.
+
+Consultar DEC-013 antes de implementar.
+
+**Paso 1 — Crear `src/catalog.js`**
+
+```js
+// src/catalog.js
+const CATALOG = {
+  'REMERA-LEMONT-001': {
+    name: 'Remera LEMONT',
+    unitPrice: 100,
+    currency: 'ARS',
+    maxQuantity: 10,
+  },
+};
+
+function getProduct(sku) {
+  return CATALOG[sku] || null;
+}
+
+module.exports = { getProduct };
+```
+
+No exponer `CATALOG` directamente fuera del módulo. Solo exportar `getProduct`.
+
+**Paso 2 — Modificar el handler `POST /crear-preferencia` en `src/app.js`**
+
+El handler debe:
+
+1. Leer `sku` y `quantity` del body del request. No leer `price`, `amount` ni `currency` del cliente.
+2. Llamar `getProduct(sku)`.
+3. Si el producto no existe → responder HTTP 400 con mensaje genérico (ej: `{ error: "Producto no encontrado" }`). No exponer el catálogo ni los SKU válidos.
+4. Validar que `quantity` sea un entero entre 1 y `product.maxQuantity` inclusive. Si no es válido → HTTP 400 con mensaje genérico (ej: `{ error: "Cantidad inválida" }`).
+5. Calcular: `const total = product.unitPrice * quantity`.
+6. Usar `product.name`, `product.unitPrice`, `product.currency`, `quantity` y `total` para crear el pedido en Supabase y la preferencia en Mercado Pago.
+7. El campo `amount` del pedido en Supabase es `total` (calculado por backend).
+8. El campo `currency` del pedido en Supabase es `product.currency`.
+
+**Paso 3 — Tests**
+
+En `tests/index.test.js`, agregar casos de prueba para `POST /crear-preferencia`:
+
+- SKU inexistente → HTTP 400, mensaje genérico, Supabase y Mercado Pago no son llamados.
+- Cantidad 0 → HTTP 400, mensaje genérico.
+- Cantidad negativa → HTTP 400, mensaje genérico.
+- Cantidad mayor que `maxQuantity` → HTTP 400, mensaje genérico.
+- Cantidad no entera (ej: 1.5) → HTTP 400, mensaje genérico.
+- SKU válido, cantidad válida → `amount` en Supabase es `product.unitPrice * quantity`; Mercado Pago recibe `unit_price: product.unitPrice`, `quantity` correcta.
+- Verificar que ningún log ni respuesta expone el precio del catálogo en texto libre de error.
+
+No realizar llamadas externas reales. No cargar `.env`.
 
 #### Criterios de aceptación
-- Producto y precio provienen de una fuente autoritativa del servidor.
-- El cliente no puede fijar libremente el importe.
-- Se documentan stock, moneda y validaciones.
+- Existe `src/catalog.js` con la estructura definida en DEC-013.
+- El handler `POST /crear-preferencia` no acepta `price`, `amount` ni `currency` del cliente.
+- SKU inválido → HTTP 400 con mensaje genérico; ni Supabase ni Mercado Pago son llamados.
+- Cantidad fuera de rango o no entera → HTTP 400 con mensaje genérico.
+- El `amount` persistido en Supabase es siempre `product.unitPrice * quantity`.
+- La moneda del pedido proviene de `product.currency`, no del cliente.
+- Los tests de T-012 pasan en `npm test`.
+- No se instala ninguna dependencia nueva.
+- No se crea ninguna tabla nueva en Supabase.
 
 #### Riesgos
-- Requiere decisión del usuario sobre la arquitectura del catálogo.
-- Si se usa Supabase como catálogo, requiere nueva tabla y posible migración.
-- No implementar sin DEC-013 definida y aprobada.
+- Cambio en el contrato del endpoint `POST /crear-preferencia`: si hay un cliente existente que envía un body diferente, la validación nueva lo rechazará. Verificar el frontend en `public/` para asegurarse de que envíe `{ sku, quantity }`.
+- La validación de importe en el webhook (DEC-011) sigue vigente; verificar que el `amount` calculado aquí sea el mismo que llega a `orders.js` para persistencia.
+- No exponer el catálogo ni la lista de SKU válidos en respuestas de error; un atacante podría enumerar productos.
 
 #### Resultado esperado
-El producto y precio no están hardcodeados; provienen de una fuente configurable y controlada por el servidor.
+El frontend solo envía `{ sku, quantity }`. El backend resuelve el producto, valida la cantidad, calcula el importe y lo persiste. El cliente no puede influir en el precio.
 
 ---
 
