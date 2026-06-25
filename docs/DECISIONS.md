@@ -163,24 +163,33 @@ La comparación de importes usa `Number`, lo que puede producir errores de preci
 
 ## DEC-012 — Esquema versionado de Supabase: restricciones, índices y RLS
 
-**Fecha:** pendiente de definir  
-**Estado:** pendiente
+**Fecha:** 2026-06-24  
+**Estado:** aceptada
 
 ### Contexto
 El esquema de `orders` existe solo como DDL en el README. No hay migraciones versionadas, índices documentados ni política RLS definida. La clave `service_role` puede evitar controles de RLS según la configuración.
 
 ### Decisión
-> Pendiente de confirmar con el usuario.
 
-### Opciones a evaluar
-- Crear un directorio `supabase/migrations/` con el DDL versionado.
-- Definir índice sobre `external_reference` (ya tiene restricción UNIQUE) y sobre `status` para consultas frecuentes.
-- Definir si se habilita RLS y qué política se aplica (la clave `service_role` la omite por defecto; definir si se restringe para otras claves).
-- Definir si se versiona con Supabase CLI o con archivos SQL manuales.
+- Usar archivos SQL manuales versionados; no se adopta Supabase CLI en esta etapa.
+- El archivo de migración será `supabase/migrations/001_create_orders.sql`.
+- Codex crea el archivo SQL en el repositorio; el usuario lo aplica manualmente en Supabase cuando corresponda.
+- El archivo debe contener: DDL de `orders`, restricciones de dominio, índices y política RLS mínima.
+- El archivo no debe contener: credenciales, API keys, datos reales ni valores de variables de entorno.
+- Si el proyecto crece, se puede adoptar Supabase CLI en una decisión futura sin conflicto.
+
+### Motivo
+El proyecto es pequeño y controlado. No se requieren herramientas adicionales en esta etapa. Un archivo SQL revisable en el repositorio es suficiente para versionar el esquema y permite que el usuario lo aplique de forma controlada en el momento que elija.
+
+### Alternativas consideradas
+- Supabase CLI (`supabase migration new`, `supabase db diff`): más automatizado y genera diffs, pero requiere instalar y configurar la herramienta localmente. Descartada para esta etapa; puede reconsiderarse si el proyecto escala.
 
 ### Consecuencias
 - Relacionada con T-006.
-- No aplicar en base compartida sin autorización explícita.
+- Codex puede crear `supabase/migrations/001_create_orders.sql` directamente sin herramientas adicionales.
+- El usuario es responsable de revisar y aplicar el archivo en Supabase de forma manual; Codex no ejecuta ningún comando de base de datos.
+- No aplicar en base compartida o productiva sin autorización explícita.
+- T-006 queda desbloqueada.
 
 ---
 

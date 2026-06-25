@@ -4,23 +4,33 @@
 
 ## Estado actual
 
-El proyecto contiene un flujo demostrativo completo para una Remera LEMONT: interfaz estática, creación de preferencias de Checkout Pro, persistencia inicial en Supabase, recepción de webhooks, consulta del pago a Mercado Pago y actualización del pedido a `paid`.
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las cuatro tareas P0 de seguridad (T-001 a T-004) y la suite de pruebas automatizadas (T-005) están completadas. La siguiente tarea accionable es T-006 (migración SQL de Supabase).
 
-La revisión fue documental y de solo lectura. No se ejecutó la aplicación, no se realizaron pagos y no se validó el comportamiento contra servicios externos.
+- **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
+- **Tests**: Jest instalado. `npm test` pasa con 11 tests.
+- **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
+- **Pendiente más urgente**: T-006 — crear `supabase/migrations/001_create_orders.sql` (DEC-012 aceptada, sin bloqueo).
+
+Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Avances detectados
 
+**Base original:**
 - Servidor Express y frontend estático implementados.
-- Producto de prueba y botón de pago disponibles.
 - Pedido `pending` asociado mediante `external_reference`.
 - Preferencia con webhook y tres URLs de retorno.
-- Extracción flexible de tipo de evento e ID de pago.
-- Confirmación del pago mediante consulta a la API.
+- Confirmación del pago mediante consulta a la API oficial.
 - Validación básica de pedido existente, duplicado e importe.
-- Actualización a `paid` con metadatos de Mercado Pago.
-- Manejo específico de JSON inválido.
 - `.env` ignorado y `.env.example` disponible como contrato.
-- Documentación base para colaboración con agentes creada.
+
+**Implementado en sesión 2026-06-24:**
+- T-001: validación HMAC-SHA256 de firma webhook con HTTP 401 para firma ausente o inválida.
+- T-002: creación de preferencia detenida si Supabase falla.
+- T-003: transición `pending → paid` atómica e idempotente.
+- T-004: validación de variables de entorno obligatorias al arrancar.
+- T-005: suite Jest con 11 tests; `npm test` pasa sin llamadas externas.
+- T-006: migración SQL manual versionada para `orders`, con restricciones, índices y RLS habilitada.
+- Documentación completa: TASKS.md (T-001 a T-014), DECISIONS.md (DEC-009 a DEC-017), CURRENT_CONTEXT.md.
 
 ## Problemas resueltos documentados
 
@@ -33,7 +43,6 @@ La revisión fue documental y de solo lectura. No se ejecutó la aplicación, no
 
 ## Pendientes principales
 
-- Versionar esquema, restricciones y políticas de Supabase (T-006).
 - Definir una estrategia monetaria segura (T-007, requiere DEC-011).
 - Reducir logs sensibles y retirar diagnóstico temporal de producción (T-010, T-011).
 - Definir catálogo, autenticación y requisitos comerciales (T-012).
@@ -43,14 +52,39 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-Las tareas P0 T-001 a T-004 están completadas. El alcance de T-005 fue definido.
+T-001 a T-006 están completadas. DEC-012 fue aceptada.
 
-Pendiente de confirmar con el usuario: framework de testing para T-005 (Jest recomendado, o `node:test` sin dependencias nuevas). Sin esa confirmación y la autorización para modificar `package.json`, Codex no puede proceder.
+**T-007** requiere definir DEC-011 antes de implementar una estrategia monetaria segura.
 
-Orden sugerido:
-1. Implementar T-006 para versionar el esquema de Supabase, previa confirmación del alcance de migraciones.
+Orden sugerido para Codex:
+1. Definir DEC-011 para desbloquear T-007.
+2. Implementar una tarea sin bloqueo si se prefiere avanzar antes: T-008, T-009, T-011 o T-014.
 
 ## Bitácora
+
+### 2026-06-24 — T-006 completada
+
+- Se creó `supabase/migrations/001_create_orders.sql` con DDL de `public.orders`, restricciones `status in ('pending', 'paid')` y `amount > 0`, índices para `status` y `mercadopago_payment_id`, y RLS habilitada.
+- No se crearon policies para `anon` ni `authenticated`; el archivo documenta que `SUPABASE_SERVICE_ROLE_KEY` debe permanecer solo en backend.
+- La migración no fue aplicada en ninguna base de datos. El usuario debe revisarla y aplicarla manualmente cuando corresponda.
+- Verificación: `git diff --check`.
+
+### 2026-06-24 — Contexto estable consolidado
+
+- Se creó `docs/CURRENT_CONTEXT.md` como resumen compacto para agentes: metodología, estado de tareas, decisiones aceptadas, estado técnico y próximo paso.
+- Se actualizaron "Estado actual" y "Avances detectados" en este archivo para reflejar el estado real post T-001 a T-005.
+
+### 2026-06-24 — DEC-012 aceptada
+
+- Estrategia elegida: SQL manual versionado en `supabase/migrations/`, sin Supabase CLI.
+- El usuario aplicará el archivo manualmente; Codex no ejecuta comandos de base de datos.
+- T-006 queda desbloqueada.
+
+### 2026-06-24 — T-006 alcance definido
+
+- Se documentó el esquema real de `orders` (fuente: README.md), las restricciones a agregar (CHECK status, CHECK amount > 0), los índices recomendados (status, mercadopago_payment_id), la estrategia RLS mínima y las reglas de versionado SQL.
+- Se identificó que DEC-012 ya existe en `docs/DECISIONS.md` como decisión pendiente sobre estrategia de versionado; no fue necesario crear DEC-011 (ya ocupada por importes/redondeo).
+- Pendiente: el usuario debe confirmar DEC-012 antes de que Codex implemente.
 
 ### 2026-06-24 — T-005 completada
 
