@@ -108,7 +108,7 @@ El ID ilustrativo no representa un pago real: la consulta a Mercado Pago fallar√
 ## Flujo principal
 
 1. El navegador solicita `POST /crear-preferencia`.
-2. El backend genera una referencia `LEMONT-ORDER-${Date.now()}`.
+2. El backend genera una referencia `LEMONT-ORDER-${crypto.randomUUID()}`.
 3. Se crea un pedido `pending` en Supabase.
 4. Se crea una preferencia con URLs de retorno y webhook.
 5. El navegador redirige a Mercado Pago.

@@ -300,7 +300,7 @@ app.post("/crear-preferencia", async (req, res) => {
       unit_price: 100,
       currency_id: "ARS",
     };
-    const externalReference = `LEMONT-ORDER-${Date.now()}`;
+    const externalReference = `LEMONT-ORDER-${crypto.randomUUID()}`;
 
     console.log("Preferencia creada para pedido:");
     console.log("external_reference:", externalReference);

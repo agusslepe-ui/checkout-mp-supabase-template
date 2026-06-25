@@ -240,6 +240,66 @@ describe("creación de preferencias", () => {
     expect(response.body).toEqual({ error: "No se pudo iniciar el pago" });
     expect(preferenceCreate).not.toHaveBeenCalled();
   });
+
+  test("genera external_reference con prefijo trazable", async () => {
+    const randomUUIDSpy = jest
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValue("11111111-1111-4111-8111-111111111111");
+    const { routes, supabaseMock, preferenceCreate } = loadApp();
+
+    await routes.post["/crear-preferencia"]({}, createResponse());
+
+    const insertedOrder = supabaseMock.insertOrder.mock.calls[0][0];
+    expect(insertedOrder.external_reference).toBe(
+      "LEMONT-ORDER-11111111-1111-4111-8111-111111111111"
+    );
+    expect(preferenceCreate.mock.calls[0][0].body.external_reference).toBe(
+      insertedOrder.external_reference
+    );
+    randomUUIDSpy.mockRestore();
+  });
+
+  test("la referencia no depende solo de Date.now", async () => {
+    const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1700000000000);
+    const randomUUIDSpy = jest
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValue("22222222-2222-4222-8222-222222222222");
+    const { routes, supabaseMock } = loadApp();
+
+    await routes.post["/crear-preferencia"]({}, createResponse());
+
+    const insertedOrder = supabaseMock.insertOrder.mock.calls[0][0];
+    expect(insertedOrder.external_reference).toBe(
+      "LEMONT-ORDER-22222222-2222-4222-8222-222222222222"
+    );
+    expect(insertedOrder.external_reference).not.toBe("LEMONT-ORDER-1700000000000");
+    expect(dateNowSpy).not.toHaveBeenCalled();
+    randomUUIDSpy.mockRestore();
+    dateNowSpy.mockRestore();
+  });
+
+  test("dos pedidos generados en el mismo instante no repiten external_reference", async () => {
+    const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1700000000000);
+    const randomUUIDSpy = jest
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("33333333-3333-4333-8333-333333333333")
+      .mockReturnValueOnce("44444444-4444-4444-8444-444444444444");
+    const { routes, supabaseMock } = loadApp();
+
+    await routes.post["/crear-preferencia"]({}, createResponse());
+    await routes.post["/crear-preferencia"]({}, createResponse());
+
+    const references = supabaseMock.insertOrder.mock.calls.map(
+      ([payload]) => payload.external_reference
+    );
+    expect(references).toEqual([
+      "LEMONT-ORDER-33333333-3333-4333-8333-333333333333",
+      "LEMONT-ORDER-44444444-4444-4444-8444-444444444444",
+    ]);
+    expect(new Set(references).size).toBe(2);
+    randomUUIDSpy.mockRestore();
+    dateNowSpy.mockRestore();
+  });
 });
 
 describe("webhook de pagos", () => {

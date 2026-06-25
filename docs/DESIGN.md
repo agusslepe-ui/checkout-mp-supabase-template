@@ -32,7 +32,7 @@ No hay todavía capas separadas para rutas, dominio, servicios o acceso a datos.
 ## Flujo de creación de pago
 
 1. El botón del frontend envía `POST /crear-preferencia` sin cuerpo.
-2. El servidor define el producto y genera `LEMONT-ORDER-${Date.now()}`.
+2. El servidor define el producto y genera `LEMONT-ORDER-${crypto.randomUUID()}`.
 3. `createPendingOrder` inserta un registro en `orders`.
 4. El servidor crea la preferencia con `notification_url`, `back_urls` y `auto_return: "approved"`.
 5. Devuelve `preference_id`, `init_point` y `sandbox_init_point`.

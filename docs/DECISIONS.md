@@ -26,7 +26,7 @@ Este registro distingue decisiones observadas en el código de decisiones todav�
 - Decisión: guardar la misma referencia en el pedido y la preferencia.
 - Motivo: relacionar el pago externo con el pedido interno sin depender solo del `payment_id`.
 - Alternativas: tabla de relaciones por ID de preferencia o pago.
-- Pendiente: reemplazar la generación basada solo en tiempo por un identificador robusto (ver T-008).
+- Implementación: T-008 completada (2026-06-25). La referencia conserva el prefijo `LEMONT-ORDER-` y usa `crypto.randomUUID()` para evitar depender solo del tiempo.
 
 ## D-004 Persistir un pedido antes del checkout
 

@@ -413,7 +413,7 @@ La comparación de importes es explícita, encapsulada en una función nombrada,
 
 ### T-008 — Mejorar identificadores de pedidos
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P1
 
 #### Objetivo
@@ -436,6 +436,8 @@ Reemplazar la generación basada solo en timestamp por `crypto.randomUUID()` (di
 
 #### Resultado esperado
 Las referencias de pedidos son únicas bajo concurrencia sin depender exclusivamente del timestamp.
+
+> **Completada el 2026-06-25.** La referencia de pedidos usa `LEMONT-ORDER-${crypto.randomUUID()}` con prefijo trazable y UUID nativo de Node.js. `tests/index.test.js` verifica prefijo, ausencia de dependencia exclusiva de `Date.now()` y referencias distintas para dos pedidos generados en el mismo instante. Verificación: `node --check index.js`, `npm.cmd test` (18 tests) y `git diff --check`.
 
 ---
 

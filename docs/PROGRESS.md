@@ -4,13 +4,13 @@
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006) y la estrategia monetaria explícita (T-007) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007) y los identificadores robustos de pedidos (T-008) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
-- **Tests**: Jest instalado. `npm test` pasa con 15 tests.
+- **Tests**: Jest instalado. `npm test` pasa con 18 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: T-008 — mejorar identificadores de pedidos únicos bajo concurrencia.
+- **Pendiente más urgente**: T-011 — retirar herramientas temporales de producción, o T-009/T-014 según prioridad del usuario.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -32,6 +32,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - T-005: suite Jest con 11 tests; `npm test` pasa sin llamadas externas.
 - T-006: migración SQL manual versionada para `orders`, con restricciones, índices y RLS habilitada.
 - T-007: estrategia monetaria explícita con comparación normalizada a centavos, validación de moneda y logs genéricos del webhook de pago.
+- T-008: referencias de pedido generadas con `crypto.randomUUID()` y prefijo `LEMONT-ORDER-`.
 - Documentación completa: TASKS.md (T-001 a T-014), DECISIONS.md (DEC-009 a DEC-017), CURRENT_CONTEXT.md.
 
 ## Problemas resueltos documentados
@@ -45,7 +46,6 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Pendientes principales
 
-- Mejorar identificadores de pedidos únicos bajo concurrencia (T-008).
 - Reducir logs sensibles y retirar diagnóstico temporal de producción (T-010, T-011).
 - Definir catálogo, autenticación y requisitos comerciales (T-012).
 - Seleccionar y documentar un despliegue de producción (T-013).
@@ -54,15 +54,31 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Fase P0 + P1 inicial cerrada.** T-001 a T-007 completadas. T-001 a T-006 están commiteadas; T-007 queda pendiente de commit por instrucción del usuario.
+**Fase P0 + P1 inicial cerrada.** T-001 a T-008 completadas. T-001 a T-006 están commiteadas; T-007 y T-008 quedan pendientes de commit por instrucción del usuario.
 
 Opciones para continuar:
 
 **A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks y RLS.
 
-**B — Próxima fase técnica**: continuar con T-008, T-009, T-011 o T-014. Las tareas T-008, T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
+**B — Próxima fase técnica**: continuar con T-009, T-011 o T-014. Las tareas T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
 
 ## Bitácora
+
+### 2026-06-25 — T-008 completada
+
+- Objetivo: reemplazar referencias basadas solo en timestamp por identificadores robustos bajo concurrencia.
+- Tarea relacionada: T-008.
+- Archivos afectados: `index.js`, `tests/index.test.js`, `README.md`, `docs/DESIGN.md`, `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Cambios realizados:
+  - `index.js`: `externalReference` ahora usa `LEMONT-ORDER-${crypto.randomUUID()}`.
+  - `tests/index.test.js`: se agregaron pruebas para prefijo, no dependencia exclusiva de `Date.now()` y dos pedidos en el mismo instante sin repetir `external_reference`.
+  - Documentación: se actualizó el estado de T-008, el flujo documentado y el contexto compacto.
+- Verificaciones:
+  - `node --check index.js`.
+  - `npm.cmd test` — 18 tests pasan.
+  - `git diff --check`.
+- Resultado: T-008 completada sin instalar dependencias, sin leer `.env`, sin commits y sin cambiar Mercado Pago, webhooks, firma, validación de importe/moneda ni transición `pending → paid`.
+- Pendientes o riesgos: ninguno específico de T-008.
 
 ### 2026-06-25 — T-007 completada
 
