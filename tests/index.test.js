@@ -6,6 +6,7 @@ const requiredEnv = {
   BASE_URL: "https://example.test",
   SUPABASE_URL: "https://supabase.test",
   SUPABASE_SERVICE_ROLE_KEY: "configured",
+  LOG_LEVEL: "info",
 };
 
 function createResponse() {
@@ -21,6 +22,16 @@ function createResponse() {
       return this;
     },
   };
+}
+
+function parseLogEntries(...spies) {
+  return spies
+    .flatMap((spy) => spy.mock.calls.map(([message]) => JSON.parse(message)))
+    .filter(Boolean);
+}
+
+function serializedLogOutput(...spies) {
+  return spies.flatMap((spy) => spy.mock.calls.flat()).join(" ");
 }
 
 function makeSignature({
@@ -204,9 +215,19 @@ describe("configuración inicial", () => {
     ).toThrow("process.exit:1");
 
     expect(exitSpy).toHaveBeenCalledWith(1);
-    const errorMessage = errorSpy.mock.calls.flat().join(" ");
-    expect(errorMessage).toContain("BASE_URL");
-    expect(errorMessage).toContain("SUPABASE_URL");
+    const [entry] = parseLogEntries(errorSpy);
+    expect(entry).toEqual(
+      expect.objectContaining({
+        level: "error",
+        event: "configuracion invalida",
+        request_id: "startup",
+        route: "startup",
+        method: "STARTUP",
+        error_type: "missing_environment",
+      })
+    );
+    expect(entry.timestamp).toEqual(expect.any(String));
+    const errorMessage = serializedLogOutput(errorSpy);
     expect(errorMessage).not.toContain(requiredEnv.MERCADOPAGO_ACCESS_TOKEN);
     expect(errorMessage).not.toContain(requiredEnv.SUPABASE_SERVICE_ROLE_KEY);
   });
@@ -214,15 +235,18 @@ describe("configuración inicial", () => {
 
 describe("creación de preferencias", () => {
   let logSpy;
+  let warnSpy;
   let errorSpy;
 
   beforeEach(() => {
     logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     logSpy.mockRestore();
+    warnSpy.mockRestore();
     errorSpy.mockRestore();
   });
 
@@ -256,6 +280,9 @@ describe("creación de preferencias", () => {
     expect(preferenceCreate.mock.calls[0][0].body.external_reference).toBe(
       insertedOrder.external_reference
     );
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
+      insertedOrder.external_reference
+    );
     randomUUIDSpy.mockRestore();
   });
 
@@ -282,7 +309,9 @@ describe("creación de preferencias", () => {
     const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1700000000000);
     const randomUUIDSpy = jest
       .spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("request-33333333-3333-4333-8333-333333333333")
       .mockReturnValueOnce("33333333-3333-4333-8333-333333333333")
+      .mockReturnValueOnce("request-44444444-4444-4444-8444-444444444444")
       .mockReturnValueOnce("44444444-4444-4444-8444-444444444444");
     const { routes, supabaseMock } = loadApp();
 
@@ -304,15 +333,18 @@ describe("creación de preferencias", () => {
 
 describe("webhook de pagos", () => {
   let logSpy;
+  let warnSpy;
   let errorSpy;
 
   beforeEach(() => {
     logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     logSpy.mockRestore();
+    warnSpy.mockRestore();
     errorSpy.mockRestore();
   });
 
@@ -332,18 +364,29 @@ describe("webhook de pagos", () => {
     expect(response.statusCode).toBe(401);
     expect(response.body).toEqual({ error: "Webhook inválido" });
     expect(paymentGet).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith("firma de webhook ausente");
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "firma de webhook ausente",
+          route: "/webhook",
+          method: "POST",
+          status_code: 401,
+        }),
+      ])
+    );
   });
 
   test("rechaza webhooks con firma inválida", async () => {
     const { routes, paymentGet } = loadApp();
     const response = createResponse();
+    const invalidSignature = `ts=1700000000,v1=${"0".repeat(64)}`;
 
     await routes.post["/webhook"](
       makeWebhookRequest({
         headers: {
           "x-request-id": "request-test",
-          "x-signature": `ts=1700000000,v1=${"0".repeat(64)}`,
+          "x-signature": invalidSignature,
         },
       }),
       response
@@ -352,7 +395,19 @@ describe("webhook de pagos", () => {
     expect(response.statusCode).toBe(401);
     expect(response.body).toEqual({ error: "Webhook inválido" });
     expect(paymentGet).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith("firma de webhook inválida");
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "firma de webhook invalida",
+          request_id: "request-test",
+          route: "/webhook",
+          method: "POST",
+          status_code: 401,
+        }),
+      ])
+    );
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(invalidSignature);
   });
 
   test("continúa el flujo con firma válida", async () => {
@@ -364,6 +419,18 @@ describe("webhook de pagos", () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ received: true });
     expect(paymentGet).toHaveBeenCalledWith({ id: "PAYMENTTEST" });
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "info",
+          event: "webhook recibido",
+          request_id: "request-test",
+          route: "/webhook",
+          method: "POST",
+          timestamp: expect.any(String),
+        }),
+      ])
+    );
   });
 
   test("marca como paid un pago aprobado con importe correcto", async () => {
@@ -440,7 +507,17 @@ describe("webhook de pagos", () => {
     await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
 
     expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith("Monto de pago no coincide con el pedido");
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "importe no coincide",
+          request_id: "request-test",
+          route: "/webhook",
+          method: "POST",
+        }),
+      ])
+    );
   });
 
   test("no marca como paid si el pago no está approved", async () => {
@@ -470,7 +547,17 @@ describe("webhook de pagos", () => {
 
     expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
     expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith("Pedido no encontrado para procesar pago");
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "pedido no encontrado",
+          request_id: "request-test",
+          route: "/webhook",
+          method: "POST",
+        }),
+      ])
+    );
   });
 
   test("trata un pedido ya pagado como webhook duplicado", async () => {
@@ -486,7 +573,18 @@ describe("webhook de pagos", () => {
     await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
 
     expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith("Pedido ya estaba pagado, webhook duplicado ignorado");
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "info",
+          event: "webhook duplicado ignorado",
+          request_id: "request-test",
+          route: "/webhook",
+          method: "POST",
+          order_status: "paid",
+        }),
+      ])
+    );
   });
 
   test("mantiene la transición atómica ante webhooks duplicados concurrentes", async () => {
@@ -532,7 +630,17 @@ describe("webhook de pagos", () => {
 
     expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(2);
     expect(successfulUpdates).toBe(1);
-    expect(logSpy).toHaveBeenCalledWith("Pedido ya procesado, webhook duplicado ignorado");
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "info",
+          event: "webhook duplicado ignorado",
+          request_id: "request-test",
+          route: "/webhook",
+          method: "POST",
+        }),
+      ])
+    );
   });
 
   test("no marca como paid si la moneda no coincide", async () => {
@@ -554,7 +662,17 @@ describe("webhook de pagos", () => {
     await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
 
     expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith("Moneda de pago no coincide con el pedido");
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "moneda no coincide",
+          request_id: "request-test",
+          route: "/webhook",
+          method: "POST",
+        }),
+      ])
+    );
   });
 
   test("la moneda coincidente permite continuar el flujo de pago", async () => {
@@ -596,10 +714,14 @@ describe("webhook de pagos", () => {
 
     await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
 
-    const logOutput = logSpy.mock.calls.flat().join(" ");
+    const logOutput = serializedLogOutput(logSpy, warnSpy, errorSpy);
     expect(logOutput).not.toContain("99.99");
     expect(logOutput).not.toContain("100.00");
     expect(logOutput).not.toContain("USD");
     expect(logOutput).not.toContain("ARS");
+    expect(logOutput).not.toContain("transaction_amount");
+    expect(logOutput).not.toContain("order.amount");
+    expect(logOutput).not.toContain("external_reference");
+    expect(logOutput).not.toContain("ORDERTEST");
   });
 });

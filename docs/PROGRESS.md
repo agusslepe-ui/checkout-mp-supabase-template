@@ -4,13 +4,13 @@
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007) y los identificadores robustos de pedidos (T-008) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008) y la observabilidad segura (T-010) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
 - **Tests**: Jest instalado. `npm test` pasa con 18 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: T-010 (DEC-017 aceptada, lista para Codex), T-009, T-011 y T-014 (sin bloqueo).
+- **Pendiente más urgente**: T-011 — retirar herramientas temporales de producción, o T-009/T-014 según prioridad del usuario.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -33,6 +33,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - T-006: migración SQL manual versionada para `orders`, con restricciones, índices y RLS habilitada.
 - T-007: estrategia monetaria explícita con comparación normalizada a centavos, validación de moneda y logs genéricos del webhook de pago.
 - T-008: referencias de pedido generadas con `crypto.randomUUID()` y prefijo `LEMONT-ORDER-`.
+- T-010: logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos y ausencia de payloads sensibles.
 - Documentación completa: TASKS.md (T-001 a T-014), DECISIONS.md (DEC-009 a DEC-017), CURRENT_CONTEXT.md.
 
 ## Problemas resueltos documentados
@@ -46,7 +47,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Pendientes principales
 
-- Reducir logs sensibles y retirar diagnóstico temporal de producción (T-010, T-011).
+- Retirar diagnóstico temporal de producción (T-011).
 - Definir catálogo, autenticación y requisitos comerciales (T-012).
 - Seleccionar y documentar un despliegue de producción (T-013).
 
@@ -63,6 +64,25 @@ Opciones para continuar:
 **B — Próxima fase técnica**: continuar con T-009, T-011 o T-014. Las tareas T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
 
 ## Bitácora
+
+### 2026-06-25 — T-010 completada
+
+- Objetivo: implementar DEC-017 como fuente de verdad para observabilidad segura.
+- Tarea relacionada: T-010.
+- Archivos afectados: `index.js`, `.env.example`, `tests/index.test.js`, `README.md`, `docs/DESIGN.md`, `docs/SECURITY.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Cambios realizados:
+  - `index.js`: se agregó `log(level, event, extra)` con salida JSON y whitelist de campos seguros.
+  - `index.js`: todos los logs directos del backend fueron reemplazados por el helper; `console.*` solo queda dentro de `log`.
+  - `.env.example`: se agregó `LOG_LEVEL=info`.
+  - `tests/index.test.js`: se actualizaron aserciones para logs JSON y se verificó ausencia de `x-signature`, importes y `external_reference` en flujos críticos.
+  - Documentación: se actualizó el contrato de variables y el estado de T-010.
+- Verificaciones:
+  - `node --check index.js`.
+  - `npm.cmd test` — 18 tests pasan.
+  - `Select-String -Path index.js -Pattern "console\\."` — solo encuentra `console.*` dentro del helper.
+  - `git diff --check`.
+- Resultado: T-010 completada sin instalar dependencias, sin modificar `package.json`, sin leer `.env`, sin commits y sin cambiar creación de preferencias, firma webhook, validación importe/moneda ni transición `pending → paid`.
+- Pendientes o riesgos: T-011 sigue pendiente para retirar o restringir `GET /webhook` en producción.
 
 ### 2026-06-25 — DEC-017 aceptada — estrategia de observabilidad segura definida
 

@@ -443,7 +443,7 @@ Las referencias de pedidos son únicas bajo concurrencia sin depender exclusivam
 
 ### T-009 — Separar responsabilidades del backend
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P1
 
 #### Objetivo
@@ -554,6 +554,8 @@ No realizar llamadas externas reales. No cargar `.env`.
 
 #### Resultado esperado
 Los logs del backend son objetos JSON estructurados, con niveles explícitos, correlación por `request_id` y sin campos sensibles en ningún flujo.
+
+> **Completada el 2026-06-25.** Se agregó el helper `log(level, event, extra)` en `index.js`, todos los `console.*` directos quedaron restringidos al helper, los logs se emiten como JSON con `level`, `event`, `request_id`, `route`, `method` y `timestamp`, y `.env.example` incluye `LOG_LEVEL=info`. `tests/index.test.js` verifica estructura mínima, uso de `x-request-id` como correlación y ausencia de campos prohibidos como `x-signature`, importes y `external_reference`. Verificación: `node --check index.js`, `npm.cmd test` (18 tests), `Select-String -Path index.js -Pattern "console\\."` y `git diff --check`.
 
 ---
 

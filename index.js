@@ -8,6 +8,51 @@ const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 const PORT = 3003;
+const LOG_LEVELS = {
+  info: 10,
+  warn: 20,
+  error: 30,
+};
+
+function log(level, event, extra = {}) {
+  const normalizedLevel = LOG_LEVELS[level] ? level : "info";
+  const configuredLevel = LOG_LEVELS[process.env.LOG_LEVEL] ? process.env.LOG_LEVEL : "info";
+
+  if (LOG_LEVELS[normalizedLevel] < LOG_LEVELS[configuredLevel]) {
+    return;
+  }
+
+  const entry = {
+    level: normalizedLevel,
+    event,
+    request_id: extra.request_id || crypto.randomUUID(),
+    route: extra.route || "app",
+    method: extra.method || "SYSTEM",
+    timestamp: new Date().toISOString(),
+  };
+  const safeOptionalFields = [
+    "status_code",
+    "payment_status",
+    "order_status",
+    "error_type",
+  ];
+
+  for (const field of safeOptionalFields) {
+    if (extra[field] !== undefined) {
+      entry[field] = extra[field];
+    }
+  }
+
+  const serializedEntry = JSON.stringify(entry);
+
+  if (normalizedLevel === "error") {
+    console.error(serializedEntry);
+  } else if (normalizedLevel === "warn") {
+    console.warn(serializedEntry);
+  } else {
+    console.log(serializedEntry);
+  }
+}
 
 // Estas variables son obligatorias tanto en desarrollo como en producción.
 const requiredEnvironmentVariables = [
@@ -22,11 +67,12 @@ const missingEnvironmentVariables = requiredEnvironmentVariables.filter(
 );
 
 if (missingEnvironmentVariables.length > 0) {
-  console.error(
-    `Configuración inválida. Variables faltantes o vacías: ${missingEnvironmentVariables.join(
-      ", "
-    )}`
-  );
+  log("error", "configuracion invalida", {
+    request_id: "startup",
+    route: "startup",
+    method: "STARTUP",
+    error_type: "missing_environment",
+  });
   process.exit(1);
 }
 
@@ -135,6 +181,7 @@ async function markOrderAsPaid({
   mercadopago_status,
   transaction_amount,
   currency_id,
+  logContext,
 }) {
   const { data: order, error: findError } = await supabase
     .from("orders")
@@ -147,22 +194,25 @@ async function markOrderAsPaid({
   }
 
   if (!order) {
-    console.log("Pedido no encontrado para procesar pago");
+    log("warn", "pedido no encontrado", logContext);
     return null;
   }
 
   if (order.status === "paid") {
-    console.log("Pedido ya estaba pagado, webhook duplicado ignorado");
+    log("info", "webhook duplicado ignorado", {
+      ...logContext,
+      order_status: "paid",
+    });
     return null;
   }
 
   if (currency_id !== order.currency) {
-    console.log("Moneda de pago no coincide con el pedido");
+    log("warn", "moneda no coincide", logContext);
     return null;
   }
 
   if (!importesCoinciden(transaction_amount, order.amount)) {
-    console.log("Monto de pago no coincide con el pedido");
+    log("warn", "importe no coincide", logContext);
     return null;
   }
 
@@ -184,7 +234,7 @@ async function markOrderAsPaid({
   }
 
   if (!updatedOrder) {
-    console.log("Pedido ya procesado, webhook duplicado ignorado");
+    log("info", "webhook duplicado ignorado", logContext);
     return null;
   }
 
@@ -205,9 +255,20 @@ app.get("/pending", (req, res) => {
 
 app.post("/webhook", async (req, res) => {
   const signatureHeader = req.headers["x-signature"];
+  const logContext = {
+    request_id:
+      typeof req.headers["x-request-id"] === "string" && req.headers["x-request-id"] !== ""
+        ? req.headers["x-request-id"]
+        : crypto.randomUUID(),
+    route: "/webhook",
+    method: "POST",
+  };
 
   if (typeof signatureHeader !== "string" || signatureHeader.trim() === "") {
-    console.log("firma de webhook ausente");
+    log("warn", "firma de webhook ausente", {
+      ...logContext,
+      status_code: 401,
+    });
     return res.status(401).json({ error: "Webhook inválido" });
   }
 
@@ -218,11 +279,14 @@ app.post("/webhook", async (req, res) => {
   });
 
   if (!signatureIsValid) {
-    console.log("firma de webhook inválida");
+    log("warn", "firma de webhook invalida", {
+      ...logContext,
+      status_code: 401,
+    });
     return res.status(401).json({ error: "Webhook inválido" });
   }
 
-  console.log("Webhook POST recibido");
+  log("info", "webhook recibido", logContext);
 
   const eventType =
     req.query.topic || req.body?.topic || req.query.type || req.body?.type;
@@ -233,22 +297,28 @@ app.post("/webhook", async (req, res) => {
     req.query["data.id"];
 
   if (eventType !== "payment") {
-    console.log("Evento ignorado");
+    log("info", "evento ignorado", {
+      ...logContext,
+      status_code: 200,
+    });
     return res.json({ received: true });
   }
 
-  console.log("Pago detectado en webhook");
+  log("info", "pago detectado en webhook", logContext);
 
   try {
     const paymentInfo = await payment.get({ id: paymentId });
 
-    console.log("Pago consultado en Mercado Pago");
+    log("info", "pago consultado en mercado pago", logContext);
 
     if (paymentInfo.status === "approved") {
-      console.log("PAGO APROBADO CONFIRMADO POR API");
+      log("info", "pago aprobado confirmado por api", {
+        ...logContext,
+        payment_status: "approved",
+      });
 
       if (!paymentInfo.external_reference) {
-        console.log("No hay external_reference para actualizar pedido");
+        log("warn", "referencia externa ausente", logContext);
       } else {
         try {
           const updatedOrder = await markOrderAsPaid({
@@ -257,36 +327,60 @@ app.post("/webhook", async (req, res) => {
             mercadopago_status: paymentInfo.status,
             transaction_amount: paymentInfo.transaction_amount,
             currency_id: paymentInfo.currency_id,
+            logContext,
           });
 
           if (updatedOrder) {
-            console.log("Pedido actualizado a paid en Supabase");
+            log("info", "pedido actualizado a pagado", {
+              ...logContext,
+              order_status: "paid",
+            });
           }
         } catch (error) {
-          console.error("Error actualizando pedido en Supabase");
+          log("error", "error actualizando pedido en supabase", {
+            ...logContext,
+            error_type: "supabase_error",
+          });
         }
       }
     } else {
-      console.log("Pago recibido pero no aprobado");
+      log("warn", "pago no aprobado", {
+        ...logContext,
+        payment_status: paymentInfo.status,
+      });
     }
   } catch (error) {
-    console.error("Error consultando pago en Mercado Pago");
+    log("error", "error consultando pago en mercado pago", {
+      ...logContext,
+      error_type: "mp_api_error",
+    });
   }
 
   res.json({ received: true });
 });
 
 app.get("/webhook", (req, res) => {
-  console.log("Webhook GET recibido");
-  console.log("method:", req.method);
-  console.log("originalUrl:", req.originalUrl);
-  console.log("query:", req.query);
-  console.log("content-type:", req.headers["content-type"]);
+  const logContext = {
+    request_id: crypto.randomUUID(),
+    route: "/webhook",
+    method: "GET",
+  };
+
+  log("info", "webhook get recibido", {
+    ...logContext,
+    status_code: 200,
+  });
 
   res.json({ received: true });
 });
 
 app.post("/crear-preferencia", async (req, res) => {
+  const logContext = {
+    request_id: crypto.randomUUID(),
+    route: "/crear-preferencia",
+    method: "POST",
+  };
+
   if (!mercadoPagoAccessToken) {
     return res.status(500).json({
       error: "Falta configurar MERCADOPAGO_ACCESS_TOKEN en el archivo .env",
@@ -302,10 +396,7 @@ app.post("/crear-preferencia", async (req, res) => {
     };
     const externalReference = `LEMONT-ORDER-${crypto.randomUUID()}`;
 
-    console.log("Preferencia creada para pedido:");
-    console.log("external_reference:", externalReference);
-    console.log("producto:", product.title);
-    console.log("monto:", product.unit_price);
+    log("info", "inicio de creacion de preferencia", logContext);
 
     try {
       await createPendingOrder({
@@ -317,9 +408,16 @@ app.post("/crear-preferencia", async (req, res) => {
         status: "pending",
       });
 
-      console.log("Pedido guardado en Supabase:", externalReference);
+      log("info", "pedido persistido", {
+        ...logContext,
+        order_status: "pending",
+      });
     } catch (error) {
-      console.error("Error guardando pedido en Supabase");
+      log("error", "error al persistir pedido", {
+        ...logContext,
+        status_code: 500,
+        error_type: "supabase_error",
+      });
       return res.status(500).json({
         error: "No se pudo iniciar el pago",
       });
@@ -339,13 +437,19 @@ app.post("/crear-preferencia", async (req, res) => {
       },
     });
 
+    log("info", "preferencia creada", logContext);
+
     res.json({
       preference_id: result.id,
       init_point: result.init_point,
       sandbox_init_point: result.sandbox_init_point,
     });
   } catch (error) {
-    console.error("Error al crear la preferencia:", error);
+    log("error", "error al crear la preferencia", {
+      ...logContext,
+      status_code: 500,
+      error_type: "mercado_pago_error",
+    });
 
     res.status(500).json({
       error: "No se pudo crear la preferencia",
@@ -362,5 +466,9 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Servidor escuchando en ${baseUrl}`);
+  log("info", "servidor iniciado", {
+    request_id: "startup",
+    route: "startup",
+    method: "STARTUP",
+  });
 });

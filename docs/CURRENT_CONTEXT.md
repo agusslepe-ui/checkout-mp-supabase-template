@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25 (DEC-017 aceptada, T-010 desbloqueada).
+> Resumen compacto para agentes. Última actualización: 2026-06-25 (T-010 completada).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -8,7 +8,7 @@
 
 ## Estado de la fase actual: CERRADA
 
-Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007) y los identificadores robustos de pedidos (T-008) están **completadas**. T-001 a T-006 están commiteadas; T-007 y T-008 quedaron sin commit por instrucción del usuario.
+Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008) y la observabilidad segura (T-010) están **completadas**. T-001 a T-006 están commiteadas; T-007, T-008 y T-010 quedaron sin commit por instrucción del usuario.
 
 ---
 
@@ -43,6 +43,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 | T-006 | `supabase/migrations/001_create_orders.sql` creado con DDL completo, restricciones (`status`, `amount`), índices (`status`, `mercadopago_payment_id`) y RLS habilitada. **Aplicada y verificada manualmente el 2026-06-25.** (DEC-012) |
 | T-007 | Estrategia monetaria explícita: comparación de importes normalizada a centavos, validación de moneda contra `order.currency` y logs genéricos en `POST /webhook`. (DEC-011) |
 | T-008 | Identificadores de pedido con `LEMONT-ORDER-${crypto.randomUUID()}` para unicidad bajo concurrencia. |
+| T-010 | Logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos seguros y `LOG_LEVEL=info`. (DEC-017) |
 
 ---
 
@@ -51,7 +52,6 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
 | T-009 | Separar responsabilidades de `index.js` en módulos. | Sin bloqueo; conviene después de T-005. |
-| T-010 | Logs estructurados y sin datos sensibles. | **Sin bloqueo.** DEC-017 aceptada el 2026-06-25. |
 | T-011 | Retirar `GET /webhook` y herramientas de diagnóstico. | Sin bloqueo. |
 | T-012 | Fuente autoritativa de catálogo y precios. | DEC-013 pendiente. |
 | T-013 | Documentar y validar deploy. | DEC-016 pendiente. |
@@ -85,6 +85,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 - **Base de datos**: Supabase, tabla `orders`, acceso con `service_role` solo desde backend. RLS habilitada en migración.
 - **Transición de pagos**: Atómica e idempotente (`UPDATE WHERE status = 'pending'`).
 - **Tests**: Jest instalado. `npm test` pasa con 18 tests. Sin llamadas externas ni acceso a `.env`.
+- **Logs**: JSON estructurado por helper propio, con `request_id`, niveles y campos permitidos según DEC-017.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` versionado y **aplicado en Supabase el 2026-06-25**. Tabla `public.orders` confirmada: columnas, constraints, índices y RLS (`rowsecurity = true`) activa. Sin policies públicas.
 - **Versionado**: Git + GitHub. No hay deploy documentado.
 
@@ -121,17 +122,7 @@ Pedir a Claude o ChatGPT una explicación conceptual de lo construido:
 
 ### Opción B — Continuar con la próxima fase
 
-**DEC-017 aceptada (2026-06-25).** T-010 está desbloqueada y lista para Codex.
-
-Tareas sin bloqueo disponibles: T-009, T-010, T-011, T-014. Pueden abordarse en cualquier orden.
-
-Para T-010, Codex debe:
-1. Crear el helper `log(level, event, extra)` en `index.js`.
-2. Reemplazar todos los `console.log/warn/error` directos.
-3. Agregar `LOG_LEVEL=info` a `.env.example`.
-4. Verificar ausencia de campos prohibidos en tests.
-
-Ver instrucciones completas en `docs/TASKS.md` (T-010) y decisión en `docs/DECISIONS.md` (DEC-017).
+T-010 ya está completada. Tareas sin bloqueo disponibles: T-009, T-011 y T-014. Pueden abordarse en cualquier orden.
 
 ---
 

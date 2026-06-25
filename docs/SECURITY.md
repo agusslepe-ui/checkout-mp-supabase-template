@@ -55,7 +55,7 @@ La clave `service_role` puede evitar controles de RLS según la configuración. 
 
 ### Logs detallados
 
-El webhook registra query, cuerpo y numerosos campos del pago. Esto puede almacenar identificadores o datos personales innecesarios.
+Mitigado por T-010/DEC-017: el backend emite logs JSON mediante `log(level, event, extra)` con campos permitidos y correlación por `request_id`. No se deben registrar headers completos, bodies, payloads de Mercado Pago, firmas, importes, `external_reference` completa ni datos personales.
 
 ### Configuración y diagnóstico de desarrollo
 
@@ -72,7 +72,7 @@ No se observan tests automatizados, rate limiting, health checks, monitoreo, pol
 3. Hacer atómica e idempotente la actualización de pagos.
 4. Validar configuración al inicio sin mostrar valores.
 5. Adoptar una estrategia monetaria segura.
-6. Reducir y estructurar logs con correlación y redacción de datos.
+6. Mantener logs estructurados con correlación y sin campos prohibidos.
 7. Versionar el esquema y revisar restricciones, índices y RLS.
 8. Separar entornos y credenciales; usar HTTPS estable en producción.
 9. Agregar pruebas sin llamadas ni pagos reales.

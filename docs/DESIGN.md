@@ -92,6 +92,6 @@ La lectura previa y la actualización son operaciones separadas. Dos webhooks co
 - Comparación monetaria explícita con normalización a centavos y validación de moneda en el webhook.
 - Webhook sin validación criptográfica de firma.
 - Validación incompleta de configuración al iniciar.
-- Logs detallados y ruta `GET /webhook` orientados a desarrollo.
+- Logs estructurados con `request_id`; la ruta `GET /webhook` sigue orientada a desarrollo.
 - No hay manejo explícito de reintentos, timeouts, rate limits u observabilidad.
 - No hay deploy documentado ni infraestructura como código.

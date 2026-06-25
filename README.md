@@ -33,15 +33,19 @@ Crear `.env` a partir de `.env.example`. No copiar valores reales en documentaci
 
 ```env
 MERCADOPAGO_ACCESS_TOKEN=
+MERCADO_PAGO_WEBHOOK_SECRET=
 BASE_URL=
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+LOG_LEVEL=info
 ```
 
 - `MERCADOPAGO_ACCESS_TOKEN`: credencial privada de Mercado Pago, exclusiva del backend.
+- `MERCADO_PAGO_WEBHOOK_SECRET`: secreto privado para validar la firma del webhook, exclusivo del backend.
 - `BASE_URL`: origen público HTTPS, sin la ruta `/webhook`. En desarrollo puede ser la URL temporal de ngrok.
 - `SUPABASE_URL`: URL del proyecto Supabase.
 - `SUPABASE_SERVICE_ROLE_KEY`: clave privilegiada, exclusiva del backend.
+- `LOG_LEVEL`: nivel mínimo de logs estructurados; usar `info` por defecto.
 
 `.env` está ignorado por Git y nunca debe compartirse. `.env.example` debe contener únicamente el contrato de nombres, sin secretos.
 
