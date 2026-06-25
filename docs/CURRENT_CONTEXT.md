@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25 (T-010 completada).
+> Resumen compacto para agentes. Última actualización: 2026-06-25 (T-009 corregida a pendiente; estructura de refactor definida).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -51,7 +51,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
-| T-009 | Separar responsabilidades de `index.js` en módulos. | Sin bloqueo; conviene después de T-005. |
+| T-009 | Separar `index.js` en módulos `src/`: `app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js`, `webhookSignature.js`. Sin bloqueo. Estructura definida en `docs/TASKS.md`. | Sin bloqueo. |
 | T-011 | Retirar `GET /webhook` y herramientas de diagnóstico. | Sin bloqueo. |
 | T-012 | Fuente autoritativa de catálogo y precios. | DEC-013 pendiente. |
 | T-013 | Documentar y validar deploy. | DEC-016 pendiente. |

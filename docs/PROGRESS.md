@@ -10,7 +10,7 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Tests**: Jest instalado. `npm test` pasa con 18 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: T-011 — retirar herramientas temporales de producción, o T-009/T-014 según prioridad del usuario.
+- **Pendiente más urgente**: T-009 (estructura de refactor definida, lista para Codex), T-011 y T-014 (sin bloqueo).
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -64,6 +64,20 @@ Opciones para continuar:
 **B — Próxima fase técnica**: continuar con T-009, T-011 o T-014. Las tareas T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
 
 ## Bitácora
+
+### 2026-06-25 — T-009 corregida a pendiente; estructura de refactor definida
+
+- Objetivo: corregir el estado inconsistente de T-009 y documentar la estructura propuesta para el refactor.
+- Problema detectado: T-009 estaba marcada como `completada` en `docs/TASKS.md`, pero los módulos `src/` no existen en el repositorio. `index.js` sigue concentrando toda la lógica.
+- Archivos revisados: `docs/TASKS.md`, `docs/DESIGN.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Archivos modificados: `docs/TASKS.md`, `docs/DESIGN.md`, `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `docs/TASKS.md`: T-009 corregida de `completada` a `pendiente`. Se agregó nota sobre la marcación prematura. Se documentó la estructura propuesta (`src/app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js`, `webhookSignature.js`). Se actualizaron instrucciones para Codex con 8 pasos concretos y criterios de aceptación que incluyen mantener los 18 tests pasando.
+  - `docs/DESIGN.md`: se separó la sección "Módulos principales" en estado actual vs estructura propuesta. Se actualizaron "Limitaciones estructurales" e "Implementado y vigente" para reflejar el estado real del proyecto.
+  - `docs/CURRENT_CONTEXT.md`: descripción de T-009 actualizada con la estructura de módulos propuesta.
+  - `docs/PROGRESS.md`: estado actual y esta entrada.
+- Sin cambios de código. Sin commits. Sin acceso a `.env`.
+- Próximos pasos: Codex implementa T-009 siguiendo `docs/TASKS.md` (T-009) y la estructura en `docs/DESIGN.md`.
 
 ### 2026-06-25 — T-010 completada
 

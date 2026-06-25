@@ -17,17 +17,39 @@ Mercado Pago -- POST /webhook --> Express
                                    `--> Supabase: actualizar order a paid
 ```
 
-## Módulos principales
+## Módulos principales (estado actual)
 
-- `index.js`: composición completa del backend, clientes externos, persistencia, preferencias, webhook, validaciones, rutas y servidor.
+- `index.js`: composición completa del backend, clientes externos, persistencia, preferencias, webhook, validaciones, rutas y servidor. Incluye el helper `log` de DEC-017.
 - `public/index.html`: vista del producto.
 - `public/app.js`: inicia la preferencia y redirige al checkout.
 - `public/styles.css`: presentación visual compartida.
 - `public/success.html`, `failure.html`, `pending.html`: páginas de retorno.
 - `package.json`: scripts y dependencias de ejecución.
 - `.env.example`: contrato de configuración, sin valores reales.
+- `tests/index.test.js`: suite Jest con 18 tests.
 
 No hay todavía capas separadas para rutas, dominio, servicios o acceso a datos.
+
+## Estructura propuesta post-refactor (T-009)
+
+Cuando T-009 se implemente, la organización recomendada es:
+
+```
+index.js                      # Entrypoint: carga config, crea app, arranca servidor
+src/
+  app.js                      # Instancia Express: middlewares, rutas, handlers
+  config.js                   # Lee y valida variables de entorno; exporta constantes
+  logger.js                   # Helper log(level, event, extra) — DEC-017
+  payments.js                 # Crear preferencia, consultar Payment.get — Mercado Pago
+  orders.js                   # createPendingOrder, markOrderAsPaid — Supabase
+  webhookSignature.js         # Validación HMAC-SHA256 de x-signature — DEC-009
+tests/
+  index.test.js               # Suite Jest; mocks deben actualizarse si cambian paths
+```
+
+**Regla de refactor:** el comportamiento HTTP observable no debe cambiar. Mismas rutas, mismos códigos de respuesta, misma lógica de negocio. Los 18 tests existentes deben pasar sin modificar su lógica.
+
+Ver instrucciones completas en `docs/TASKS.md` (T-009).
 
 ## Flujo de creación de pago
 
@@ -38,7 +60,7 @@ No hay todavía capas separadas para rutas, dominio, servicios o acceso a datos.
 5. Devuelve `preference_id`, `init_point` y `sandbox_init_point`.
 6. El frontend prefiere `sandbox_init_point` y redirige al comprador.
 
-Actualmente, si falla el alta del pedido, el error se registra pero se intenta crear igualmente la preferencia. Esto puede producir un pago sin pedido interno asociado.
+Si falla el alta del pedido en Supabase, la creación de preferencia se detiene y el cliente recibe un error genérico (T-002, completada).
 
 ## Flujo del webhook
 
@@ -88,10 +110,19 @@ La lectura previa y la actualización son operaciones separadas. Dos webhooks co
 
 ## Limitaciones estructurales
 
-- Puerto, producto y catálogo codificados directamente.
-- Comparación monetaria explícita con normalización a centavos y validación de moneda en el webhook.
-- Webhook sin validación criptográfica de firma.
-- Validación incompleta de configuración al iniciar.
-- Logs estructurados con `request_id`; la ruta `GET /webhook` sigue orientada a desarrollo.
-- No hay manejo explícito de reintentos, timeouts, rate limits u observabilidad.
-- No hay deploy documentado ni infraestructura como código.
+- Puerto, producto y catálogo codificados directamente en `index.js`.
+- `index.js` concentra toda la lógica; no hay módulos separados todavía (T-009 pendiente).
+- La ruta `GET /webhook` sigue orientada a diagnóstico de desarrollo (T-011 pendiente).
+- No hay manejo explícito de reintentos, timeouts ni rate limits.
+- No hay deploy documentado ni infraestructura como código (T-013 pendiente).
+
+## Implementado y vigente
+
+- Validación criptográfica HMAC-SHA256 de firma webhook (T-001, DEC-009).
+- Creación de preferencia bloqueada si Supabase falla (T-002).
+- Transición `pending → paid` atómica e idempotente (T-003, DEC-010).
+- Validación de variables de entorno al iniciar (T-004).
+- Comparación monetaria normalizada a centavos; validación de moneda (T-007, DEC-011).
+- Identificadores de pedido con `crypto.randomUUID()` (T-008).
+- Logs estructurados JSON con `request_id` y lista de campos prohibidos (T-010, DEC-017).
+- Migración SQL versionada aplicada en Supabase con RLS habilitada (T-006, DEC-012).
