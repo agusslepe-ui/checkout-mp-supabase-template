@@ -320,6 +320,8 @@ Los siguientes campos solo deben ser modificados por el backend; ningún cliente
 #### Resultado esperado
 El esquema de `orders` está versionado en SQL, con restricciones de dominio, índices y RLS habilitada sin policies públicas, y puede revisarse y aplicarse de forma controlada en cualquier entorno.
 
+> **Aplicada manualmente el 2026-06-25.** Tabla `public.orders` confirmada en Supabase: columnas (`id`, `external_reference`, `product_name`, `quantity`, `amount`, `currency`, `status`, `mercadopago_payment_id`, `mercadopago_status`, `created_at`, `updated_at`), constraints (`external_reference` unique, `amount > 0`, `status` en `pending`/`paid`), índices (`orders_status_idx`, `orders_mercadopago_payment_id_idx`) y RLS (`rowsecurity = true`) verificados. Sin policies para `anon` ni `authenticated`. Sin datos insertados.
+
 ---
 
 ### T-007 — Usar una estrategia monetaria explícita

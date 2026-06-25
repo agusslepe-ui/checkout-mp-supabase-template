@@ -4,12 +4,13 @@
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las cuatro tareas P0 de seguridad (T-001 a T-004) y la suite de pruebas automatizadas (T-005) están completadas. La siguiente tarea accionable es T-006 (migración SQL de Supabase).
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005) y la migración SQL versionada (T-006) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
 - **Tests**: Jest instalado. `npm test` pasa con 11 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
-- **Pendiente más urgente**: T-006 — crear `supabase/migrations/001_create_orders.sql` (DEC-012 aceptada, sin bloqueo).
+- **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
+- **Pendiente más urgente**: DEC-011 — estrategia de importes sin punto flotante, para desbloquear T-007.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -61,6 +62,25 @@ Opciones para continuar:
 **B — Próxima fase técnica**: confirmar DEC-011 (estrategia de importes sin punto flotante) para desbloquear T-007. Sin esa decisión, T-007 no puede implementarse. Las tareas T-008, T-009, T-011 y T-014 no tienen bloqueos y pueden abordarse en cualquier orden.
 
 ## Bitácora
+
+### 2026-06-25 — Migración manual de Supabase aplicada y verificada
+
+- Objetivo: documentar la aplicación y verificación manual de la migración SQL en Supabase.
+- Tarea relacionada: T-006 (archivo creado el 2026-06-24, aplicado el 2026-06-25).
+- Archivos afectados: solo documentación (PROGRESS.md, CURRENT_CONTEXT.md, TASKS.md).
+- Verificaciones realizadas:
+  - `git status` limpio antes de aplicar.
+  - `npm test` pasa con 11 tests.
+  - Migración ejecutada en Supabase SQL Editor: `Success. No rows returned.`
+  - Tabla `public.orders` visible en Table Editor (vacía, sin datos reales).
+  - Columnas confirmadas: `id`, `external_reference`, `product_name`, `quantity`, `amount`, `currency`, `status`, `mercadopago_payment_id`, `mercadopago_status`, `created_at`, `updated_at`.
+  - Constraints confirmados: `external_reference` unique, `amount > 0`, `status` solo `pending` o `paid`.
+  - Índices confirmados: `orders_status_idx`, `orders_mercadopago_payment_id_idx`.
+  - RLS confirmada mediante consulta a `pg_tables`: `rowsecurity = true`.
+  - Sin policies para `anon` ni `authenticated`.
+  - Sin pedidos insertados manualmente.
+- Resultado: T-006 completamente finalizada (archivo creado + aplicado + verificado).
+- Pendientes: ninguno relacionado con T-006. Siguiente decisión recomendada: DEC-011 para desbloquear T-007.
 
 ### 2026-06-24 — T-006 completada
 

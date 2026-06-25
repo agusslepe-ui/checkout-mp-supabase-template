@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-24.
+> Resumen compacto para agentes. Última actualización: 2026-06-25.
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -40,7 +40,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migra
 | Tarea | Descripción |
 |---|---|
 | T-005 | Suite Jest con 11 tests; `npm test` pasa. Cubre todos los flujos críticos sin llamadas externas. |
-| T-006 | `supabase/migrations/001_create_orders.sql` creado con DDL completo, restricciones (`status`, `amount`), índices (`status`, `mercadopago_payment_id`) y RLS habilitada. El usuario aplica manualmente. (DEC-012) |
+| T-006 | `supabase/migrations/001_create_orders.sql` creado con DDL completo, restricciones (`status`, `amount`), índices (`status`, `mercadopago_payment_id`) y RLS habilitada. **Aplicada y verificada manualmente el 2026-06-25.** (DEC-012) |
 
 ---
 
@@ -85,7 +85,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migra
 - **Base de datos**: Supabase, tabla `orders`, acceso con `service_role` solo desde backend. RLS habilitada en migración.
 - **Transición de pagos**: Atómica e idempotente (`UPDATE WHERE status = 'pending'`).
 - **Tests**: Jest instalado. `npm test` pasa con 11 tests. Sin llamadas externas ni acceso a `.env`.
-- **Migración SQL**: `supabase/migrations/001_create_orders.sql` versionado. No aplicado aún en base de datos.
+- **Migración SQL**: `supabase/migrations/001_create_orders.sql` versionado y **aplicado en Supabase el 2026-06-25**. Tabla `public.orders` confirmada: columnas, constraints, índices y RLS (`rowsecurity = true`) activa. Sin policies públicas.
 - **Versionado**: Git + GitHub. No hay deploy documentado.
 
 ---
@@ -96,7 +96,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005) y la migra
 |---|---|
 | `index.js` | Backend completo: rutas, webhook, validación de firma, integración MP y Supabase. |
 | `tests/index.test.js` | Suite Jest con 11 tests. Mocks de MP, Supabase, dotenv y Express. |
-| `supabase/migrations/001_create_orders.sql` | Migración SQL versionada: DDL, restricciones, índices y RLS. **No aplicada aún.** |
+| `supabase/migrations/001_create_orders.sql` | Migración SQL versionada: DDL, restricciones, índices y RLS. **Aplicada el 2026-06-25.** |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). |
 | `docs/CURRENT_CONTEXT.md` | Este archivo — resumen compacto para agentes. |
 | `docs/TASKS.md` | Detalle de todas las tareas con criterios de aceptación. |
