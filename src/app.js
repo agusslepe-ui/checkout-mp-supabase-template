@@ -224,6 +224,7 @@ app.post("/crear-preferencia", async (req, res) => {
 
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+    res.set("Content-Type", "application/json; charset=utf-8");
     return res.status(400).json({ error: "JSON inválido" });
   }
 

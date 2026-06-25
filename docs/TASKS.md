@@ -675,7 +675,7 @@ Existe documentación clara y probada para desplegar la aplicación con entornos
 
 ### T-014 — Corregir codificación de mensajes
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P2
 
 #### Objetivo
@@ -699,3 +699,5 @@ Localizar el middleware o handler que devuelve la respuesta 400 para JSON invál
 
 #### Resultado esperado
 El error de JSON inválido se muestra con codificación UTF-8 correcta.
+
+> **Completada el 2026-06-25.** El middleware de error de `src/app.js` mantiene HTTP `400` y el body `{ error: "JSON inválido" }`, agregando `Content-Type: application/json; charset=utf-8` antes de responder. `tests/index.test.js` incorpora una regresión que verifica status, body y charset UTF-8. Verificación: `node --check src/app.js`, `npm.cmd test` (19 tests), `git diff --check` y revisión de `git diff`.

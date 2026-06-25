@@ -13,8 +13,13 @@ function createResponse() {
   return {
     statusCode: 200,
     body: undefined,
+    headers: {},
     status(code) {
       this.statusCode = code;
+      return this;
+    },
+    set(name, value) {
+      this.headers[name.toLowerCase()] = value;
       return this;
     },
     json(body) {
@@ -130,8 +135,13 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
   }
 
   const routes = { get: {}, post: {} };
+  const errorMiddlewares = [];
   const app = {
-    use: jest.fn(),
+    use: jest.fn((handler) => {
+      if (typeof handler === "function" && handler.length === 4) {
+        errorMiddlewares.push(handler);
+      }
+    }),
     get: jest.fn((route, handler) => {
       routes.get[route] = handler;
     }),
@@ -188,6 +198,7 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
   return {
     app,
     routes,
+    errorMiddlewares,
     paymentGet,
     preferenceCreate,
     supabaseMock,
@@ -230,6 +241,26 @@ describe("configuración inicial", () => {
     const errorMessage = serializedLogOutput(errorSpy);
     expect(errorMessage).not.toContain(requiredEnv.MERCADOPAGO_ACCESS_TOKEN);
     expect(errorMessage).not.toContain(requiredEnv.SUPABASE_SERVICE_ROLE_KEY);
+  });
+});
+
+describe("errores de entrada HTTP", () => {
+  test("responde JSON inválido con status 400 y charset utf-8", () => {
+    const { errorMiddlewares } = loadApp();
+    const response = createResponse();
+    const next = jest.fn();
+    const error = new SyntaxError("Unexpected token");
+    error.status = 400;
+    error.body = "{";
+
+    errorMiddlewares[0](error, {}, response, next);
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "JSON inválido" });
+    expect(response.headers["content-type"]).toBe(
+      "application/json; charset=utf-8"
+    );
+    expect(next).not.toHaveBeenCalled();
   });
 });
 
