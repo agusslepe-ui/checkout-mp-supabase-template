@@ -253,6 +253,35 @@ describe("configuración inicial", () => {
     expect(errorMessage).not.toContain(requiredEnv.MERCADOPAGO_ACCESS_TOKEN);
     expect(errorMessage).not.toContain(requiredEnv.SUPABASE_SERVICE_ROLE_KEY);
   });
+
+  test("emite diagnostico seguro de la secret del webhook al iniciar", () => {
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    const fullHash = crypto
+      .createHash("sha256")
+      .update(requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET)
+      .digest("hex");
+
+    loadApp();
+
+    expect(parseLogEntries(logSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "info",
+          event: "diagnostico webhook secret",
+          request_id: "startup",
+          route: "startup",
+          method: "STARTUP",
+          webhook_secret_present: true,
+          webhook_secret_length: requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET.length,
+          webhook_secret_sha256_prefix: fullHash.slice(0, 8),
+        }),
+      ])
+    );
+    expect(serializedLogOutput(logSpy)).not.toContain(
+      requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET
+    );
+    expect(serializedLogOutput(logSpy)).not.toContain(fullHash);
+  });
 });
 
 describe("errores de entrada HTTP", () => {

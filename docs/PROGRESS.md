@@ -73,6 +73,24 @@ Opciones para continuar:
 
 ## Bitácora
 
+### 2026-06-26 — Diagnóstico temporal de secret webhook en startup
+
+- Objetivo: confirmar en staging que EasyPanel carga la `MERCADO_PAGO_WEBHOOK_SECRET` esperada sin exponerla.
+- Tarea relacionada: diagnóstico operativo de staging posterior a T-013.
+- Archivos afectados: `src/config.js`, `src/logger.js`, `tests/index.test.js`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `src/config.js`: emite en startup `event="diagnostico webhook secret"` con presencia, longitud y prefijo SHA-256 de 8 caracteres de la secret.
+  - `src/logger.js`: permite solo los campos seguros `webhook_secret_present`, `webhook_secret_length` y `webhook_secret_sha256_prefix`.
+  - `tests/index.test.js`: verifica que el log no contiene la secret ni el hash completo.
+- Verificaciones:
+  - `node --check src/config.js`.
+  - `node --check src/logger.js`.
+  - `npm.cmd test`.
+  - `git diff --check`.
+  - `git diff`.
+- Resultado: diagnóstico temporal listo para redeploy en EasyPanel sin cambiar la validación del webhook ni la lógica de pagos.
+- Pendientes o riesgos: retirar este diagnóstico temporal cuando se confirme la variable en staging.
+
 ### 2026-06-26 — Fix operativo de staging: Dockerfile con Node.js 22
 
 - Objetivo: evitar que EasyPanel/Nixpacks use Node.js 18 y falle con Supabase por falta de soporte nativo de WebSocket.

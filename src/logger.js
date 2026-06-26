@@ -27,6 +27,9 @@ function log(level, event, extra = {}) {
     "payment_status",
     "order_status",
     "error_type",
+    "webhook_secret_present",
+    "webhook_secret_length",
+    "webhook_secret_sha256_prefix",
   ];
 
   for (const field of safeOptionalFields) {

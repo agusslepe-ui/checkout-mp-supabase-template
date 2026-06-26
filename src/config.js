@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+
 const { log } = require("./logger");
 
 const PORT = 3003;
@@ -24,10 +26,26 @@ if (missingEnvironmentVariables.length > 0) {
   process.exit(1);
 }
 
+const mercadoPagoWebhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+const webhookSecretHashPrefix = crypto
+  .createHash("sha256")
+  .update(mercadoPagoWebhookSecret)
+  .digest("hex")
+  .slice(0, 8);
+
+log("info", "diagnostico webhook secret", {
+  request_id: "startup",
+  route: "startup",
+  method: "STARTUP",
+  webhook_secret_present: Boolean(mercadoPagoWebhookSecret),
+  webhook_secret_length: mercadoPagoWebhookSecret.length,
+  webhook_secret_sha256_prefix: webhookSecretHashPrefix,
+});
+
 module.exports = {
   PORT,
   mercadoPagoAccessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
-  mercadoPagoWebhookSecret: process.env.MERCADO_PAGO_WEBHOOK_SECRET,
+  mercadoPagoWebhookSecret,
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   baseUrl: process.env.BASE_URL,
