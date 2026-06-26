@@ -296,6 +296,7 @@ app.post("/crear-preferencia", async (req, res) => {
     const result = await createPreference({
       items: [preferenceItem],
       external_reference: externalReference,
+      notification_url: `${baseUrl}/webhook`,
       back_urls: {
         success: `${baseUrl}/success`,
         failure: `${baseUrl}/failure`,
