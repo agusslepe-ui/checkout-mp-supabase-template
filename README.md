@@ -51,6 +51,8 @@ LOG_LEVEL=info
 
 ## Base de datos
 
+La migración está versionada en `supabase/migrations/001_create_orders.sql` con el DDL completo, restricciones de dominio (`status` solo `pending`/`paid`, `amount > 0`), índices y RLS habilitada. Aplicarla manualmente en Supabase mediante el SQL Editor; no ejecutar en una base compartida o productiva sin revisión previa.
+
 El código espera una tabla `orders` con, al menos, estos campos:
 
 ```sql
@@ -68,8 +70,6 @@ create table if not exists orders (
   updated_at timestamptz not null default now()
 );
 ```
-
-El SQL todavía no está versionado como migración. Antes de aplicarlo en un entorno compartido, revisar esquema, permisos y políticas RLS.
 
 ## Ejecución
 
@@ -136,4 +136,6 @@ Las rutas de retorno son `/success`, `/failure` y `/pending`. Esas páginas info
 
 ## Limitaciones actuales
 
-No hay tests automatizados, migraciones versionadas, autenticación, panel administrativo ni configuración de despliegue. El webhook aún no valida su firma criptográfica. Consultar el pago por API reduce el riesgo, pero no sustituye esa validación.
+No hay autenticación de compradores ni panel administrativo. El catálogo está definido en backend como un módulo versionado; no existe interfaz de administración de productos. El deploy a staging está documentado en `docs/SKILLS.md` y `docs/DECISIONS.md` (DEC-016); aún no se ha ejecutado.
+
+Para el estado completo del proyecto, decisiones técnicas y próximos pasos, ver `docs/DECISIONS.md`, `docs/TASKS.md` y `docs/PROGRESS.md`.

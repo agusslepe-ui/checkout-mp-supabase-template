@@ -706,30 +706,92 @@ El frontend solo envía `{ sku, quantity }`. El backend resuelve el producto, va
 ### T-013 — Documentar y validar deploy
 
 **Estado:** pendiente  
-**Prioridad:** P2
+**Prioridad:** P2  
+**DEC-016:** aceptada (2026-06-25). Esta tarea está desbloqueada.
 
 #### Objetivo
-Definir y documentar el proceso completo de despliegue a producción con entornos separados y rollback.
+Actualizar `docs/SKILLS.md` y `README.md` para que reflejen el proceso concreto de deploy a staging en EasyPanel, según DEC-016. El deploy real lo ejecuta el usuario siguiendo la checklist de staging de DEC-016.
 
 #### Archivos involucrados
-- `docs/SKILLS.md`
-- `README.md`
-- `docs/DECISIONS.md` (DEC-016)
-- Posibles archivos de configuración de deploy (Dockerfile, Procfile, etc.; a definir)
+- `docs/SKILLS.md` — reemplazar la sección "Deploy" genérica por pasos concretos de EasyPanel.
+- `README.md` — corregir secciones desactualizadas y agregar referencia al proceso de deploy.
+- `docs/DECISIONS.md` — DEC-016 ya aceptada.
 
 #### Instrucciones para Codex
-Pendiente de confirmar con el usuario: proveedor de hosting (Railway, Render, Fly.io, VPS u otro). Una vez definido, documentar build, inicio, HTTPS, variables de entorno en producción y procedimiento de rollback. No ejecutar ningún deploy sin autorización explícita.
+
+Consultar DEC-016 antes de implementar. Solo modificar archivos Markdown; no tocar JavaScript.
+
+**Paso 1 — Actualizar sección "Deploy" en `docs/SKILLS.md`**
+
+Reemplazar el contenido actual de la sección "Deploy" (que dice "No se detectó configuración de despliegue...") por:
+
+```
+## Deploy a staging (EasyPanel)
+
+Plataforma: EasyPanel sobre VPS. Decisión: DEC-016.
+
+### Variables a cargar en EasyPanel
+
+Cargar solo desde el panel de EasyPanel. Nunca en el repositorio ni en archivos versionados.
+
+| Variable | Descripción |
+|---|---|
+| MERCADOPAGO_ACCESS_TOKEN | Token sandbox de Mercado Pago |
+| MERCADO_PAGO_WEBHOOK_SECRET | Secreto para validar firma del webhook |
+| BASE_URL | URL HTTPS pública de EasyPanel (sin barra final) |
+| SUPABASE_URL | URL del proyecto Supabase |
+| SUPABASE_SERVICE_ROLE_KEY | Clave privilegiada de Supabase (solo backend) |
+| LOG_LEVEL | Usar "info" |
+| NODE_ENV | Establecer "production" |
+
+### Pasos de deploy
+
+1. Crear el servicio en EasyPanel apuntando al repositorio GitHub.
+2. Configurar las variables de entorno listadas arriba en EasyPanel.
+3. Configurar el comando de inicio: npm start (o node index.js).
+4. Desplegar y verificar que el servicio arranca sin errores de variable faltante.
+5. Anotar la URL HTTPS pública asignada por EasyPanel.
+6. Actualizar BASE_URL en EasyPanel con esa URL si aún no lo estaba.
+7. Configurar manualmente el webhook sandbox en el panel de Mercado Pago apuntando a {BASE_URL}/webhook.
+8. Ejecutar la checklist de staging completa (ver docs/DECISIONS.md — DEC-016).
+
+### Notas de seguridad
+
+- SUPABASE_SERVICE_ROLE_KEY nunca debe usarse en frontend ni en public/.
+- .env real debe quedar ignorado por Git.
+- .env.example es la plantilla pública; sin valores reales.
+- En caso de exposición de secretos: rotar inmediatamente. Ver docs/SECURITY.md.
+
+### Rollback
+
+Ver estrategia de rollback en docs/DECISIONS.md (DEC-016).
+```
+
+**Paso 2 — Actualizar `README.md`**
+
+Corregir las siguientes secciones desactualizadas:
+
+- **Sección "Base de datos"**: reemplazar la nota "El SQL todavía no está versionado como migración." por la referencia al archivo `supabase/migrations/001_create_orders.sql` ya existente.
+- **Sección "Limitaciones actuales"**: actualizar para reflejar que tests automatizados, migración versionada y validación de firma del webhook ya están implementados. Las limitaciones reales actuales son: autenticación, panel administrativo y configuración de despliegue (documentada en DEC-016).
+- Agregar al final una referencia breve al proceso de deploy: "Ver `docs/SKILLS.md` para el proceso de staging en EasyPanel y `docs/DECISIONS.md` (DEC-016) para la estrategia de deploy y rollback."
+
+No modificar la sección "Flujo principal", "Tecnologías" ni "Variables de entorno".
 
 #### Criterios de aceptación
-- Se selecciona un proveedor y se documentan build, inicio, HTTPS y variables requeridas.
-- Se define un entorno de prueba separado de producción.
-- Se verifica el webhook con una URL estable sin exponer secretos.
-- Existe un procedimiento de rollback.
+- La sección "Deploy" en `docs/SKILLS.md` tiene pasos concretos para EasyPanel con variables listadas por nombre (sin valores).
+- `README.md` no menciona que no hay tests ni que la migración no está versionada.
+- `README.md` no menciona que el webhook no valida su firma criptográfica (ya validada desde T-001).
+- Ningún archivo modificado contiene secretos, tokens ni valores reales de variables.
+- No se instalan dependencias. No se modifica código JavaScript.
+- El deploy real lo valida el usuario ejecutando la checklist de staging de DEC-016.
 
 #### Riesgos
-- No ejecutar ningún deploy sin autorización explícita del usuario.
-- No reutilizar credenciales de desarrollo en producción.
-- Requiere que DEC-016 esté definida y aprobada.
+- No incluir valores reales de variables en ningún archivo Markdown.
+- No ejecutar ningún deploy desde esta tarea; el deploy lo realiza el usuario.
+- No modificar `src/app.js`, `index.js`, `src/config.js` ni ningún `.js`.
+
+#### Resultado esperado
+`docs/SKILLS.md` y `README.md` tienen la documentación actualizada y correcta para que el usuario pueda hacer el primer deploy a EasyPanel staging siguiendo instrucciones claras.
 
 #### Resultado esperado
 Existe documentación clara y probada para desplegar la aplicación con entornos separados y rollback definido.

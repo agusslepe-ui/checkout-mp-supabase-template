@@ -71,9 +71,54 @@ Estas páginas solo representan el retorno del navegador; no confirman el estado
 
 Actualmente no existe una suite automatizada ni un comando `test`. No afirmar que el flujo funciona en un entorno real solo por revisión estática.
 
-## Deploy
+## Deploy a staging (EasyPanel)
 
-No se detectó configuración de despliegue. Antes de desplegar deben definirse proveedor, entornos, HTTPS, URL estable, variables seguras, salud del servicio, migraciones y rollback. No improvisar un deploy ni reutilizar credenciales de desarrollo.
+Plataforma: EasyPanel sobre VPS. Estrategia completa en `docs/DECISIONS.md` (DEC-016).
+
+### Variables a cargar en EasyPanel
+
+Cargar solo desde el panel de EasyPanel. Nunca en el repositorio ni en archivos versionados. Nunca compartir valores por mensajes ni capturas.
+
+| Variable | Descripción |
+|---|---|
+| `MERCADOPAGO_ACCESS_TOKEN` | Token sandbox de Mercado Pago (para staging) |
+| `MERCADO_PAGO_WEBHOOK_SECRET` | Secreto para validar firma HMAC-SHA256 del webhook |
+| `BASE_URL` | URL HTTPS pública de EasyPanel, sin barra final ni ruta |
+| `SUPABASE_URL` | URL del proyecto Supabase actual |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clave privilegiada de Supabase — solo backend, nunca frontend |
+| `LOG_LEVEL` | Usar `info` |
+| `NODE_ENV` | Establecer `production` |
+
+### Pasos de deploy a staging
+
+1. Crear el servicio en EasyPanel apuntando al repositorio GitHub.
+2. Configurar todas las variables de entorno listadas arriba en el panel de EasyPanel.
+3. Configurar el comando de inicio: `npm start` (o `node index.js`).
+4. Desplegar y verificar que el log inicial no muestra errores de variable faltante.
+5. Anotar la URL HTTPS pública asignada por EasyPanel.
+6. Actualizar `BASE_URL` en EasyPanel con esa URL si aún no coincide.
+7. Configurar manualmente el webhook sandbox en el panel de desarrolladores de Mercado Pago: URL destino `{BASE_URL}/webhook`. Sin este paso el webhook no llegará al servidor.
+8. Ejecutar la checklist de staging completa (ver `docs/DECISIONS.md` — DEC-016).
+
+### Notas de seguridad
+
+- `SUPABASE_SERVICE_ROLE_KEY` nunca debe usarse en el frontend ni en archivos bajo `public/`.
+- `.env` real debe quedar ignorado por Git y nunca subirse al repositorio.
+- `.env.example` es la plantilla pública; sin valores reales.
+- En caso de exposición de secretos: revocar y rotar inmediatamente desde el proveedor. Ver `docs/SECURITY.md`.
+
+### Rollback
+
+Ver estrategia completa de rollback en `docs/DECISIONS.md` (DEC-016). Resumen:
+
+1. Variable incorrecta → corregir en EasyPanel y reiniciar.
+2. Problema al pasar a producción real → revertir al token sandbox en EasyPanel.
+3. Fallo grave del servicio → pausar servicio en EasyPanel, revisar logs, corregir.
+4. Error de código → revertir al commit anterior en GitHub y redesplegar.
+
+### Producción real
+
+No pasar a producción real sin completar la checklist previa de DEC-016. Los requisitos mínimos son: staging validado, credenciales reales de MP, webhook de producción registrado, URL estable y plan de rollback conocido.
 
 ## Revisar cambios
 

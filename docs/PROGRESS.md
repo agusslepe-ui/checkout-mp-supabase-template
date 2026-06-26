@@ -69,6 +69,23 @@ Opciones para continuar:
 
 ## Bitácora
 
+### 2026-06-25 — DEC-016 aceptada — estrategia de deploy, staging y rollback definida
+
+- Objetivo: documentar DEC-016 para desbloquear T-013.
+- Tareas relacionadas: T-013.
+- Archivos revisados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/SKILLS.md`, `README.md`, `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`.
+- Archivos modificados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/SKILLS.md`, `README.md`, `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `docs/DECISIONS.md`: DEC-016 pasó de `pendiente` a `aceptada`. Se documentó la decisión completa: EasyPanel/VPS como plataforma de staging, URL HTTPS gratuita de EasyPanel, `NODE_ENV=production` desde el primer deploy, `MERCADOPAGO_ACCESS_TOKEN` sandbox, mismo proyecto Supabase actual, variables solo en EasyPanel, webhook sandbox a configurar manualmente, checklist de staging (11 ítems), checklist previa a producción real (11 ítems), estrategia de rollback en 4 niveles, alternativas consideradas y qué implementa T-013.
+  - `docs/TASKS.md`: T-013 actualizada con instrucciones concretas: actualizar `docs/SKILLS.md` (sección "Deploy") y `README.md` (secciones desactualizadas).
+  - `docs/SKILLS.md`: sección "Deploy" reemplazada con pasos concretos de EasyPanel, tabla de variables por nombre, notas de seguridad y rollback resumido.
+  - `README.md`: sección "Base de datos" actualizada para referenciar `supabase/migrations/001_create_orders.sql` ya existente. Sección "Limitaciones actuales" corregida: eliminadas referencias a "no hay tests", "no hay migración versionada" y "el webhook no valida su firma" (todo resuelto). Limitaciones reales actualizadas: sin autenticación, sin panel admin, deploy pendiente de ejecución.
+  - `docs/CURRENT_CONTEXT.md`: DEC-016 incorporada a la tabla de decisiones aceptadas; T-013 marcada como lista para implementar; "Próximo paso" actualizado.
+  - `docs/PROGRESS.md`: esta entrada.
+- Decisiones tomadas: DEC-016 aceptada. Staging en EasyPanel/VPS. Sandbox primero. Producción real con checklist obligatoria. Sin dependencias nuevas. Sin cambios en código.
+- Sin cambios de código JavaScript. Sin commits. Sin acceso a `.env`.
+- Próximos pasos: Codex implementa T-013 actualizando `docs/SKILLS.md` y `README.md`. El usuario ejecuta el deploy a EasyPanel siguiendo la checklist de staging de DEC-016.
+
 ### 2026-06-25 — Cierre documental de fase (13/14 tareas)
 
 - Objetivo: verificar consistencia documental del estado real del proyecto tras la finalización de T-012, y dejar el proyecto ordenado antes de resolver DEC-016.

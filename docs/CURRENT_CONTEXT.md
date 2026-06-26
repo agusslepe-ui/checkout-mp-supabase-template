@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25 (13/14 tareas completadas — T-012 cerrada).
+> Resumen compacto para agentes. Última actualización: 2026-06-25 (13/14 tareas completadas — DEC-016 aceptada, T-013 desbloqueada).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -60,7 +60,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 | Tarea | Descripción | Bloqueador |
 |---|---|---|
-| T-013 | Documentar y validar deploy a producción. | **DEC-016 pendiente.** Resolver antes de implementar. |
+| T-013 | Documentar y validar deploy a staging en EasyPanel. | **DEC-016 aceptada.** Lista para implementar. |
 
 ---
 
@@ -75,11 +75,11 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 | DEC-013 | Catálogo como módulo `src/catalog.js`. Frontend envía solo `{ sku, quantity }`. Backend resuelve precio, moneda y valida cantidad. Sin dependencias nuevas ni tabla Supabase adicional. |
 | DEC-017 | Helper `log(level, event, extra)` propio. Formato JSON. Niveles: `info`, `warn`, `error`. Campos fijos + `request_id` por correlación. Lista explícita de campos prohibidos. Sin librería externa. |
 
-## Decisiones pendientes — bloquean T-013
+## Decisiones técnicas aceptadas (continuación)
 
-| Decisión | Tarea relacionada | Descripción |
-|---|---|---|
-| **DEC-016** | **T-013** | Proveedor de deploy, entornos y rollback. Opciones: Railway, Render, Fly.io, VPS. Debe definirse antes de implementar T-013. |
+| Decisión | Resumen |
+|---|---|
+| DEC-016 | Staging en EasyPanel/VPS. URL HTTPS de EasyPanel. `NODE_ENV=production`. MP sandbox. Supabase actual. Variables solo en EasyPanel. Rollback en 4 niveles. Producción real con checklist obligatoria. |
 
 ---
 
@@ -127,16 +127,13 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 ## Próximo paso recomendado
 
-### No hay tareas de código disponibles sin decisión previa
+### T-013 lista para implementar — DEC-016 aceptada
 
-La única tarea pendiente es T-013 y está bloqueada por una decisión sin resolver. El próximo paso es **definir DEC-016**, no programar.
+**T-013 — Documentar y validar deploy a staging en EasyPanel**
 
-**Resolver DEC-016 — Proveedor de deploy y entornos (para desbloquear T-013)**
-
-> ¿Dónde se despliega? Opciones: Railway, Render, Fly.io, VPS.
-> ¿Hay entorno de staging separado? ¿Cuál es el procedimiento de rollback?
-
-Una vez resuelta cada decisión, Claude documentará la tarea correspondiente y Codex podrá implementarla.
+> Codex debe actualizar `docs/SKILLS.md` (sección "Deploy") y `README.md` (secciones desactualizadas) con la documentación concreta de staging en EasyPanel.
+> Ver instrucciones detalladas en `docs/TASKS.md` (T-013) y `docs/DECISIONS.md` (DEC-016).
+> El deploy real lo ejecuta el usuario siguiendo la checklist de staging de DEC-016.
 
 ---
 

@@ -364,25 +364,126 @@ Solo existe la transición `pending → paid`. No hay estados adicionales ni pro
 
 ## DEC-016 — Proveedor de despliegue, entornos y rollback
 
-**Fecha:** pendiente de definir  
-**Estado:** pendiente
+**Fecha:** 2026-06-25  
+**Estado:** aceptada
 
 ### Contexto
-No hay configuración de despliegue documentada. La aplicación usa ngrok para desarrollo, pero no tiene infraestructura de producción ni entorno de staging.
+
+El backend está completo, seguro y cubierto con 29 tests. No existía configuración de despliegue documentada. El proyecto usa ngrok para desarrollo local, pero no tiene infraestructura de staging ni producción definida. El objetivo es llegar a un primer deploy funcional en staging antes de cualquier uso con dinero real.
+
+El proyecto es una plantilla reutilizable de backend. La primera instancia se despliega como staging sobre la infraestructura EasyPanel/VPS existente del usuario, usando Mercado Pago sandbox y el mismo proyecto Supabase actual.
 
 ### Decisión
-> Pendiente de confirmar con el usuario.
 
-### Opciones a evaluar
-- Railway, Render, Fly.io, Heroku u otro PaaS.
-- VPS propio (mayor control, mayor responsabilidad operativa).
-- Definir si hay un entorno de staging separado del de producción.
-- Definir el procedimiento de rollback (redeploy de versión anterior, blue-green, etc.).
+**El primer entorno será staging en EasyPanel sobre el VPS actual del usuario.**
+
+1. **Plataforma**: EasyPanel sobre el VPS ya creado y preparado por el usuario.
+2. **URL pública**: usar la URL HTTPS gratuita generada por EasyPanel para el servicio. El dominio `lemont01.com` existe pero queda fuera del alcance inmediato hasta que sea recuperado y localizado.
+3. **`NODE_ENV`**: establecer `NODE_ENV=production` desde el primer despliegue, incluso en staging. Esto activa el comportamiento correcto del servidor (por ejemplo, `GET /webhook` no disponible) y valida el entorno real antes de cualquier uso con dinero real.
+4. **`BASE_URL`**: la URL HTTPS pública asignada por EasyPanel, sin barra final ni ruta adicional. Ejemplo de formato: `https://mi-servicio.easypanel.host`. Este valor se usa en `notification_url` de la preferencia y en las `back_urls`.
+5. **Mercado Pago**: usar credenciales sandbox para el entorno staging. El `MERCADOPAGO_ACCESS_TOKEN` en EasyPanel debe ser el token de prueba, no el real.
+6. **Webhook sandbox**: configurar manualmente en el panel de desarrolladores de Mercado Pago la URL `{BASE_URL}/webhook` como destino de notificaciones para el ambiente sandbox. Esta configuración es manual y queda como tarea pendiente del usuario; sin ella el webhook no llegará al servidor.
+7. **Supabase**: usar el mismo proyecto Supabase actual. La tabla `orders` ya está creada, verificada y con RLS activo. No se requiere nueva migración ni nuevo proyecto de Supabase.
+8. **Variables de entorno**: cargarse exclusivamente en EasyPanel. Nunca en el repositorio ni en archivos versionados. El `.env` real queda ignorado por Git.
+9. **Frontend**: el frontend mínimo actual se sigue sirviendo desde el mismo proceso Express, mediante `public/`. Sin cambios en esta arquitectura.
+10. **Producción real**: queda fuera del alcance inmediato. Solo se considera después de pasar la checklist de staging completa y la checklist explícita de producción definida en esta decisión.
+
+### Variables obligatorias en EasyPanel
+
+Solo nombres; nunca cargar valores reales en documentación, código, commits ni mensajes.
+
+| Variable | Propósito |
+|---|---|
+| `MERCADOPAGO_ACCESS_TOKEN` | Token de prueba (sandbox) de Mercado Pago. Exclusivo del backend. |
+| `MERCADO_PAGO_WEBHOOK_SECRET` | Secreto para validar firma HMAC-SHA256 del webhook. Exclusivo del backend. |
+| `BASE_URL` | URL HTTPS pública de EasyPanel, sin barra final ni ruta. |
+| `SUPABASE_URL` | URL del proyecto Supabase actual. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clave privilegiada de Supabase. Exclusiva del backend. **Nunca exponer al frontend ni al navegador.** |
+| `LOG_LEVEL` | Nivel de logs estructurados. Usar `info` en staging y producción. |
+| `NODE_ENV` | Establecer `production` para activar comportamiento correcto del servidor. |
+
+### Reglas de seguridad
+
+- **`.env` real**: debe permanecer ignorado por Git (`.gitignore`). Nunca subir valores al repositorio.
+- **`.env.example`**: visible en el repositorio como plantilla con nombres y valores vacíos o ficticios. Sin secretos reales.
+- **`SUPABASE_SERVICE_ROLE_KEY`**: uso exclusivo desde el backend Node.js. Nunca exponer en código servido al navegador, variables de entorno de cliente, archivos bajo `public/` ni en `index.html`.
+- **Variables en EasyPanel**: configurarlas desde el panel de EasyPanel, una sola vez por entorno. No compartirlas por mensajes, documentos ni capturas de pantalla.
+- **Rotación ante exposición**: si una variable queda expuesta, revocar y rotar inmediatamente desde el proveedor. Ver `docs/SECURITY.md`.
+
+### Checklist de staging
+
+Ejecutar en orden. Todos los ítems deben estar verificados antes de considerar el staging validado.
+
+1. Variables cargadas en EasyPanel según la lista de variables obligatorias de esta decisión.
+2. Servicio arranca sin errores (log inicial sin mensajes de variable faltante).
+3. Abrir la URL HTTPS pública de EasyPanel → el frontend carga correctamente.
+4. `POST /crear-preferencia` con `{ "sku": "REMERA-LEMONT-001", "quantity": 1 }` → responde con `preference_id` y una URL de checkout.
+5. Supabase muestra un pedido con `status = 'pending'` y la referencia `LEMONT-ORDER-...` correcta.
+6. Redirección al checkout de Mercado Pago sandbox funciona.
+7. Completar el pago en el ambiente sandbox de Mercado Pago usando credenciales de prueba.
+8. Mercado Pago llama a `POST /webhook` en la URL HTTPS pública (requiere webhook sandbox configurado manualmente).
+9. Supabase muestra el pedido con `status = 'paid'`.
+10. `GET /webhook` devuelve 404 (confirma que `NODE_ENV=production` está activo).
+11. Logs del servicio en EasyPanel muestran JSON estructurado sin campos sensibles visibles.
+
+### Checklist previa a producción real
+
+No pasar a producción real sin completar todos los ítems:
+
+1. Los 11 ítems de la checklist de staging están verificados y documentados.
+2. `MERCADOPAGO_ACCESS_TOKEN` real (no sandbox) disponible y sin exposición previa.
+3. `MERCADO_PAGO_WEBHOOK_SECRET` para producción generado y configurado en EasyPanel y en el panel de Mercado Pago.
+4. Webhook de producción registrado: URL `{BASE_URL}/webhook` configurada en la cuenta de Mercado Pago real.
+5. `BASE_URL` apunta a una URL HTTPS estable que no cambia entre reinicios del servicio.
+6. Si se usa `lemont01.com`: dominio recuperado, DNS apuntando al VPS y HTTPS activo antes de registrar el webhook.
+7. Variables actualizadas en EasyPanel: token sandbox reemplazado por token real; `BASE_URL` actualizada si el dominio cambió.
+8. RLS de Supabase verificado: sin policies para `anon` ni `authenticated`.
+9. Sin secretos en el repositorio: revisar `git log` y `git diff` antes de cualquier push.
+10. Prueba con pago real mínimo verificada: flujo completo con tarjeta real y monto mínimo antes de publicar.
+11. Plan de rollback conocido por el usuario y ejecutable sin asistencia.
+
+### Estrategia de rollback
+
+En orden de preferencia, del menor al mayor impacto:
+
+1. **Variable incorrecta o faltante**: corregir el valor en EasyPanel y reiniciar el servicio. Sin afectar código ni datos.
+2. **Problema al pasar a producción real**: revertir `MERCADOPAGO_ACCESS_TOKEN` al token sandbox en EasyPanel y reiniciar. El flujo vuelve a sandbox sin pérdida de pedidos.
+3. **Fallo grave del servicio** (crash, error no controlado): pausar o detener el servicio en EasyPanel para evitar tráfico. Investigar logs en EasyPanel, corregir y reiniciar.
+4. **Error de código** (bug en un commit reciente): identificar el commit problemático con `git log`, revertir a la versión anterior en GitHub y redesplegar desde EasyPanel. Aplicar solo si el problema no se resuelve con configuración.
+
+No eliminar filas de Supabase como parte del rollback salvo autorización explícita del usuario.
+
+### Alternativas consideradas
+
+- **Railway, Render o Fly.io**: PaaS con deploy desde GitHub más automatizado, pero el usuario ya tiene VPS y EasyPanel configurados. Descartadas por complejidad innecesaria y costo adicional.
+- **Docker/Dockerfile**: mayor control y portabilidad, pero agrega complejidad de configuración. Descartado para esta etapa; puede adoptarse en una decisión futura si el proyecto escala.
+- **Proyecto Supabase separado para staging**: más aislamiento entre entornos, pero requiere crear un segundo proyecto y migrar el esquema. Descartado; el proyecto actual ya tiene la tabla y RLS verificados, y staging con sandbox no tiene riesgo de contaminar datos reales.
+
+### Qué implementa T-013
+
+- Actualizar `docs/SKILLS.md`: reemplazar la sección de deploy genérica por pasos concretos de staging en EasyPanel.
+- Actualizar `README.md`: corregir secciones desactualizadas (base de datos, limitaciones) y agregar referencia al proceso de deploy.
+- No se requieren cambios en código JavaScript.
+- No se requieren nuevas dependencias.
+- El deploy real lo ejecuta el usuario siguiendo la checklist de staging de esta decisión.
+
+### Qué queda fuera del alcance de T-013
+
+- Configurar el webhook sandbox en el panel de Mercado Pago (manual; responsabilidad del usuario).
+- Recuperar o redirigir el dominio `lemont01.com`.
+- Configurar HTTPS con dominio propio.
+- Pasar a producción real con credenciales reales.
+- Autenticación de compradores o panel administrativo.
+- CI/CD automatizado.
+- Infraestructura como código (Terraform, Ansible, etc.).
 
 ### Consecuencias
+
 - Relacionada con T-013.
-- La URL estable de producción debe usarse en `BASE_URL` y como `notification_url` en las preferencias.
-- No ejecutar ningún deploy sin autorización explícita.
+- Codex actualiza `docs/SKILLS.md` y `README.md` con la documentación de staging.
+- El deploy real lo ejecuta el usuario siguiendo la checklist de staging.
+- No se realizan cambios en código JavaScript ni en la lógica de pagos.
+- T-013 queda desbloqueada.
 
 ---
 
