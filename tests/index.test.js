@@ -340,6 +340,8 @@ describe("creación de preferencias", () => {
     const supabaseError = new Error("database detail with token-like secret");
     supabaseError.code = "PGRST116";
     supabaseError.status = 406;
+    supabaseError.details = "sensitive details";
+    supabaseError.hint = "sensitive hint";
     const { routes, preferenceCreate } = loadApp({
       supabase: {
         insertOrder: async () => ({ data: null, error: supabaseError }),
@@ -361,11 +363,18 @@ describe("creación de preferencias", () => {
           method: "POST",
           status_code: 500,
           error_type: "supabase_result_shape_error",
+          supabase_code: "PGRST116",
+          supabase_status: 406,
+          supabase_error_name: "Error",
+          supabase_details_type: "string",
+          supabase_hint_type: "string",
         }),
       ])
     );
     expect(serializedLogOutput(errorSpy)).not.toContain("database detail");
     expect(serializedLogOutput(errorSpy)).not.toContain("token-like secret");
+    expect(serializedLogOutput(errorSpy)).not.toContain("sensitive details");
+    expect(serializedLogOutput(errorSpy)).not.toContain("sensitive hint");
   });
 
   test("rechaza SKU inexistente sin llamar a Supabase ni Mercado Pago", async () => {

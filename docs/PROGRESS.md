@@ -108,6 +108,22 @@ Opciones para continuar:
 - Resultado: diagnóstico listo para redeploy en EasyPanel. No cambia el contrato HTTP ni la lógica de pagos.
 - Pendientes o riesgos: si la categoría sigue siendo genérica, hará falta autorizar un ajuste de logging más específico en `src/logger.js` para incluir campos seguros como `supabase_code` o `supabase_status`.
 
+### 2026-06-26 — Diagnóstico seguro adicional de PostgREST
+
+- Objetivo: conocer el código exacto del error Supabase/PostgREST sin exponer mensaje, detalles, hint, payload, headers ni secretos.
+- Tarea relacionada: diagnóstico operativo de staging posterior a T-013.
+- Archivos afectados: `src/app.js`, `tests/index.test.js`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `src/app.js`: el log `event="error al persistir pedido"` agrega, si existen, `supabase_code`, `supabase_status`, `supabase_error_name`, `supabase_details_type` y `supabase_hint_type`.
+  - `tests/index.test.js`: se verifica que esos campos seguros aparezcan y que no se emitan `error.message`, `error.details` ni `error.hint` completos.
+- Verificaciones:
+  - `node --check src/app.js`.
+  - `npm.cmd test`.
+  - `git diff --check`.
+  - `git diff`.
+- Resultado: diagnóstico listo para redeploy en EasyPanel. No cambia el contrato HTTP ni la lógica de pagos.
+- Pendientes o riesgos: revisar el próximo log de EasyPanel y decidir el fix mínimo según `supabase_code`/`supabase_status`.
+
 ### 2026-06-26 — Cierre final del backlog (14/14 tareas)
 
 - Objetivo: verificar consistencia documental del estado final del proyecto y cerrar el backlog T-001 a T-014.

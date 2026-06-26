@@ -36,6 +36,48 @@ function getSupabaseErrorCategory(error) {
   return "supabase_error";
 }
 
+function getSupabaseDiagnosticFields(error) {
+  const fields = {};
+
+  if (typeof error?.code === "string") {
+    fields.supabase_code = error.code;
+  }
+
+  if (typeof error?.status === "number" || typeof error?.status === "string") {
+    fields.supabase_status = error.status;
+  }
+
+  if (typeof error?.name === "string") {
+    fields.supabase_error_name = error.name;
+  }
+
+  if (error?.details !== undefined) {
+    fields.supabase_details_type = typeof error.details;
+  }
+
+  if (error?.hint !== undefined) {
+    fields.supabase_hint_type = typeof error.hint;
+  }
+
+  return fields;
+}
+
+function logSupabasePersistError(error, logContext) {
+  const entry = {
+    level: "error",
+    event: "error al persistir pedido",
+    request_id: logContext.request_id,
+    route: logContext.route,
+    method: logContext.method,
+    timestamp: new Date().toISOString(),
+    status_code: 500,
+    error_type: getSupabaseErrorCategory(error),
+    ...getSupabaseDiagnosticFields(error),
+  };
+
+  console.error(JSON.stringify(entry));
+}
+
 app.get("/success", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "success.html"));
 });
@@ -226,11 +268,7 @@ app.post("/crear-preferencia", async (req, res) => {
         order_status: "pending",
       });
     } catch (error) {
-      log("error", "error al persistir pedido", {
-        ...logContext,
-        status_code: 500,
-        error_type: getSupabaseErrorCategory(error),
-      });
+      logSupabasePersistError(error, logContext);
       return res.status(500).json({
         error: "No se pudo iniciar el pago",
       });
