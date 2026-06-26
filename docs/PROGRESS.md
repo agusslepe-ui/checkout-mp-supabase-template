@@ -31,12 +31,14 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - T-004: validación de variables de entorno obligatorias al arrancar.
 - T-005: suite Jest con 11 tests; `npm test` pasa sin llamadas externas.
 - T-006: migración SQL manual versionada para `orders`, con restricciones, índices y RLS habilitada.
+
+**Implementado en sesión 2026-06-25:**
 - T-007: estrategia monetaria explícita con comparación normalizada a centavos, validación de moneda y logs genéricos del webhook de pago.
 - T-008: referencias de pedido generadas con `crypto.randomUUID()` y prefijo `LEMONT-ORDER-`.
 - T-009: backend separado en `src/app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js` y `webhookSignature.js`.
 - T-010: logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos y ausencia de payloads sensibles.
 - T-011: `GET /webhook` disponible solo con `NODE_ENV !== "production"`; `POST /webhook` se conserva.
-- T-012: catálogo seguro en `src/catalog.js`; el backend calcula precio, total y moneda desde SKU y cantidad.
+- T-012: catálogo seguro en `src/catalog.js`; el backend calcula precio, total y moneda desde SKU y cantidad. (DEC-013)
 - T-014: respuesta HTTP 400 por JSON inválido con `Content-Type: application/json; charset=utf-8`.
 - Documentación completa: TASKS.md (T-001 a T-014), DECISIONS.md (DEC-009 a DEC-017), CURRENT_CONTEXT.md.
 
@@ -66,6 +68,23 @@ Opciones para continuar:
 **B — Próxima fase técnica**: T-013 requiere DEC-016.
 
 ## Bitácora
+
+### 2026-06-25 — Cierre documental de fase (13/14 tareas)
+
+- Objetivo: verificar consistencia documental del estado real del proyecto tras la finalización de T-012, y dejar el proyecto ordenado antes de resolver DEC-016.
+- Archivos revisados: `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`, `docs/TASKS.md`, `docs/DESIGN.md`.
+- Archivos modificados: `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `docs/CURRENT_CONTEXT.md`: se consolidaron las dos tablas separadas de "Decisiones técnicas aceptadas" en una sola tabla con DEC-013 integrada junto a las otras cinco decisiones.
+  - `docs/PROGRESS.md`: se dividió "Implementado en sesión 2026-06-24" en dos subsecciones (2026-06-24 y 2026-06-25) para que T-007 a T-014 no figuren bajo una fecha incorrecta. Esta entrada de cierre agregada.
+- Inconsistencias detectadas y corregidas:
+  - DEC-013 estaba en una sección "continuación" separada en `CURRENT_CONTEXT.md`; ahora está en la tabla principal.
+  - El encabezado "Implementado en sesión 2026-06-24" incluía T-012 y T-014 completadas el 2026-06-25; ahora están bajo su fecha real.
+- Sin inconsistencias en `docs/TASKS.md`: T-012 marcada como completada con nota de verificación (29 tests), T-013 pendiente bloqueada por DEC-016, T-014 completada.
+- Sin inconsistencias en `docs/DESIGN.md`: `src/catalog.js` documentado, flujo actualizado, 29 tests.
+- Sin cambios de código. Sin commits. Sin acceso a `.env`.
+- Estado al cerrar: 13/14 tareas completadas y documentadas. Única tarea pendiente: T-013, bloqueada por DEC-016.
+- Próximo paso: el usuario define DEC-016 (proveedor de deploy, entornos, rollback) para desbloquear T-013.
 
 ### 2026-06-25 — T-012 completada
 
