@@ -666,10 +666,11 @@ describe("webhook de pagos", () => {
         expect.objectContaining({
           level: "warn",
           event: "firma de webhook invalida",
-          request_id: "request-test",
+          request_id: expect.any(String),
           route: "/webhook",
           method: "POST",
           status_code: 401,
+          proxy_related_header_names_present: ["x-request-id"],
           has_query_data_id: true,
           has_body_data_id: true,
           query_data_id_type: "string",
@@ -681,6 +682,22 @@ describe("webhook de pagos", () => {
           has_x_request_id: true,
           x_request_id_length: "request-test".length,
           x_request_id_sha256_prefix: sha256Prefix("request-test"),
+          has_x_original_request_id: false,
+          x_original_request_id_length: 0,
+          has_x_correlation_id: false,
+          x_correlation_id_length: 0,
+          has_x_request_start: false,
+          x_request_start_length: 0,
+          has_x_forwarded_for: false,
+          x_forwarded_for_length: 0,
+          has_x_forwarded_host: false,
+          x_forwarded_host_length: 0,
+          has_x_forwarded_proto: false,
+          x_forwarded_proto_length: 0,
+          has_forwarded: false,
+          forwarded_length: 0,
+          has_via: false,
+          via_length: 0,
           has_x_signature: true,
           has_signature_ts: true,
           signature_ts_length: "1700000000".length,
@@ -708,6 +725,106 @@ describe("webhook de pagos", () => {
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(invalidSignature);
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("PAYMENTTEST");
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("0".repeat(64));
+  });
+
+  test("diagnostica headers proxy de forma segura sin exponer valores completos", async () => {
+    const { routes, paymentGet } = loadApp();
+    const response = createResponse();
+    const invalidSignature = `ts=1700000000,v1=${"0".repeat(64)}`;
+    const proxyHeaders = {
+      "x-request-id": "proxy-request-id-123",
+      "x-original-request-id": "mp-original-id-456",
+      "x-correlation-id": "correlation-id-789",
+      "x-request-start": "t=1700000000123",
+      "x-forwarded-for": "203.0.113.10",
+      "x-forwarded-host": "checkout.example.test",
+      "x-forwarded-proto": "https",
+      forwarded: "for=203.0.113.10;proto=https;host=checkout.example.test",
+      via: "1.1 traefik",
+    };
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        headers: {
+          ...proxyHeaders,
+          "x-signature": invalidSignature,
+          authorization: "bearer should-not-be-logged",
+        },
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ error: "Webhook inválido" });
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "firma de webhook invalida",
+          route: "/webhook",
+          method: "POST",
+          status_code: 401,
+          proxy_related_header_names_present: [
+            "x-request-id",
+            "x-original-request-id",
+            "x-correlation-id",
+            "x-request-start",
+            "x-forwarded-for",
+            "x-forwarded-host",
+            "x-forwarded-proto",
+            "forwarded",
+            "via",
+          ],
+          has_x_request_id: true,
+          x_request_id_length: proxyHeaders["x-request-id"].length,
+          x_request_id_sha256_prefix: sha256Prefix(proxyHeaders["x-request-id"]),
+          has_x_original_request_id: true,
+          x_original_request_id_length: proxyHeaders["x-original-request-id"].length,
+          x_original_request_id_sha256_prefix: sha256Prefix(
+            proxyHeaders["x-original-request-id"]
+          ),
+          has_x_correlation_id: true,
+          x_correlation_id_length: proxyHeaders["x-correlation-id"].length,
+          x_correlation_id_sha256_prefix: sha256Prefix(
+            proxyHeaders["x-correlation-id"]
+          ),
+          has_x_request_start: true,
+          x_request_start_length: proxyHeaders["x-request-start"].length,
+          x_request_start_sha256_prefix: sha256Prefix(
+            proxyHeaders["x-request-start"]
+          ),
+          has_x_forwarded_for: true,
+          x_forwarded_for_length: proxyHeaders["x-forwarded-for"].length,
+          x_forwarded_for_sha256_prefix: sha256Prefix(
+            proxyHeaders["x-forwarded-for"]
+          ),
+          has_x_forwarded_host: true,
+          x_forwarded_host_length: proxyHeaders["x-forwarded-host"].length,
+          x_forwarded_host_sha256_prefix: sha256Prefix(
+            proxyHeaders["x-forwarded-host"]
+          ),
+          has_x_forwarded_proto: true,
+          x_forwarded_proto_length: proxyHeaders["x-forwarded-proto"].length,
+          x_forwarded_proto_sha256_prefix: sha256Prefix(
+            proxyHeaders["x-forwarded-proto"]
+          ),
+          has_forwarded: true,
+          forwarded_length: proxyHeaders.forwarded.length,
+          forwarded_sha256_prefix: sha256Prefix(proxyHeaders.forwarded),
+          has_via: true,
+          via_length: proxyHeaders.via.length,
+          via_sha256_prefix: sha256Prefix(proxyHeaders.via),
+        }),
+      ])
+    );
+
+    const logOutput = serializedLogOutput(logSpy, warnSpy, errorSpy);
+    for (const headerValue of Object.values(proxyHeaders)) {
+      expect(logOutput).not.toContain(headerValue);
+    }
+    expect(logOutput).not.toContain(invalidSignature);
+    expect(logOutput).not.toContain("should-not-be-logged");
   });
 
   test("diagnostica de forma segura cuando data.id llega solo en el body", async () => {

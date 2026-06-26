@@ -1,6 +1,18 @@
 const crypto = require("crypto");
 const { mercadoPagoWebhookSecret } = require("./config");
 
+const PROXY_RELATED_HEADER_NAMES = [
+  "x-request-id",
+  "x-original-request-id",
+  "x-correlation-id",
+  "x-request-start",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "forwarded",
+  "via",
+];
+
 function parseSignatureHeader(signatureHeader) {
   const parts = {};
 
@@ -40,6 +52,46 @@ function getSha256Prefix(value) {
   }
 
   return crypto.createHash("sha256").update(String(value)).digest("hex").slice(0, 8);
+}
+
+function getSafeHeaderFieldName(headerName) {
+  return headerName.replace(/-/g, "_");
+}
+
+function getHeaderValue(headers, headerName) {
+  const value = headers?.[headerName];
+
+  if (Array.isArray(value)) {
+    return value.join(",");
+  }
+
+  return value;
+}
+
+function getProxyHeaderDiagnostics(headers) {
+  const diagnostics = {
+    proxy_related_header_names_present: [],
+  };
+
+  for (const headerName of PROXY_RELATED_HEADER_NAMES) {
+    const value = getHeaderValue(headers, headerName);
+    const fieldName = getSafeHeaderFieldName(headerName);
+    const isPresent = value !== undefined && value !== null && String(value) !== "";
+
+    diagnostics[`has_${fieldName}`] = isPresent;
+    diagnostics[`${fieldName}_length`] = getValueLength(value);
+
+    const sha256Prefix = getSha256Prefix(value);
+    if (sha256Prefix !== undefined) {
+      diagnostics[`${fieldName}_sha256_prefix`] = sha256Prefix;
+    }
+
+    if (isPresent) {
+      diagnostics.proxy_related_header_names_present.push(headerName);
+    }
+  }
+
+  return diagnostics;
 }
 
 function compareSignatureHex(expectedSignature, receivedSignature) {
@@ -247,6 +299,7 @@ function getWebhookSignatureDiagnostics(req) {
   );
 
   return {
+    ...getProxyHeaderDiagnostics(req.headers),
     has_query_data_id: hasQueryDataId,
     has_body_data_id: hasBodyDataId,
     query_data_id_type: typeof queryDataId,

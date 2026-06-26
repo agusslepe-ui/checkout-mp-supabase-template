@@ -111,10 +111,7 @@ app.get("/pending", (req, res) => {
 app.post("/webhook", async (req, res) => {
   const signatureHeader = req.headers["x-signature"];
   const logContext = {
-    request_id:
-      typeof req.headers["x-request-id"] === "string" && req.headers["x-request-id"] !== ""
-        ? req.headers["x-request-id"]
-        : crypto.randomUUID(),
+    request_id: crypto.randomUUID(),
     route: "/webhook",
     method: "POST",
   };
@@ -132,6 +129,13 @@ app.post("/webhook", async (req, res) => {
   if (!signatureIsValid) {
     logInvalidWebhookSignature(req, logContext);
     return res.status(401).json({ error: "Webhook inválido" });
+  }
+
+  if (
+    typeof req.headers["x-request-id"] === "string" &&
+    req.headers["x-request-id"] !== ""
+  ) {
+    logContext.request_id = req.headers["x-request-id"];
   }
 
   log("info", "webhook recibido", logContext);
