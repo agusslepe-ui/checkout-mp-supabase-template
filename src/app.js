@@ -6,7 +6,10 @@ const { baseUrl, mercadoPagoAccessToken } = require("./config");
 const { log } = require("./logger");
 const { createPendingOrder, markOrderAsPaid } = require("./orders");
 const { createPreference, getPayment } = require("./payments");
-const { validateWebhookSignature } = require("./webhookSignature");
+const {
+  getWebhookSignatureDiagnostics,
+  validateWebhookSignature,
+} = require("./webhookSignature");
 
 const app = express();
 
@@ -78,6 +81,21 @@ function logSupabasePersistError(error, logContext) {
   console.error(JSON.stringify(entry));
 }
 
+function logInvalidWebhookSignature(req, logContext) {
+  const entry = {
+    level: "warn",
+    event: "firma de webhook invalida",
+    request_id: logContext.request_id,
+    route: logContext.route,
+    method: logContext.method,
+    timestamp: new Date().toISOString(),
+    status_code: 401,
+    ...getWebhookSignatureDiagnostics(req),
+  };
+
+  console.warn(JSON.stringify(entry));
+}
+
 app.get("/success", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "success.html"));
 });
@@ -112,10 +130,7 @@ app.post("/webhook", async (req, res) => {
   const signatureIsValid = validateWebhookSignature(req);
 
   if (!signatureIsValid) {
-    log("warn", "firma de webhook invalida", {
-      ...logContext,
-      status_code: 401,
-    });
+    logInvalidWebhookSignature(req, logContext);
     return res.status(401).json({ error: "Webhook inválido" });
   }
 

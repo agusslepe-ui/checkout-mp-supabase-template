@@ -625,10 +625,68 @@ describe("webhook de pagos", () => {
           route: "/webhook",
           method: "POST",
           status_code: 401,
+          has_query_data_id: true,
+          has_body_data_id: true,
+          query_data_id_type: "string",
+          body_data_id_type: "string",
+          query_data_id_length: "PAYMENTTEST".length,
+          body_data_id_length: "PAYMENTTEST".length,
+          has_x_request_id: true,
+          has_x_signature: true,
+          has_signature_ts: true,
+          has_signature_v1: true,
+          signature_v1_length: 64,
+          signature_data_source: "query_data_id",
+          uses_lowercase_data_id: true,
         }),
       ])
     );
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(invalidSignature);
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("PAYMENTTEST");
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("0".repeat(64));
+  });
+
+  test("diagnostica de forma segura cuando data.id llega solo en el body", async () => {
+    const { routes, paymentGet } = loadApp();
+    const response = createResponse();
+    const request = makeWebhookRequest({
+      headers: {
+        "x-request-id": "request-test",
+        "x-signature": makeSignature({ dataId: "PAYMENTTEST", requestId: "request-test" }),
+      },
+    });
+    delete request.query["data.id"];
+
+    await routes.post["/webhook"](request, response);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ error: "Webhook inválido" });
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "firma de webhook invalida",
+          route: "/webhook",
+          method: "POST",
+          status_code: 401,
+          has_query_data_id: false,
+          has_body_data_id: true,
+          query_data_id_type: "undefined",
+          body_data_id_type: "string",
+          query_data_id_length: 0,
+          body_data_id_length: "PAYMENTTEST".length,
+          has_x_request_id: true,
+          has_x_signature: true,
+          has_signature_ts: true,
+          has_signature_v1: true,
+          signature_v1_length: 64,
+          signature_data_source: "missing",
+          uses_lowercase_data_id: false,
+        }),
+      ])
+    );
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("PAYMENTTEST");
   });
 
   test("continúa el flujo con firma válida", async () => {

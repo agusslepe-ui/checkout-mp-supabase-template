@@ -124,6 +124,24 @@ Opciones para continuar:
 - Resultado: diagnóstico listo para redeploy en EasyPanel. No cambia el contrato HTTP ni la lógica de pagos.
 - Pendientes o riesgos: revisar el próximo log de EasyPanel y decidir el fix mínimo según `supabase_code`/`supabase_status`.
 
+### 2026-06-26 — Diagnóstico seguro de firma webhook Mercado Pago
+
+- Objetivo: diagnosticar por qué Mercado Pago sandbox llega a `POST /webhook` pero la validación HMAC responde 401.
+- Tarea relacionada: diagnóstico operativo de staging posterior a T-013.
+- Archivos afectados: `src/webhookSignature.js`, `src/app.js`, `tests/index.test.js`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `src/webhookSignature.js`: se agregó parsing reutilizable de `x-signature` y diagnóstico seguro de fuente de `data.id`, presencia de headers, presencia de `ts`/`v1`, longitud de `v1` y uso de lowercase.
+  - `src/app.js`: cuando la firma es inválida, el log `event="firma de webhook invalida"` incluye solo esos metadatos seguros y mantiene HTTP 401.
+  - `tests/index.test.js`: se cubre el log seguro de firma inválida y el caso donde `data.id` llega solo en `body.data.id`.
+- Verificaciones:
+  - `node --check src/webhookSignature.js`.
+  - `node --check src/app.js`.
+  - `npm.cmd test`.
+  - `git diff --check`.
+  - `git diff`.
+- Resultado: diagnóstico listo para redeploy en EasyPanel. No desactiva ni debilita la validación de firma.
+- Pendientes o riesgos: revisar si `has_query_data_id=false` y `has_body_data_id=true`, o si el problema apunta al lowercase del `data.id`.
+
 ### 2026-06-26 — Cierre final del backlog (14/14 tareas)
 
 - Objetivo: verificar consistencia documental del estado final del proyecto y cerrar el backlog T-001 a T-014.
