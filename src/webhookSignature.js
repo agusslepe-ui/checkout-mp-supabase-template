@@ -50,7 +50,7 @@ function isValidWebhookSignature({ signatureHeader, requestId, dataId }) {
   const manifestParts = [];
 
   if (dataId !== undefined && dataId !== null && String(dataId) !== "") {
-    manifestParts.push(`id:${String(dataId).toLowerCase()};`);
+    manifestParts.push(`id:${String(dataId)};`);
   }
 
   if (typeof requestId === "string" && requestId !== "") {
@@ -105,7 +105,7 @@ function getWebhookSignatureDiagnostics(req) {
     has_signature_v1: typeof v1 === "string" && v1 !== "",
     signature_v1_length: getValueLength(v1),
     signature_data_source: hasQueryDataId ? "query_data_id" : "missing",
-    uses_lowercase_data_id: hasQueryDataId,
+    preserves_literal_data_id: hasQueryDataId,
   };
 }
 

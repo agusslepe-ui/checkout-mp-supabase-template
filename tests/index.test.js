@@ -44,8 +44,10 @@ function makeSignature({
   requestId = "request-test",
   timestamp = "1700000000",
   secret = requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET,
+  lowercaseDataId = false,
 } = {}) {
-  const manifest = `id:${String(dataId).toLowerCase()};request-id:${requestId};ts:${timestamp};`;
+  const idForManifest = lowercaseDataId ? String(dataId).toLowerCase() : String(dataId);
+  const manifest = `id:${idForManifest};request-id:${requestId};ts:${timestamp};`;
   const digest = crypto.createHmac("sha256", secret).update(manifest).digest("hex");
 
   return `ts=${timestamp},v1=${digest}`;
@@ -637,7 +639,7 @@ describe("webhook de pagos", () => {
           has_signature_v1: true,
           signature_v1_length: 64,
           signature_data_source: "query_data_id",
-          uses_lowercase_data_id: true,
+          preserves_literal_data_id: true,
         }),
       ])
     );
@@ -682,7 +684,7 @@ describe("webhook de pagos", () => {
           has_signature_v1: true,
           signature_v1_length: 64,
           signature_data_source: "missing",
-          uses_lowercase_data_id: false,
+          preserves_literal_data_id: false,
         }),
       ])
     );
@@ -710,6 +712,30 @@ describe("webhook de pagos", () => {
         }),
       ])
     );
+  });
+
+  test("rechaza firma calculada con data.id en lowercase cuando el request trae otro casing", async () => {
+    const { routes, paymentGet } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        headers: {
+          "x-request-id": "request-test",
+          "x-signature": makeSignature({
+            dataId: "PAYMENTTEST",
+            requestId: "request-test",
+            lowercaseDataId: true,
+          }),
+        },
+        paymentId: "PAYMENTTEST",
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ error: "Webhook inválido" });
+    expect(paymentGet).not.toHaveBeenCalled();
   });
 
   test("marca como paid un pago aprobado con importe correcto", async () => {

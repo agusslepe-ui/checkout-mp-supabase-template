@@ -142,6 +142,23 @@ Opciones para continuar:
 - Resultado: diagnóstico listo para redeploy en EasyPanel. No desactiva ni debilita la validación de firma.
 - Pendientes o riesgos: revisar si `has_query_data_id=false` y `has_body_data_id=true`, o si el problema apunta al lowercase del `data.id`.
 
+### 2026-06-26 — Fix de firma webhook Mercado Pago con data.id literal
+
+- Objetivo: alinear el manifiesto HMAC con el contrato oficial de Mercado Pago usando `data.id` literal.
+- Tarea relacionada: fix operativo de staging posterior a T-013.
+- Archivos afectados: `src/webhookSignature.js`, `tests/index.test.js`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `src/webhookSignature.js`: el manifiesto cambió de `String(dataId).toLowerCase()` a `String(dataId)`.
+  - `src/webhookSignature.js`: el diagnóstico seguro reemplazó `uses_lowercase_data_id` por `preserves_literal_data_id`.
+  - `tests/index.test.js`: las firmas de prueba se calculan con `data.id` literal por defecto y se agregó una regresión que rechaza una firma calculada con lowercase cuando el request trae otro casing.
+- Verificaciones:
+  - `node --check src/webhookSignature.js`.
+  - `npm.cmd test`.
+  - `git diff --check`.
+  - `git diff`.
+- Resultado: la validación HMAC conserva el rechazo de firmas inválidas y usa el `data.id` literal.
+- Pendientes o riesgos: redeploy en EasyPanel y repetir pago sandbox para confirmar que Mercado Pago ya no recibe 401.
+
 ### 2026-06-26 — Cierre final del backlog (14/14 tareas)
 
 - Objetivo: verificar consistencia documental del estado final del proyecto y cerrar el backlog T-001 a T-014.
