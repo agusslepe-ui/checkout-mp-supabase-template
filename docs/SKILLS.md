@@ -74,6 +74,7 @@ Existe una suite Jest ejecutable con `npm.cmd test`. Aun así, no afirmar que el
 ## Deploy a staging (EasyPanel)
 
 Plataforma: EasyPanel sobre VPS. Estrategia completa en `docs/DECISIONS.md` (DEC-016).
+Compilación: usar `Dockerfile` del repositorio, no Nixpacks. El Dockerfile fija Node.js 22 para evitar que EasyPanel construya con Node.js 18.
 
 ### Variables a cargar en EasyPanel
 
@@ -92,13 +93,15 @@ Cargar solo desde el panel de EasyPanel. Nunca en el repositorio ni en archivos 
 ### Pasos de deploy a staging
 
 1. Crear el servicio en EasyPanel apuntando al repositorio GitHub.
-2. Configurar todas las variables de entorno listadas arriba en el panel de EasyPanel.
-3. Configurar el comando de inicio: `npm start` (o `node index.js`).
-4. Desplegar y verificar que el log inicial no muestra errores de variable faltante.
-5. Anotar la URL HTTPS pública asignada por EasyPanel.
-6. Actualizar `BASE_URL` en EasyPanel con esa URL si aún no coincide.
-7. Configurar manualmente el webhook sandbox en el panel de desarrolladores de Mercado Pago: URL destino `{BASE_URL}/webhook`. Sin este paso el webhook no llegará al servidor.
-8. Ejecutar la checklist de staging completa (ver `docs/DECISIONS.md` — DEC-016).
+2. En **Compilación**, seleccionar `Dockerfile` en lugar de Nixpacks.
+3. Configurar todas las variables de entorno listadas arriba en el panel de EasyPanel.
+4. Confirmar que el puerto interno del servicio apunta a `3003`.
+5. Desplegar y verificar que el build usa la imagen `node:22-alpine`.
+6. Verificar que el log inicial no muestra errores de variable faltante.
+7. Anotar la URL HTTPS pública asignada por EasyPanel.
+8. Actualizar `BASE_URL` en EasyPanel con esa URL si aún no coincide.
+9. Configurar manualmente el webhook sandbox en el panel de desarrolladores de Mercado Pago: URL destino `{BASE_URL}/webhook`. Sin este paso el webhook no llegará al servidor.
+10. Ejecutar la checklist de staging completa (ver `docs/DECISIONS.md` — DEC-016).
 
 ### Checklist de staging
 

@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — T-013 completada, deploy real pendiente de ejecución por el usuario).
+> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — staging debe redeployarse con Dockerfile Node.js 22).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -59,7 +59,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 ## Tareas pendientes
 
-No quedan tareas T-001 a T-014 pendientes. Queda pendiente operativo externo: el usuario debe ejecutar el deploy real a staging en EasyPanel y registrar el resultado de la checklist.
+No quedan tareas T-001 a T-014 pendientes. Queda pendiente operativo externo: el usuario debe cambiar EasyPanel de Nixpacks a Dockerfile, redeployar staging y registrar el resultado de la checklist.
 
 ---
 
@@ -89,7 +89,7 @@ No quedan tareas T-001 a T-014 pendientes. Queda pendiente operativo externo: el
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
 - **Tests**: Jest. `npm test` pasa con **29 tests**. Sin llamadas externas ni acceso a `.env`.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
-- **Deploy**: staging documentado para EasyPanel/VPS según DEC-016. Deploy real pendiente de ejecución por el usuario.
+- **Deploy**: staging documentado para EasyPanel/VPS según DEC-016. El repositorio incluye `Dockerfile` con Node.js 22 para evitar builds de Nixpacks con Node.js 18. Deploy real pendiente de ejecución por el usuario.
 
 ---
 
@@ -107,6 +107,8 @@ No quedan tareas T-001 a T-014 pendientes. Queda pendiente operativo externo: el
 | `src/webhookSignature.js` | Validación de firma HMAC-SHA256 de Mercado Pago. |
 | `tests/index.test.js` | Suite Jest con **29 tests**. Mocks de MP, Supabase, dotenv y Express. |
 | `supabase/migrations/001_create_orders.sql` | Migración SQL versionada: DDL, restricciones, índices y RLS. Aplicada el 2026-06-25. |
+| `Dockerfile` | Build de staging con Node.js 22; instala con `npm ci`, expone `3003` y ejecuta `npm start`. |
+| `.dockerignore` | Excluye `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales del contexto Docker. |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). Incluye `LOG_LEVEL=info`. |
 | `docs/CURRENT_CONTEXT.md` | Este archivo — resumen compacto para agentes. |
 | `docs/TASKS.md` | Detalle de todas las tareas con criterios de aceptación. |
@@ -123,7 +125,7 @@ No quedan tareas T-001 a T-014 pendientes. Queda pendiente operativo externo: el
 
 ### Ejecutar staging en EasyPanel
 
-> El usuario debe crear/desplegar el servicio en EasyPanel, cargar variables solo desde el panel, configurar el webhook sandbox de Mercado Pago y completar la checklist de `docs/SKILLS.md` / DEC-016.
+> El usuario debe cambiar **Compilación** de Nixpacks a `Dockerfile`, redeployar el servicio en EasyPanel, cargar variables solo desde el panel, configurar el webhook sandbox de Mercado Pago y completar la checklist de `docs/SKILLS.md` / DEC-016.
 > Codex no debe ejecutar deploy, leer `.env`, publicar secretos ni avanzar a producción real sin una nueva autorización explícita.
 
 ---

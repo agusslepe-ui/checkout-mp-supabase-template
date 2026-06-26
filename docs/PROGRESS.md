@@ -10,7 +10,7 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Tests**: Jest instalado. `npm test` pasa con 29 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: ejecutar el deploy real a staging en EasyPanel siguiendo `docs/SKILLS.md` y DEC-016.
+- **Pendiente más urgente**: redeploy de staging en EasyPanel usando `Dockerfile` para construir con Node.js 22.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -44,6 +44,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 **Implementado en sesión 2026-06-26:**
 - T-013: documentación de deploy a staging en EasyPanel con variables por nombre, pasos operativos, checklist de staging (11 ítems), checklist previa a producción real (11 ítems), rollback en 4 niveles y notas de seguridad. (DEC-016)
+- Fix operativo de staging: `Dockerfile` con Node.js 22 y `.dockerignore` para excluir `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales. EasyPanel debe usar compilación `Dockerfile`, no Nixpacks.
 
 ## Problemas resueltos documentados
 
@@ -56,21 +57,40 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Pendientes principales
 
-- Ejecutar y documentar el deploy real a staging en EasyPanel. El deploy lo realiza el usuario siguiendo la checklist de DEC-016.
+- Ejecutar y documentar el redeploy real a staging en EasyPanel usando compilación `Dockerfile`. El deploy lo realiza el usuario siguiendo la checklist de DEC-016.
 
 El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**14/14 tareas completadas.** T-013 dejó preparada la guía final de staging en EasyPanel, con checklists y rollback según DEC-016. El deploy real no fue ejecutado por Codex; queda a cargo del usuario.
+**14/14 tareas completadas.** T-013 dejó preparada la guía final de staging en EasyPanel, con checklists y rollback según DEC-016. Se agregó Dockerfile para fijar Node.js 22 en staging. El deploy real no fue ejecutado por Codex; queda a cargo del usuario.
 
 Opciones para continuar:
 
 **A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks, RLS o la separación modular recién completada.
 
-**B — Próxima fase técnica**: ejecutar staging en EasyPanel siguiendo `docs/SKILLS.md`, registrar resultados y decidir cuándo avanzar a producción real.
+**B — Próxima fase técnica**: cambiar EasyPanel de Nixpacks a Dockerfile, ejecutar staging, registrar resultados y decidir cuándo avanzar a producción real.
 
 ## Bitácora
+
+### 2026-06-26 — Fix operativo de staging: Dockerfile con Node.js 22
+
+- Objetivo: evitar que EasyPanel/Nixpacks use Node.js 18 y falle con Supabase por falta de soporte nativo de WebSocket.
+- Tarea relacionada: deploy staging posterior a T-013.
+- Archivos afectados: `Dockerfile`, `.dockerignore`, `README.md`, `docs/SKILLS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Cambios realizados:
+  - `Dockerfile`: usa `node:22-alpine`, `WORKDIR /app`, `npm ci`, copia el proyecto, expone `3003` y ejecuta `npm start`.
+  - `.dockerignore`: excluye `node_modules`, `.env`, `.env.*`, `.git`, logs y temporales; mantiene `.env.example` como plantilla pública mediante `!.env.example`.
+  - `docs/SKILLS.md` y `README.md`: documentan que EasyPanel debe usar compilación `Dockerfile`, no Nixpacks.
+  - `docs/CURRENT_CONTEXT.md`: registra que staging ahora se construye con Dockerfile Node.js 22.
+- Verificaciones:
+  - `npm.cmd test`.
+  - `git diff --check`.
+  - `git diff`.
+  - Confirmación de que no hay cambios en `.js`, `.env`, dependencias, `package.json` ni `package-lock.json`.
+  - Revisión de `Dockerfile` y `.dockerignore` sin secretos ni valores reales.
+- Resultado: configuración Docker lista para redeploy en EasyPanel con Node.js 22.
+- Pendientes o riesgos: el usuario debe cambiar EasyPanel de Nixpacks a Dockerfile y hacer redeploy.
 
 ### 2026-06-26 — Cierre final del backlog (14/14 tareas)
 
