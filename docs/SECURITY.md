@@ -37,6 +37,8 @@
 
 Mitigado por T-001/DEC-009: el webhook valida `x-signature` y `x-request-id` con `MERCADO_PAGO_WEBHOOK_SECRET` antes de procesar pagos. Mantener el secreto solo en backend y rotarlo si se expone.
 
+**Nota de soporte Mercado Pago (2026-06-26):** los pagos de prueba con credenciales de prueba no envían notificaciones reales firmadas; la vía de prueba recomendada en sandbox es la simulación desde "Tus integraciones". El Webhook Secret es por aplicación y por modo (pruebas vs productivo): usar el secret del modo correcto. Para el manifiesto HMAC, `data.id` proviene de query params (`data.id_url` en la documentación); si falta algún valor del template, debe excluirse antes del cálculo, no incluirse como cadena vacía. No desactivar la validación de firma bajo ninguna circunstancia sin DEC formal previa.
+
 ### Pago sin pedido interno
 
 Mitigado por T-002: si Supabase no puede crear el pedido `pending`, el backend no crea la preferencia de Mercado Pago y responde con un error genérico.
@@ -60,6 +62,25 @@ Mitigado por T-010/DEC-017: el backend emite logs JSON mediante `log(level, even
 ### Configuración y diagnóstico de desarrollo
 
 `GET /webhook` está restringido a entornos no productivos mediante `NODE_ENV !== "production"`. Los logs verbosos, ngrok y cualquier otro diagnóstico siguen siendo útiles localmente, pero deben eliminarse, restringirse o sustituirse en producción.
+
+### Criterio de diagnóstico seguro de firma webhook
+
+Si en algún diagnóstico futuro se necesita inspeccionar el procesamiento de `x-signature`, aplica el siguiente criterio sin excepción:
+
+**Permitido en logs de diagnóstico:**
+- `has_x_signature` — booleano, indica presencia del header.
+- `x_signature_length` — entero, longitud en caracteres.
+- `x_signature_sha256_prefix` — string de 8 caracteres del SHA-256 del valor completo.
+- Mismos tres campos para `v1`, `x-request-id`, `data.id` y `ts`.
+
+**Prohibido en cualquier log o mensaje:**
+- Valor completo de `x-signature`.
+- Valor completo de `v1` (HMAC calculado).
+- Valor completo de `x-request-id`.
+- Valor completo de `data.id`.
+- Cualquier secret o access token (completo o parcial, salvo el SHA-256 prefix corto del secret en diagnóstico de startup ya documentado).
+
+Este criterio aplica a Codex, a diagnósticos temporales y a cualquier código de diagnóstico futuro. Nunca se relaja en ningún entorno.
 
 ### Diagnóstico temporal en staging
 

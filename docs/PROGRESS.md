@@ -10,7 +10,7 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Tests**: Jest instalado. `npm test` pasa con 29 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: resolver webhook 401 en staging. Diagnóstico avanzado completado: SDK oficial (`WebhookSignatureValidator` de `mercadopago` v3.1.0) también rechaza firmas reales sandbox. Simulación del panel sí valida. Traefik/EasyPanel descartado como causa. Hipótesis principal: Mercado Pago usa firma o contexto diferente para `notification_url` vs webhook global del panel. Credenciales de prueba expuestas en sesión: deben rotarse antes de continuar.
+- **Pendiente más urgente**: soporte/consulta técnica de Mercado Pago confirmó que los pagos de prueba con credenciales de prueba no envían notificaciones reales. El 401 en staging vía `notification_url` con credenciales sandbox puede ser comportamiento esperado, no un bug del código. Se identifican dos puntos técnicos a verificar en la implementación HMAC antes de cualquier prueba productiva: (a) `data.id` debe provenir de query params (denominado `data.id_url` en la documentación oficial); (b) si falta algún valor del template del manifiesto, debe excluirse antes del cálculo HMAC, no incluirse como cadena vacía. Credenciales de prueba expuestas en sesión anterior: deben rotarse. Ver DEC-018.
 - **Deploy activo**: dominio propio `checkout.lemont01.com` con SSL en EasyPanel. `POST /crear-preferencia` y persistencia Supabase funcionan en staging.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
@@ -75,32 +75,85 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 ## Pendientes principales
 
 - **Rotar credenciales de prueba expuestas** (acción inmediata): el Access Token de prueba y el Webhook Secret de prueba fueron compartidos en el chat de la sesión. Deben regenerarse en el panel de Mercado Pago y actualizarse en EasyPanel antes de continuar con cualquier prueba.
-- Decidir el próximo camino técnico para el webhook 401 (requiere aprobación del usuario):
-  - **Opción A**: Probar con credenciales productivas reales y un pago mínimo controlado para determinar si el problema es exclusivo del sandbox.
-  - **Opción B**: Investigar con documentación oficial o soporte de Mercado Pago la diferencia de firma entre `notification_url` de preferencia y webhook global del panel.
-  - **Opción C**: Documentar una DEC formal de estrategia alternativa (validación posterior por consulta directa a la API de MP, sin depender de la firma del webhook para el flujo sandbox). Requiere DEC antes de que Codex toque código.
+- Decidir el próximo camino técnico para el webhook — ver **DEC-018** actualizada (`docs/DECISIONS.md`). El soporte de Mercado Pago confirmó que la vía recomendada para probar notificaciones en sandbox es la simulación desde "Tus integraciones", no pagos de prueba reales. DEC-018 incluye además dos puntos técnicos a verificar en el HMAC antes de probar en producción. No tocar código hasta que DEC-018 esté aceptada.
 - Retirar diagnósticos temporales en `src/webhookSignature.js`, `src/app.js` y `src/config.js` antes de avanzar a producción real.
 
 El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Staging activo. Diagnóstico avanzado completado. Hipótesis: diferencia de tipo de notificación.**
+**Staging activo. Soporte confirmó comportamiento sandbox. Pendiente: verificación técnica y decisión del usuario.**
 
-El diagnóstico avanzado determinó que la infraestructura (Traefik/EasyPanel) y la implementación HMAC no son el problema. El SDK oficial también rechaza las firmas reales sandbox. La simulación del panel valida correctamente. La diferencia está en el tipo de notificación que envía Mercado Pago.
+Soporte/consulta de Mercado Pago confirmó que los pagos de prueba con credenciales de prueba no envían notificaciones reales con firma válida. La simulación desde "Tus integraciones" es la vía recomendada para sandbox. Se identificaron además dos puntos técnicos a verificar en la implementación HMAC.
 
-**Paso 1 — Inmediato (antes de cualquier otro paso):**
-Rotar el Access Token de prueba y el Webhook Secret de prueba expuestos en el chat de la sesión. Actualizar las variables `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel con los nuevos valores y verificar que el staging siga funcionando.
+**Paso 1 — Inmediato (antes de cualquier prueba técnica):**
+Rotar el Access Token de prueba y el Webhook Secret de prueba expuestos en el chat. Actualizar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel y verificar que el staging sigue funcionando.
 
-**Paso 2 — Decidir camino técnico (requiere aprobación del usuario):**
+**Paso 2 — Verificar puntos técnicos del HMAC (antes de producción):**
+Revisar en `src/webhookSignature.js` si: (a) `data.id` proviene de query params (denominado `data.id_url` en documentación oficial); (b) valores faltantes del template del manifiesto se excluyen antes del HMAC en lugar de incluirse como cadena vacía. Esta verificación es necesaria antes de cualquier prueba en producción.
 
-- **Opción A** — Prueba en producción real: usar credenciales productivas y un pago mínimo controlado para determinar si el problema es exclusivo del ambiente sandbox de Mercado Pago.
-- **Opción B** — Investigación formal: consultar documentación oficial o soporte de Mercado Pago sobre la diferencia de firma entre `notification_url` de preferencia y webhook global del panel.
-- **Opción C** — Estrategia alternativa (requiere DEC formal previa): validación posterior por consulta directa a la API de Mercado Pago, sin depender de la firma del webhook en el flujo sandbox. Esta opción implica un cambio de arquitectura que debe documentarse en `docs/DECISIONS.md` antes de que Codex toque código.
+**Paso 3 — Confirmar DEC-018:**
+Ver **DEC-018** actualizada en `docs/DECISIONS.md`. Las opciones y los nuevos puntos técnicos están documentados con sus riesgos. No modificar código hasta que DEC-018 esté aceptada.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-06-26 — Respuesta de soporte Mercado Pago: confirmación de comportamiento sandbox y puntos técnicos HMAC
+
+- Objetivo: documentar la respuesta recibida de soporte/consulta técnica de Mercado Pago y actualizar el contexto técnico.
+- Tipo de sesión: documental. Sin modificación de código. Sin acceso a `.env`.
+- Archivos actualizados: `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`, `docs/DECISIONS.md`.
+- Resumen de la respuesta de soporte (puntos relevantes para el proyecto):
+  1. El Webhook Secret se genera al configurar Webhooks en "Tus integraciones". Es por aplicación y por modo (pruebas vs productivo).
+  2. `notification_url` en la preferencia tiene prioridad sobre la URL configurada en el panel para esa transacción. No es un conflicto, pero `notification_url` manda para esa transacción específica.
+  3. **Confirmado**: los pagos de prueba creados con credenciales de prueba no envían notificaciones reales. La vía recomendada para testear recepción de notificaciones en sandbox es la configuración/simulación desde "Tus integraciones".
+  4. Para construir la firma HMAC, `data.id` debe tomarse desde los query params; en la documentación se denomina `data.id_url`.
+  5. Si falta algún valor del template del manifiesto, debe excluirse antes del cálculo HMAC. No incluirlo como cadena vacía.
+  6. Verificar que el secret corresponda al mismo modo utilizado: pruebas o productivo.
+  7. No se debe desactivar la validación de firma.
+- Conclusión técnica actualizada:
+  - El 401 en staging vía `notification_url` con credenciales de prueba puede ser comportamiento esperado del sandbox de Mercado Pago, no un bug de implementación HMAC.
+  - La simulación del panel validando correctamente es consistente con lo confirmado por soporte.
+  - Se identifican dos puntos técnicos a verificar en `src/webhookSignature.js` antes de cualquier prueba productiva:
+    - (a) ¿`data.id` se lee de query params y se denomina `data.id_url` en el template? Nuestros logs indican `signature_data_source="query_data_id"` pero el nombre de variable en el template puede diferir.
+    - (b) ¿Los valores faltantes del template se excluyen antes del HMAC o se incluyen como cadena vacía?
+  - Estos dos puntos podrían explicar diferencias en el manifiesto si algún campo llega ausente en webhooks reales.
+- Estado técnico al cerrar:
+  - `notification_url` restaurado.
+  - Validación de firma activa. Webhooks inválidos responden 401.
+  - SDK oficial solo como diagnóstico; no como fuente de aceptación.
+  - DEC-018 actualizada con el nuevo contexto.
+- Sin cambios de código. Sin commit. Sin push. Sin acceso a `.env`. Sin secretos en documentación.
+
+### 2026-06-26 — Investigación externa: diferencia entre simulación del panel y notification_url de Checkout Pro
+
+- Objetivo: documentar los hallazgos de una investigación externa sobre el webhook 401 y registrar el nuevo criterio técnico de seguridad de diagnóstico.
+- Tipo de sesión: documental. Sin modificación de código. Sin acceso a `.env`.
+- Archivos de documentación actualizados: `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`, `docs/SECURITY.md`, `docs/DECISIONS.md`.
+- Hechos confirmados del proyecto (no inferidos):
+  - El endpoint `POST /webhook` es accesible desde Mercado Pago.
+  - El secreto funciona para la simulación del panel (firma válida).
+  - El SDK oficial (`WebhookSignatureValidator`) también rechaza firmas reales sandbox.
+  - `notification_url` trae `data.id` en webhooks reales sandbox.
+  - Sin `notification_url`, no llegan webhooks útiles con `data.id`.
+  - Traefik/EasyPanel preserva `x-request-id` en requests externos controlados.
+- Hallazgos externos registrados (no todos confirmados por documentación oficial):
+  1. Mercado Pago recomienda usar el simulador del panel para testear recepción de notificaciones en sandbox. Los pagos de prueba con credenciales de prueba pueden no generar notificaciones del mismo modo que producción. (Referencia: documentación oficial.)
+  2. Mercado Pago distingue entre Webhooks (usan firma/secreto HMAC) e IPN/mecanismos legacy (comportamiento diferente). (Referencia: documentación oficial.)
+  3. Existe diferencia entre webhooks configurados desde "Your integrations" en el panel y `notification_url` definido directamente en la preferencia de Checkout Pro. (Referencia: documentación oficial, comportamiento observado.)
+  4. La simulación del panel validando correctamente indica: endpoint accesible, secreto válido para el panel, implementación HMAC no rota de forma evidente. (Conclusión propia a partir de observación.)
+  5. Que el SDK oficial también rechazace firmas reales sandbox apunta a diferencia de ambiente, modo, credenciales o tipo de notificación, no a un bug de implementación HMAC. (Conclusión propia a partir de observación.)
+  6. Evidencia comunitaria secundaria (no verificada como oficial): otros usuarios del SDK Node.js de Mercado Pago reportan diferencias similares entre simulación válida y webhooks reales con `InvalidWebhookSignatureError`. Registrado como evidencia de referencia, no como certeza técnica.
+- Estado técnico al cerrar sesión:
+  - `notification_url` restaurado en la preferencia.
+  - Validación de firma activa. Webhooks inválidos siguen respondiendo 401.
+  - SDK oficial se usa solo como diagnóstico; no como fuente de aceptación.
+- Criterio de seguridad de diagnóstico confirmado y documentado:
+  - Si hace falta diagnóstico adicional sobre `x-signature`, solo se permiten fingerprints seguros: presencia, longitud y SHA-256 prefix corto.
+  - Nunca valores completos de: `x-signature`, `v1`, `x-request-id`, `data.id`, secrets ni access tokens.
+- Decisión pendiente registrada: DEC-018 (estrategia de resolución del webhook 401).
+- Sin cambios de código. Sin commit. Sin push. Sin acceso a `.env`. Sin secretos en documentación.
 
 ### 2026-06-26 — Diagnóstico avanzado de webhook 401: nueva hipótesis y cierre de sesión
 

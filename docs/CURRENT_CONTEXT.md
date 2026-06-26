@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — staging activo en EasyPanel con dominio propio, diagnóstico avanzado de webhook 401 completado, hipótesis de tipo de notificación, credenciales de prueba a rotar).
+> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — staging activo en EasyPanel con dominio propio, soporte MP confirmó comportamiento sandbox, DEC-018 actualizada con puntos técnicos HMAC pendientes de verificación).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -63,7 +63,7 @@ No quedan tareas T-001 a T-014 pendientes.
 
 **Pendiente de seguridad (acción inmediata):** el Access Token de prueba y el Webhook Secret de prueba fueron compartidos en el chat de la sesión de diagnóstico. Deben regenerarse en el panel de Mercado Pago y actualizarse en EasyPanel antes de continuar con cualquier prueba.
 
-**Pendiente operativo:** el webhook de Mercado Pago retorna 401 en staging vía `notification_url`. Diagnóstico avanzado completado: Traefik/EasyPanel descartado como causa (preserva `x-request-id`); SDK oficial (`WebhookSignatureValidator` de `mercadopago` v3.1.0) también rechaza firmas reales sandbox (`official_sdk_validator_matches=false`); simulación desde el panel de Webhooks sí valida firma correctamente. Hipótesis principal: Mercado Pago usa firma o contexto diferente para `notification_url` de preferencia vs el webhook global del panel. El próximo camino requiere decisión del usuario (Opción A/B/C — ver "Próximo paso recomendado").
+**Pendiente operativo:** el webhook vía `notification_url` con credenciales de prueba retorna 401 en staging. Soporte/consulta de Mercado Pago confirmó que los pagos de prueba con credenciales de prueba no envían notificaciones reales firmadas. La simulación desde "Tus integraciones" es la vía correcta para sandbox. Se identificaron dos puntos técnicos a verificar en `src/webhookSignature.js` antes de cualquier prueba productiva: (a) lectura de `data.id` desde query params (`data.id_url`); (b) exclusión de valores faltantes del template antes del HMAC. Validación de firma sigue activa; webhooks inválidos responden 401. El próximo camino está formalizado en **DEC-018** actualizada (`docs/DECISIONS.md`, pendiente de confirmación del usuario). No modificar código hasta que DEC-018 esté aceptada.
 
 **Pendiente de limpieza:** los diagnósticos temporales en `src/webhookSignature.js`, `src/app.js` y `src/config.js` deben retirarse antes de producción real.
 
@@ -95,7 +95,7 @@ No quedan tareas T-001 a T-014 pendientes.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
 - **Tests**: Jest. `npm test` pasa con **29 tests**. Sin llamadas externas ni acceso a `.env`.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
-- **Deploy**: staging activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Dominio propio `checkout.lemont01.com` con SSL activo. Frontend, `POST /crear-preferencia` y persistencia Supabase funcionan. `POST /webhook` retorna 401 vía `notification_url` sandbox: diagnóstico avanzado completado (SDK oficial también rechaza; simulación del panel valida). Producción real requiere checklist previa de DEC-016 y rotación previa de credenciales de prueba expuestas.
+- **Deploy**: staging activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Dominio propio `checkout.lemont01.com` con SSL activo. Frontend, `POST /crear-preferencia` y persistencia Supabase funcionan. `POST /webhook` retorna 401 vía `notification_url` con credenciales de prueba: comportamiento confirmado por soporte MP (sandbox no envía notificaciones reales firmadas con credenciales de prueba). Producción real requiere: rotación de credenciales de prueba expuestas + verificación de puntos HMAC de DEC-018 + checklist previa de DEC-016.
 
 ---
 
@@ -129,18 +129,16 @@ No quedan tareas T-001 a T-014 pendientes.
 
 ## Próximo paso recomendado
 
-### Próximos pasos después del diagnóstico avanzado
+### Próximos pasos
 
-Staging activo. Diagnóstico avanzado concluido: la infraestructura y la implementación HMAC no son el problema. La diferencia de firma es entre tipos de notificación (panel vs `notification_url` de preferencia).
-
-**Paso 1 — Inmediato (antes de cualquier otro paso):**
+**Paso 1 — Inmediato:**
 Rotar el Access Token de prueba y el Webhook Secret de prueba expuestos en el chat. Actualizar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel y verificar que el staging sigue funcionando.
 
-**Paso 2 — Decidir camino técnico (requiere aprobación del usuario):**
+**Paso 2 — Verificar puntos técnicos del HMAC (antes de producción):**
+Revisar en `src/webhookSignature.js` dos puntos identificados por soporte: (a) ¿`data.id` se lee de query params con la denominación `data.id_url`?; (b) ¿valores faltantes del template se excluyen antes del cálculo HMAC?
 
-- **Opción A** — Prueba en producción real: usar credenciales productivas y un pago mínimo controlado para confirmar si el problema es exclusivo del sandbox.
-- **Opción B** — Investigación formal: consultar documentación oficial o soporte de Mercado Pago sobre la diferencia de firma entre `notification_url` de preferencia y webhook global del panel.
-- **Opción C** — Estrategia alternativa (requiere DEC formal previa): validación posterior por consulta directa a la API de Mercado Pago, sin depender de la firma del webhook para el flujo sandbox. Implica cambio de arquitectura; requiere DEC en `docs/DECISIONS.md` antes de que Codex toque código.
+**Paso 3 — Confirmar DEC-018:**
+Ver **DEC-018** actualizada en `docs/DECISIONS.md`. El soporte confirmó que el sandbox con credenciales de prueba no envía notificaciones reales; las opciones para avanzar incluyen prueba productiva controlada o estrategia alternativa documentada. No se prepara ninguna tarea de código hasta que DEC-018 esté aceptada.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 

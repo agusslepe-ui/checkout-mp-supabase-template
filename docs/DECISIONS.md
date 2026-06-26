@@ -609,3 +609,69 @@ No se requieren dependencias nuevas. Un helper propio que serializa JSON es sufi
 - Los tests de T-010 deben verificar que ningún log emite campos prohibidos en los flujos críticos (webhook, creación de preferencia).
 - Cualquier log en producción debe cumplir con la política de privacidad vigente.
 - T-010 queda desbloqueada.
+
+---
+
+## DEC-018 — Estrategia para verificar y probar el flujo de webhook con firma válida
+
+**Fecha:** 2026-06-26
+**Estado:** pendiente
+
+### Contexto
+
+El diagnóstico técnico avanzado de la sesión 2026-06-26 descartó la infraestructura (Traefik/EasyPanel) y la implementación HMAC como causas del `POST /webhook` retornando 401 en staging. Hechos confirmados del diagnóstico:
+
+- La simulación desde el panel de Webhooks de Mercado Pago valida firma correctamente.
+- Los webhooks reales sandbox enviados por `notification_url` con credenciales de prueba llegan con firma inválida.
+- El SDK oficial (`WebhookSignatureValidator` de `mercadopago` v3.1.0) también rechaza esas firmas.
+- Traefik/EasyPanel preserva `x-request-id` (descartado como causa).
+- Sin `notification_url` en la preferencia no llegan webhooks útiles con `data.id`.
+
+**Respuesta de soporte/consulta técnica de Mercado Pago (2026-06-26):**
+
+1. El Webhook Secret se genera en "Tus integraciones" y es por aplicación y por modo (pruebas vs productivo).
+2. `notification_url` en la preferencia tiene prioridad sobre la URL del panel para esa transacción. No es un conflicto, pero manda para esa transacción.
+3. **Confirmado**: los pagos de prueba con credenciales de prueba no envían notificaciones reales. La vía recomendada para testear recepción en sandbox es la simulación desde "Tus integraciones".
+4. Para construir el manifiesto HMAC, `data.id` debe tomarse desde query params; en la documentación se denomina `data.id_url`.
+5. Si falta algún valor del template del manifiesto, debe excluirse antes de calcular el HMAC, no incluirse como cadena vacía.
+6. Verificar que el secret corresponda al mismo modo: pruebas o productivo.
+7. No desactivar la validación de firma.
+
+**Consecuencia del punto 3**: el 401 observado en staging con credenciales de prueba puede ser comportamiento esperado del sandbox de Mercado Pago, no un bug de implementación. La simulación del panel valida correctamente porque es la vía oficial de prueba.
+
+**Puntos técnicos pendientes de verificación** (identificados en puntos 4 y 5 de la respuesta de soporte):
+- (a) ¿En `src/webhookSignature.js`, `data.id` se lee de los query params del request con la denominación correcta? Los logs muestran `signature_data_source="query_data_id"` pero el nombre del campo en el template puede diferir de lo esperado por MP.
+- (b) ¿Si algún campo del template del manifiesto no está presente en el request, se excluye antes del HMAC? Si se incluye como cadena vacía, el manifiesto calculado no coincidirá con el esperado.
+
+Estos dos puntos deben verificarse antes de cualquier prueba productiva.
+
+La validación de firma (DEC-009) está activa. No se debe modificar ni desactivar sin que esta decisión esté aceptada.
+
+### Opciones a evaluar
+
+**Prerequisito para Opción A:** antes de la prueba productiva, Codex debe revisar los dos puntos técnicos del HMAC descritos arriba en `src/webhookSignature.js`. Si se detecta un error, corregirlo y registrar en DECISIONS.md antes de hacer commit.
+
+**Opción A — Verificación técnica + prueba productiva controlada:**
+1. Codex revisa los dos puntos técnicos (data.id_url y exclusión de valores faltantes) en `src/webhookSignature.js`.
+2. Si se detecta diferencia respecto a la documentación oficial, corregir y deployar.
+3. Usar credenciales productivas reales con un pago real mínimo controlado, manteniendo la validación de firma activa.
+- Requiere: rotación previa de credenciales de prueba expuestas; checklist previa a producción de DEC-016 completada; pago real mínimo controlado.
+- Riesgo: implica dinero real. No usar si la checklist de DEC-016 no está completa.
+
+**Opción B — Solo simulación del panel (sandbox suficiente):**
+Aceptar que sandbox con credenciales de prueba no envía webhooks firmados reales (confirmado por soporte) y validar el flujo completo exclusivamente mediante la simulación desde "Tus integraciones". No hacer prueba productiva en esta etapa.
+- Ventaja: no implica dinero real; la simulación del panel ya valida.
+- Riesgo: no confirma el flujo con pago real; la producción real puede tener diferencias.
+
+**Opción C — Estrategia alternativa de validación (alto riesgo; solo si A y B no son viables):**
+Modificar el flujo de `POST /webhook` para que, ante firma inválida, realice una consulta directa a la API de Mercado Pago para validar el pago por estado, importe y referencia.
+- Riesgo alto: debilita la seguridad implementada en DEC-009. No implementar en producción sin acotar el alcance explícitamente.
+- Requiere que esta DEC esté aceptada y que el alcance esté definido antes de cualquier modificación de código.
+- No recomendado como primera opción.
+
+### Restricción vigente
+
+No modificar la validación de firma (DEC-009) ni ningún archivo de código hasta que esta DEC esté aceptada. Claude Code no prepara tareas de código para ninguna opción sin confirmación explícita del usuario.
+
+### Decisión
+> Pendiente de confirmar con el usuario.
