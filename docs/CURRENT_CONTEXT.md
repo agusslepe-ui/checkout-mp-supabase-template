@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — staging debe redeployarse con Dockerfile Node.js 22).
+> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — staging activo en EasyPanel, investigación de webhook HMAC en curso).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -8,7 +8,7 @@
 
 ## Estado de la fase actual: P2 COMPLETADA
 
-Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012), la documentación de deploy a staging (T-013) y la corrección UTF-8 del error HTTP 400 (T-014) están **completadas** (14/14). T-013 es una tarea documental: el deploy real a EasyPanel lo ejecuta el usuario siguiendo `docs/SKILLS.md` y DEC-016.
+Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012), la documentación de deploy a staging (T-013) y la corrección UTF-8 del error HTTP 400 (T-014) están **completadas** (14/14). T-013 es una tarea documental: el deploy real a EasyPanel fue ejecutado por el usuario. Staging está activo. El webhook HMAC retorna 401; la investigación está en curso.
 
 ---
 
@@ -59,7 +59,11 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 ## Tareas pendientes
 
-No quedan tareas T-001 a T-014 pendientes. Queda pendiente operativo externo: el usuario debe cambiar EasyPanel de Nixpacks a Dockerfile, redeployar staging y registrar el resultado de la checklist.
+No quedan tareas T-001 a T-014 pendientes.
+
+**Pendiente operativo:** el webhook de Mercado Pago retorna 401 en staging con `event="firma de webhook invalida"`. El secreto es correcto (mismo SHA-256 prefix en EasyPanel y en MP). Las 4 variantes HMAC candidatas (`query_literal`, `body_literal`, `query_lower`, `body_lower`) retornan `false`. Próxima hipótesis: el proxy de EasyPanel modifica `x-request-id`, o hay mismatch en el formato exacto del manifiesto (punto y coma final, presencia de `request_id`). Próxima acción: Codex agrega fingerprints de componentes individuales en `src/webhookSignature.js`.
+
+**Pendiente de limpieza:** los diagnósticos temporales en `src/webhookSignature.js` (candidatos HMAC y fingerprints) y `src/config.js` (prefijo SHA-256 del secret en startup) deben retirarse antes de producción real.
 
 ---
 
@@ -89,7 +93,7 @@ No quedan tareas T-001 a T-014 pendientes. Queda pendiente operativo externo: el
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
 - **Tests**: Jest. `npm test` pasa con **29 tests**. Sin llamadas externas ni acceso a `.env`.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
-- **Deploy**: staging documentado para EasyPanel/VPS según DEC-016. El repositorio incluye `Dockerfile` con Node.js 22 para evitar builds de Nixpacks con Node.js 18. Deploy real pendiente de ejecución por el usuario.
+- **Deploy**: staging activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Frontend, `POST /crear-preferencia` y persistencia Supabase funcionan. `POST /webhook` retorna 401 con `event="firma de webhook invalida"`: investigación HMAC en curso. Producción real requiere completar checklist previa de DEC-016.
 
 ---
 
@@ -123,10 +127,19 @@ No quedan tareas T-001 a T-014 pendientes. Queda pendiente operativo externo: el
 
 ## Próximo paso recomendado
 
-### Ejecutar staging en EasyPanel
+### Resolver webhook HMAC 401 en staging
 
-> El usuario debe cambiar **Compilación** de Nixpacks a `Dockerfile`, redeployar el servicio en EasyPanel, cargar variables solo desde el panel, configurar el webhook sandbox de Mercado Pago y completar la checklist de `docs/SKILLS.md` / DEC-016.
-> Codex no debe ejecutar deploy, leer `.env`, publicar secretos ni avanzar a producción real sin una nueva autorización explícita.
+Staging está activo. El obstáculo actual es `POST /webhook` retornando 401 con `event="firma de webhook invalida"`. El secreto coincide. Las 4 variantes candidatas fallan.
+
+**Próxima acción para Codex** — agregar fingerprints de componentes individuales en `src/webhookSignature.js`:
+- SHA-256 (8-char prefix) de `queryDataId` y `bodyDataId` por separado.
+- Longitud y SHA-256 (8-char prefix) de `x-request-id`.
+- Longitud y SHA-256 (8-char prefix) de `ts`.
+- Variantes de formato: oficial (con `;` final), sin `;` final, sin `request-id`, solo `body.data.id`.
+- Restricción: solo booleanos y nombre de variante en logs. Nunca full secret, full v1, full signature, full manifest, full headers ni full data.id.
+- La validación principal no cambia: sigue respondiendo 401 a firmas inválidas.
+
+> Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ---
 

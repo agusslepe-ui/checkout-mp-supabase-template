@@ -39,15 +39,29 @@ function serializedLogOutput(...spies) {
   return spies.flatMap((spy) => spy.mock.calls.flat()).join(" ");
 }
 
+function sha256Prefix(value) {
+  return crypto.createHash("sha256").update(String(value)).digest("hex").slice(0, 8);
+}
+
 function makeSignature({
   dataId = "PAYMENTTEST",
   requestId = "request-test",
   timestamp = "1700000000",
   secret = requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET,
   lowercaseDataId = false,
+  trailingSemicolon = true,
+  includeRequestId = true,
 } = {}) {
   const idForManifest = lowercaseDataId ? String(dataId).toLowerCase() : String(dataId);
-  const manifest = `id:${idForManifest};request-id:${requestId};ts:${timestamp};`;
+  const manifestParts = [`id:${idForManifest};`];
+
+  if (includeRequestId) {
+    manifestParts.push(`request-id:${requestId};`);
+  }
+
+  manifestParts.push(`ts:${timestamp}${trailingSemicolon ? ";" : ""}`);
+
+  const manifest = manifestParts.join("");
   const digest = crypto.createHmac("sha256", secret).update(manifest).digest("hex");
 
   return `ts=${timestamp},v1=${digest}`;
@@ -662,19 +676,32 @@ describe("webhook de pagos", () => {
           body_data_id_type: "string",
           query_data_id_length: "PAYMENTTEST".length,
           body_data_id_length: "PAYMENTTEST".length,
+          query_data_id_sha256_prefix: sha256Prefix("PAYMENTTEST"),
+          body_data_id_sha256_prefix: sha256Prefix("PAYMENTTEST"),
           has_x_request_id: true,
+          x_request_id_length: "request-test".length,
+          x_request_id_sha256_prefix: sha256Prefix("request-test"),
           has_x_signature: true,
           has_signature_ts: true,
+          signature_ts_length: "1700000000".length,
+          signature_ts_sha256_prefix: sha256Prefix("1700000000"),
           has_signature_v1: true,
           signature_v1_length: 64,
           signature_data_source: "query_data_id",
           preserves_literal_data_id: true,
+          manifest_format_name: "mp_official_query_data_id",
+          manifest_component_fingerprints_present: true,
           hmac_candidate_query_literal_matches: false,
           hmac_candidate_body_literal_matches: false,
           hmac_candidate_query_lower_matches: false,
           hmac_candidate_body_lower_matches: false,
           hmac_candidate_any_match: false,
           hmac_candidate_match_name: "none",
+          hmac_format_official_trailing_matches: false,
+          hmac_format_no_trailing_semicolon_matches: false,
+          hmac_format_without_request_id_matches: false,
+          hmac_format_body_official_matches: false,
+          hmac_format_match_name: "none",
         }),
       ])
     );
@@ -713,19 +740,31 @@ describe("webhook de pagos", () => {
           body_data_id_type: "string",
           query_data_id_length: 0,
           body_data_id_length: "PAYMENTTEST".length,
+          body_data_id_sha256_prefix: sha256Prefix("PAYMENTTEST"),
           has_x_request_id: true,
+          x_request_id_length: "request-test".length,
+          x_request_id_sha256_prefix: sha256Prefix("request-test"),
           has_x_signature: true,
           has_signature_ts: true,
+          signature_ts_length: "1700000000".length,
+          signature_ts_sha256_prefix: sha256Prefix("1700000000"),
           has_signature_v1: true,
           signature_v1_length: 64,
           signature_data_source: "missing",
           preserves_literal_data_id: false,
+          manifest_format_name: "mp_official_query_data_id",
+          manifest_component_fingerprints_present: true,
           hmac_candidate_query_literal_matches: false,
           hmac_candidate_body_literal_matches: true,
           hmac_candidate_query_lower_matches: false,
           hmac_candidate_body_lower_matches: false,
           hmac_candidate_any_match: true,
           hmac_candidate_match_name: "body_literal",
+          hmac_format_official_trailing_matches: false,
+          hmac_format_no_trailing_semicolon_matches: false,
+          hmac_format_without_request_id_matches: false,
+          hmac_format_body_official_matches: true,
+          hmac_format_match_name: "body_official",
         }),
       ])
     );
@@ -791,10 +830,97 @@ describe("webhook de pagos", () => {
           hmac_candidate_body_lower_matches: true,
           hmac_candidate_any_match: true,
           hmac_candidate_match_name: "query_lower",
+          hmac_format_official_trailing_matches: false,
+          hmac_format_no_trailing_semicolon_matches: false,
+          hmac_format_without_request_id_matches: false,
+          hmac_format_body_official_matches: false,
+          hmac_format_match_name: "none",
         }),
       ])
     );
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("PAYMENTTEST");
+  });
+
+  test("diagnostica formato sin trailing semicolon sin aceptar el webhook", async () => {
+    const { routes, paymentGet } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        headers: {
+          "x-request-id": "request-test",
+          "x-signature": makeSignature({
+            dataId: "PAYMENTTEST",
+            requestId: "request-test",
+            trailingSemicolon: false,
+          }),
+        },
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ error: "Webhook inválido" });
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "firma de webhook invalida",
+          route: "/webhook",
+          method: "POST",
+          status_code: 401,
+          hmac_format_official_trailing_matches: false,
+          hmac_format_no_trailing_semicolon_matches: true,
+          hmac_format_without_request_id_matches: false,
+          hmac_format_body_official_matches: false,
+          hmac_format_match_name: "no_trailing_semicolon",
+        }),
+      ])
+    );
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("PAYMENTTEST");
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("1700000000");
+  });
+
+  test("diagnostica formato sin request-id sin aceptar el webhook", async () => {
+    const { routes, paymentGet } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        headers: {
+          "x-request-id": "request-test",
+          "x-signature": makeSignature({
+            dataId: "PAYMENTTEST",
+            requestId: "request-test",
+            includeRequestId: false,
+          }),
+        },
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ error: "Webhook inválido" });
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "firma de webhook invalida",
+          route: "/webhook",
+          method: "POST",
+          status_code: 401,
+          hmac_format_official_trailing_matches: false,
+          hmac_format_no_trailing_semicolon_matches: false,
+          hmac_format_without_request_id_matches: true,
+          hmac_format_body_official_matches: false,
+          hmac_format_match_name: "without_request_id",
+        }),
+      ])
+    );
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("PAYMENTTEST");
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("1700000000");
   });
 
   test("marca como paid un pago aprobado con importe correcto", async () => {

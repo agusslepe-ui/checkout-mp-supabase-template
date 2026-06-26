@@ -61,6 +61,15 @@ Mitigado por T-010/DEC-017: el backend emite logs JSON mediante `log(level, even
 
 `GET /webhook` está restringido a entornos no productivos mediante `NODE_ENV !== "production"`. Los logs verbosos, ngrok y cualquier otro diagnóstico siguen siendo útiles localmente, pero deben eliminarse, restringirse o sustituirse en producción.
 
+### Diagnóstico temporal en staging
+
+Durante la investigación del webhook HMAC 401 en staging, se agregó código de diagnóstico temporal a dos módulos:
+
+- **`src/webhookSignature.js`**: calcula 4 variantes HMAC candidatas (`query_literal`, `body_literal`, `query_lower`, `body_lower`), fingerprints SHA-256 (8-char prefix) de componentes individuales del manifiesto (`queryDataId`, `bodyDataId`, `x-request-id`, `ts`) y variantes de formato de manifiesto. Los logs exponen solo booleanos de coincidencia y nombre de variante; nunca valores completos, secreto, firma ni manifiesto.
+- **`src/config.js`**: al arrancar el servicio, emite `event="diagnostico webhook secret"` con presencia, longitud y prefijo SHA-256 de 8 caracteres del secreto. Nunca emite el valor completo.
+
+**Obligación**: este código de diagnóstico temporal debe retirarse antes de avanzar a producción real. No es un riesgo en staging (los valores nunca se exponen), pero aumenta la superficie de logs y debe limpiarse.
+
 ### Ausencia de controles operativos
 
 Persisten pendientes operativos: no hay rate limiting ni health checks dedicados. Tests automatizados, migración versionada, logs estructurados y rollback de staging están documentados o implementados.

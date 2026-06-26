@@ -73,8 +73,7 @@ Existe una suite Jest ejecutable con `npm.cmd test`. Aun así, no afirmar que el
 
 ## Deploy a staging (EasyPanel)
 
-Plataforma: EasyPanel sobre VPS. Estrategia completa en `docs/DECISIONS.md` (DEC-016).
-Compilación: usar `Dockerfile` del repositorio, no Nixpacks. El Dockerfile fija Node.js 22 para evitar que EasyPanel construya con Node.js 18.
+Plataforma: EasyPanel sobre VPS. Estrategia completa en `docs/DECISIONS.md` (DEC-016). Ver notas operativas críticas más abajo antes de hacer deploy.
 
 ### Variables a cargar en EasyPanel
 
@@ -89,6 +88,13 @@ Cargar solo desde el panel de EasyPanel. Nunca en el repositorio ni en archivos 
 | `SUPABASE_SERVICE_ROLE_KEY` | Clave privilegiada de Supabase — solo backend, nunca frontend |
 | `LOG_LEVEL` | Usar `info` |
 | `NODE_ENV` | Establecer `production` |
+
+### Notas operativas críticas
+
+- **Compilación**: usar `Dockerfile` del repositorio, no Nixpacks. Nixpacks construye con Node.js 18 y causa fallos de WebSocket de Supabase.
+- **`SUPABASE_URL`**: usar la URL base del proyecto Supabase (`https://xxxx.supabase.co`). No incluir `/rest/v1`, paths adicionales ni trailing slash. Un formato incorrecto genera el error `PGRST125` al intentar insertar pedidos.
+- **`SUPABASE_SERVICE_ROLE_KEY`**: usar el JWT `service_role` (legacy token), no la clave publishable. La clave correcta se obtiene desde el panel de Supabase → Project Settings → API → `service_role`.
+- **Puerto interno**: confirmar que EasyPanel apunta al puerto `3003`. El servidor Express escucha en ese puerto por defecto.
 
 ### Pasos de deploy a staging
 

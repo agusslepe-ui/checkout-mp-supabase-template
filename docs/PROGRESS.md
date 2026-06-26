@@ -10,7 +10,7 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Tests**: Jest instalado. `npm test` pasa con 29 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: redeploy de staging en EasyPanel usando `Dockerfile` para construir con Node.js 22.
+- **Pendiente más urgente**: resolver webhook HMAC 401 en staging. `POST /webhook` retorna 401 con `event="firma de webhook invalida"`. Secreto confirmado correcto (SHA-256 prefix coincide). Las 4 variantes HMAC candidatas fallan. Próxima acción: Codex agrega fingerprints de componentes individuales en `src/webhookSignature.js`.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -44,7 +44,11 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 **Implementado en sesión 2026-06-26:**
 - T-013: documentación de deploy a staging en EasyPanel con variables por nombre, pasos operativos, checklist de staging (11 ítems), checklist previa a producción real (11 ítems), rollback en 4 niveles y notas de seguridad. (DEC-016)
-- Fix operativo de staging: `Dockerfile` con Node.js 22 y `.dockerignore` para excluir `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales. EasyPanel debe usar compilación `Dockerfile`, no Nixpacks.
+- Fix operativo de staging: `Dockerfile` con Node.js 22 y `.dockerignore` para excluir `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales. EasyPanel configurado para compilación `Dockerfile` (no Nixpacks).
+- Staging activo: Node.js 18 (Nixpacks) reemplazado por `node:22-alpine`; puerto interno corregido a 3003; `SUPABASE_URL` corregida a URL base sin `/rest/v1` ni trailing slash; clave Supabase cambiada a `service_role` JWT.
+- Webhook secret verificado: SHA-256 prefix coincide entre EasyPanel y Mercado Pago sandbox. `data.id` lowercase eliminado; el manifiesto HMAC usa valor literal.
+- Diagnóstico HMAC: 4 variantes candidatas (`query_literal`, `body_literal`, `query_lower`, `body_lower`) calculadas y logueadas; todas retornan `false` en staging.
+- Fingerprints de componentes individuales del manifiesto preparados para próximo deploy (SHA-256 8-char prefix de `queryDataId`, `bodyDataId`, `x-request-id`, `ts`; variantes de formato con y sin `;` final, con y sin `request_id`).
 
 ## Problemas resueltos documentados
 
@@ -54,24 +58,66 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - Asociación de pagos y pedidos mediante referencia externa.
 - Consulta a Mercado Pago en lugar de confiar únicamente en el webhook.
 - Tratamiento básico de notificaciones duplicadas y montos diferentes.
+- **Staging: Node.js 18 vía Nixpacks**: EasyPanel usaba Node.js 18 por defecto, causando fallos de WebSocket de Supabase. Resuelto: Dockerfile `node:22-alpine` y compilación `Dockerfile` en EasyPanel.
+- **Staging: Puerto incorrecto**: el proxy interno de EasyPanel apuntaba al puerto equivocado. Resuelto: dominio configurado al puerto interno 3003.
+- **Staging: `SUPABASE_URL` con path o trailing slash**: la URL incluía `/rest/v1` o barra final, causando error `PGRST125`. Resuelto: usar solo URL base (`https://xxxx.supabase.co`) sin path ni barra final.
+- **Staging: Tipo de clave Supabase incorrecto**: se intentó usar la clave publishable en lugar de `service_role` JWT. Resuelto: confirmar uso de `service_role` JWT en backend.
+- **Staging: `data.id` en lowercase**: el manifiesto HMAC aplicaba `.toLowerCase()` a `data.id`. Resuelto: usar el valor literal de `data.id`.
 
 ## Pendientes principales
 
-- Ejecutar y documentar el redeploy real a staging en EasyPanel usando compilación `Dockerfile`. El deploy lo realiza el usuario siguiendo la checklist de DEC-016.
+- Resolver webhook HMAC 401 en staging: Codex debe agregar fingerprints de componentes individuales del manifiesto en `src/webhookSignature.js` (SHA-256 8-char prefix de `queryDataId`, `bodyDataId`, `x-request-id`, `ts`; variantes de formato con y sin `;` final, con y sin `request_id`). Solo booleanos y nombre de variante en logs; nunca valores completos.
+- Retirar diagnósticos temporales (`src/webhookSignature.js` y `src/config.js`) antes de avanzar a producción real.
 
 El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**14/14 tareas completadas.** T-013 dejó preparada la guía final de staging en EasyPanel, con checklists y rollback según DEC-016. Se agregó Dockerfile para fijar Node.js 22 en staging. El deploy real no fue ejecutado por Codex; queda a cargo del usuario.
+**Staging activo. Obstáculo: webhook HMAC 401.**
 
-Opciones para continuar:
+`POST /webhook` retorna 401 con `event="firma de webhook invalida"`. El secreto coincide (confirmado por SHA-256 prefix). Las 4 variantes HMAC candidatas fallan. La hipótesis más probable es que el proxy de EasyPanel modifica `x-request-id` en tránsito, o que hay un mismatch en el formato exacto del manifiesto (punto y coma final, presencia de `request_id`).
 
-**A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks, RLS o la separación modular recién completada.
+**Próxima acción para Codex:** agregar fingerprints seguros de componentes individuales en `src/webhookSignature.js`:
+- SHA-256 (8-char prefix) de `queryDataId` y `bodyDataId` por separado.
+- Longitud y SHA-256 (8-char prefix) de `x-request-id`.
+- Longitud y SHA-256 (8-char prefix) de `ts`.
+- Variantes de formato: oficial (con `;` final), sin `;` final, sin `request-id`, solo `body.data.id`.
+- Restricción: solo booleanos y nombre de variante en logs; nunca valores completos.
+- La validación principal no cambia: sigue rechazando firmas inválidas con 401.
 
-**B — Próxima fase técnica**: cambiar EasyPanel de Nixpacks a Dockerfile, ejecutar staging, registrar resultados y decidir cuándo avanzar a producción real.
+Una vez identificado el componente o formato correcto: limpiar diagnósticos temporales y verificar pago completo en staging antes de pasar a producción real.
 
 ## Bitácora
+
+### 2026-06-26 — Cierre documental de staging y registro de investigación webhook HMAC
+
+- Objetivo: documentar el estado real de staging (activo), registrar los 5 problemas operativos resueltos, registrar el problema pendiente (webhook 401 con todas las variantes HMAC fallando) y preparar la próxima acción para Codex.
+- Archivos revisados: `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`, `docs/SECURITY.md`, `docs/SKILLS.md`, `README.md`, `AGENTS.md`.
+- Archivos modificados: `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`, `docs/SECURITY.md`, `docs/SKILLS.md`.
+- Cambios realizados:
+  - `docs/CURRENT_CONTEXT.md`: header actualizado a "staging activo, investigación webhook HMAC en curso"; sección "Tareas pendientes" reemplazada con estado real del webhook 401 y pendiente de limpieza de diagnósticos; línea de deploy actualizada a "activo, webhook 401 en investigación"; "Próximo paso recomendado" reemplazado con instrucción concreta para Codex.
+  - `docs/PROGRESS.md`: "Pendiente más urgente" actualizado; "Implementado en sesión 2026-06-26" ampliado con fixes operativos de staging, confirmación de secret, eliminación de lowercase y resultados del diagnóstico HMAC; "Problemas resueltos documentados" ampliado con 5 problemas de staging; "Pendientes principales" y "Próxima acción recomendada" reemplazados con contexto del webhook 401 y próxima tarea Codex.
+  - `docs/SECURITY.md`: se agregó subsección sobre diagnóstico temporal en `src/webhookSignature.js` y `src/config.js` con obligación de retiro antes de producción real.
+  - `docs/SKILLS.md`: se agregó nota operativa sobre formato correcto de `SUPABASE_URL` (URL base sin `/rest/v1` ni trailing slash).
+- Sin cambios de código. Sin commit. Sin push. Sin acceso a `.env`. Sin secretos en documentación.
+- Estado al cerrar: staging activo. `POST /webhook` retorna 401. Todas las variantes HMAC candidatas fallan. Secreto confirmado correcto. Próxima acción: Codex agrega fingerprints de componentes individuales del manifiesto.
+
+### 2026-06-26 — Diagnóstico seguro de fingerprints y formatos HMAC
+
+- Objetivo: diagnosticar si la firma webhook falla por componentes del manifiesto (`data.id`, `x-request-id`, `ts`) o por formato exacto, sin exponer valores completos ni aceptar firmas nuevas.
+- Tarea relacionada: diagnóstico operativo de staging posterior a T-013.
+- Archivos afectados: `src/webhookSignature.js`, `tests/index.test.js`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `src/webhookSignature.js`: agrega fingerprints SHA-256 de 8 caracteres y longitudes de componentes del manifiesto.
+  - `src/webhookSignature.js`: agrega candidatos diagnósticos de formato oficial, sin punto y coma final, sin `request-id` y usando `body.data.id`.
+  - `tests/index.test.js`: verifica que los candidatos alternativos pueden detectarse mientras el webhook sigue rechazado con HTTP 401.
+- Verificaciones:
+  - `node --check src/webhookSignature.js`.
+  - `npm.cmd test`.
+  - `git diff --check`.
+  - `git diff`.
+- Resultado: diagnóstico temporal listo para redeploy en EasyPanel. No cambia la validación principal.
+- Pendientes o riesgos: retirar el diagnóstico temporal cuando se identifique el componente o formato real que causa el mismatch.
 
 ### 2026-06-26 — Diagnóstico seguro de variantes HMAC webhook
 
