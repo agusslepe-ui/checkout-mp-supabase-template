@@ -70,12 +70,15 @@ function makeSignature({
 function makeWebhookRequest({
   headers = {},
   paymentId = "PAYMENTTEST",
+  originalUrl = "/webhook",
+  protocol,
   rawHeaders,
   url,
 } = {}) {
   return {
     method: "POST",
-    originalUrl: "/webhook",
+    originalUrl,
+    protocol,
     url,
     rawHeaders,
     headers,
@@ -154,7 +157,11 @@ function createQueryBuilder(supabaseMock) {
 function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
   jest.resetModules();
 
-  for (const name of [...Object.keys(requiredEnv), "NODE_ENV"]) {
+  for (const name of [
+    ...Object.keys(requiredEnv),
+    "NODE_ENV",
+    "MP_SUPPORT_CAPTURE_FULL_WEBHOOK",
+  ]) {
     delete process.env[name];
   }
 
@@ -754,6 +761,111 @@ describe("webhook de pagos", () => {
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("0".repeat(64));
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
       requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET
+    );
+  });
+
+  test("captura temporalmente los tres datos solicitados por soporte sin aceptar firma invalida", async () => {
+    const { routes, paymentGet, supabaseMock } = loadApp({
+      env: {
+        MP_SUPPORT_CAPTURE_FULL_WEBHOOK: "true",
+      },
+    });
+    const response = createResponse();
+    const invalidSignature = `ts=1700000000,v1=${"0".repeat(64)}`;
+    const requestId = "support-request-id-full";
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        originalUrl: "/webhook?type=payment&data.id=PAYMENTTEST",
+        headers: {
+          host: "checkout.example.test",
+          "x-forwarded-proto": "https",
+          "x-request-id": requestId,
+          "x-signature": invalidSignature,
+          authorization: "bearer should-not-be-logged",
+          cookie: "session=should-not-be-logged",
+        },
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ error: "Webhook inválido" });
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(supabaseMock.findOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
+
+    const supportCapture = parseLogEntries(logSpy, warnSpy, errorSpy).find(
+      (entry) => entry.event === "captura temporal soporte mercado pago"
+    );
+    expect(supportCapture).toEqual({
+      event: "captura temporal soporte mercado pago",
+      request_url_full:
+        "https://checkout.example.test/webhook?type=payment&data.id=PAYMENTTEST",
+      header_x_signature_full: invalidSignature,
+      header_x_request_id_full: requestId,
+    });
+    expect(Object.keys(supportCapture).sort()).toEqual(
+      [
+        "event",
+        "header_x_request_id_full",
+        "header_x_signature_full",
+        "request_url_full",
+      ].sort()
+    );
+
+    const logOutput = serializedLogOutput(logSpy, warnSpy, errorSpy);
+    expect(logOutput).not.toContain("bearer should-not-be-logged");
+    expect(logOutput).not.toContain("session=should-not-be-logged");
+    expect(logOutput).not.toContain(requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET);
+    expect(logOutput).not.toContain(requiredEnv.MERCADOPAGO_ACCESS_TOKEN);
+    expect(logOutput).not.toContain(requiredEnv.SUPABASE_SERVICE_ROLE_KEY);
+  });
+
+  test("captura temporalmente los tres datos solicitados por soporte y conserva flujo con firma valida", async () => {
+    const { routes, paymentGet } = loadApp({
+      env: {
+        MP_SUPPORT_CAPTURE_FULL_WEBHOOK: "true",
+      },
+    });
+    const response = createResponse();
+    const requestId = "support-valid-request-id-full";
+    const signature = makeSignature({ dataId: "PAYMENTTEST", requestId });
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        originalUrl: "/webhook?type=payment&data.id=PAYMENTTEST",
+        headers: {
+          host: "checkout.example.test",
+          "x-forwarded-proto": "https",
+          "x-request-id": requestId,
+          "x-signature": signature,
+        },
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ received: true });
+    expect(paymentGet).toHaveBeenCalledWith({ id: "PAYMENTTEST" });
+
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        {
+          event: "captura temporal soporte mercado pago",
+          request_url_full:
+            "https://checkout.example.test/webhook?type=payment&data.id=PAYMENTTEST",
+          header_x_signature_full: signature,
+          header_x_request_id_full: requestId,
+        },
+        expect.objectContaining({
+          level: "info",
+          event: "webhook recibido",
+          request_id: requestId,
+          route: "/webhook",
+          method: "POST",
+        }),
+      ])
     );
   });
 

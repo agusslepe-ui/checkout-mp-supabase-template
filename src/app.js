@@ -96,6 +96,59 @@ function logInvalidWebhookSignature(req, logContext) {
   console.warn(JSON.stringify(entry));
 }
 
+function getHeaderString(req, headerName) {
+  const value = req.headers?.[headerName];
+
+  if (Array.isArray(value)) {
+    return value.join(",");
+  }
+
+  return typeof value === "string" ? value : null;
+}
+
+function getWebhookRequestUrlFull(req) {
+  const originalUrl =
+    typeof req.originalUrl === "string"
+      ? req.originalUrl
+      : typeof req.url === "string"
+        ? req.url
+        : "";
+
+  if (/^https?:\/\//i.test(originalUrl)) {
+    return originalUrl;
+  }
+
+  const host = getHeaderString(req, "host");
+
+  if (!host) {
+    return originalUrl;
+  }
+
+  const forwardedProto = getHeaderString(req, "x-forwarded-proto");
+  const protocol = forwardedProto
+    ? forwardedProto.split(",")[0].trim()
+    : typeof req.protocol === "string"
+      ? req.protocol
+      : "http";
+
+  return `${protocol}://${host}${originalUrl}`;
+}
+
+function logMercadoPagoSupportCapture(req) {
+  if (process.env.MP_SUPPORT_CAPTURE_FULL_WEBHOOK !== "true") {
+    return;
+  }
+
+  console.warn(
+    JSON.stringify({
+      event: "captura temporal soporte mercado pago",
+      request_url_full: getWebhookRequestUrlFull(req),
+      header_x_signature_full: getHeaderString(req, "x-signature"),
+      header_x_request_id_full: getHeaderString(req, "x-request-id"),
+    })
+  );
+}
+
 app.get("/success", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "success.html"));
 });
@@ -115,6 +168,8 @@ app.post("/webhook", async (req, res) => {
     route: "/webhook",
     method: "POST",
   };
+
+  logMercadoPagoSupportCapture(req);
 
   if (typeof signatureHeader !== "string" || signatureHeader.trim() === "") {
     log("warn", "firma de webhook ausente", {
