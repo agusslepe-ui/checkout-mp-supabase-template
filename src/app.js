@@ -13,6 +13,29 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "..", "public")));
 
+function getSupabaseErrorCategory(error) {
+  const code = typeof error?.code === "string" ? error.code : "";
+  const status = error?.status;
+
+  if (code === "PGRST116") {
+    return "supabase_result_shape_error";
+  }
+
+  if (code === "42501" || status === 401 || status === 403) {
+    return "supabase_auth_or_rls_error";
+  }
+
+  if (code.startsWith("23")) {
+    return "supabase_constraint_error";
+  }
+
+  if (code.startsWith("PGRST")) {
+    return "supabase_postgrest_error";
+  }
+
+  return "supabase_error";
+}
+
 app.get("/success", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "success.html"));
 });
@@ -206,7 +229,7 @@ app.post("/crear-preferencia", async (req, res) => {
       log("error", "error al persistir pedido", {
         ...logContext,
         status_code: 500,
-        error_type: "supabase_error",
+        error_type: getSupabaseErrorCategory(error),
       });
       return res.status(500).json({
         error: "No se pudo iniciar el pago",

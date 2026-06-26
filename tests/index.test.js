@@ -337,9 +337,12 @@ describe("creación de preferencias", () => {
   });
 
   test("no crea preferencia si Supabase falla al crear el pedido pending", async () => {
+    const supabaseError = new Error("database detail with token-like secret");
+    supabaseError.code = "PGRST116";
+    supabaseError.status = 406;
     const { routes, preferenceCreate } = loadApp({
       supabase: {
-        insertOrder: async () => ({ data: null, error: new Error("database detail") }),
+        insertOrder: async () => ({ data: null, error: supabaseError }),
       },
     });
     const response = createResponse();
@@ -349,6 +352,20 @@ describe("creación de preferencias", () => {
     expect(response.statusCode).toBe(500);
     expect(response.body).toEqual({ error: "No se pudo iniciar el pago" });
     expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(parseLogEntries(errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "error",
+          event: "error al persistir pedido",
+          route: "/crear-preferencia",
+          method: "POST",
+          status_code: 500,
+          error_type: "supabase_result_shape_error",
+        }),
+      ])
+    );
+    expect(serializedLogOutput(errorSpy)).not.toContain("database detail");
+    expect(serializedLogOutput(errorSpy)).not.toContain("token-like secret");
   });
 
   test("rechaza SKU inexistente sin llamar a Supabase ni Mercado Pago", async () => {

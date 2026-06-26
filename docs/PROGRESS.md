@@ -92,6 +92,22 @@ Opciones para continuar:
 - Resultado: configuración Docker lista para redeploy en EasyPanel con Node.js 22.
 - Pendientes o riesgos: el usuario debe cambiar EasyPanel de Nixpacks a Dockerfile y hacer redeploy.
 
+### 2026-06-26 — Diagnóstico seguro de Supabase en staging
+
+- Objetivo: distinguir por qué `POST /crear-preferencia` falla al persistir el pedido en Supabase sin exponer secretos ni datos del pedido.
+- Tarea relacionada: diagnóstico operativo de staging posterior a T-013.
+- Archivos afectados: `src/app.js`, `tests/index.test.js`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `src/app.js`: se agregó categorización segura del error de Supabase en el catch de persistencia de pedido. El log mantiene `event="error al persistir pedido"` y usa `error_type` con categorías como `supabase_result_shape_error`, `supabase_auth_or_rls_error`, `supabase_constraint_error`, `supabase_postgrest_error` o `supabase_error`.
+  - `tests/index.test.js`: se agregó aserción para verificar que el log categoriza el error de Supabase sin emitir el mensaje interno simulado.
+- Verificaciones:
+  - `node --check src/app.js`.
+  - `npm.cmd test`.
+  - `git diff --check`.
+  - `git diff`.
+- Resultado: diagnóstico listo para redeploy en EasyPanel. No cambia el contrato HTTP ni la lógica de pagos.
+- Pendientes o riesgos: si la categoría sigue siendo genérica, hará falta autorizar un ajuste de logging más específico en `src/logger.js` para incluir campos seguros como `supabase_code` o `supabase_status`.
+
 ### 2026-06-26 — Cierre final del backlog (14/14 tareas)
 
 - Objetivo: verificar consistencia documental del estado final del proyecto y cerrar el backlog T-001 a T-014.
