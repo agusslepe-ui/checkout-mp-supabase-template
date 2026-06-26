@@ -42,6 +42,9 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - T-014: respuesta HTTP 400 por JSON inválido con `Content-Type: application/json; charset=utf-8`.
 - Documentación completa: TASKS.md (T-001 a T-014), DECISIONS.md (DEC-009 a DEC-017), CURRENT_CONTEXT.md.
 
+**Implementado en sesión 2026-06-26:**
+- T-013: documentación de deploy a staging en EasyPanel con variables por nombre, pasos operativos, checklist de staging (11 ítems), checklist previa a producción real (11 ítems), rollback en 4 niveles y notas de seguridad. (DEC-016)
+
 ## Problemas resueltos documentados
 
 - Uso de variables de entorno para credenciales.
@@ -68,6 +71,27 @@ Opciones para continuar:
 **B — Próxima fase técnica**: ejecutar staging en EasyPanel siguiendo `docs/SKILLS.md`, registrar resultados y decidir cuándo avanzar a producción real.
 
 ## Bitácora
+
+### 2026-06-26 — Cierre final del backlog (14/14 tareas)
+
+- Objetivo: verificar consistencia documental del estado final del proyecto y cerrar el backlog T-001 a T-014.
+- Archivos revisados: `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`, `docs/TASKS.md`, `docs/DESIGN.md`, `docs/SECURITY.md`, `docs/SKILLS.md`, `README.md`.
+- Archivos modificados: `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `docs/CURRENT_CONTEXT.md`: se consolidó DEC-016 en la tabla principal de decisiones aceptadas (estaba en tabla "continuación" separada).
+  - `docs/PROGRESS.md`: se agregó "Implementado en sesión 2026-06-26" con T-013 en la sección de avances detectados. Esta entrada de cierre final agregada.
+- Inconsistencias detectadas y corregidas:
+  - DEC-016 estaba en tabla "continuación" separada en `CURRENT_CONTEXT.md`; ahora está integrada en la tabla principal.
+  - T-013 no aparecía en la sección "Avances detectados" de `PROGRESS.md` a pesar de estar en la bitácora; ahora figura bajo su sesión real (2026-06-26).
+- Sin inconsistencias en los demás archivos:
+  - `docs/TASKS.md`: T-013 marcada como completada con nota de verificación (2026-06-26). T-014 completada. Ninguna tarea incorrectamente pendiente.
+  - `docs/DESIGN.md`: T-013/DEC-016 incluida en "Implementado y vigente". Limitaciones estructurales actualizadas.
+  - `docs/SECURITY.md`: riesgos mitigados correctamente documentados. Sin frases obsoletas.
+  - `docs/SKILLS.md`: sección "Deploy a staging (EasyPanel)" con checklist completa, variables, seguridad y rollback.
+  - `README.md`: sección "Deploy a staging" presente. "Base de datos" referencia migración versionada. "Limitaciones actuales" sin frases obsoletas.
+- Sin cambios de código. Sin commits. Sin acceso a `.env`.
+- Estado al cerrar: 14/14 tareas completadas y documentadas. Backlog T-001 a T-014 cerrado.
+- Próximo paso: el usuario ejecuta el deploy real a staging en EasyPanel siguiendo `docs/SKILLS.md` y DEC-016.
 
 ### 2026-06-26 — T-013 completada
 
