@@ -94,6 +94,44 @@ function getProxyHeaderDiagnostics(headers) {
   return diagnostics;
 }
 
+function getRawQueryString(req) {
+  if (typeof req.url !== "string") {
+    return "";
+  }
+
+  const queryStartIndex = req.url.indexOf("?");
+
+  if (queryStartIndex === -1) {
+    return "";
+  }
+
+  return req.url.slice(queryStartIndex + 1);
+}
+
+function getXRequestIdHeaderCount(req) {
+  if (Array.isArray(req.rawHeaders)) {
+    let count = 0;
+
+    for (let index = 0; index < req.rawHeaders.length; index += 2) {
+      if (String(req.rawHeaders[index]).toLowerCase() === "x-request-id") {
+        count += 1;
+      }
+    }
+
+    return count;
+  }
+
+  return getHeaderValue(req.headers, "x-request-id") === undefined ? 0 : 1;
+}
+
+function getTimestampAgeSeconds(timestamp) {
+  if (!/^\d+$/.test(String(timestamp))) {
+    return undefined;
+  }
+
+  return Math.trunc(Date.now() / 1000) - Number(timestamp);
+}
+
 function compareSignatureHex(expectedSignature, receivedSignature) {
   const receivedSignatureBuffer = Buffer.from(receivedSignature, "hex");
 
@@ -291,6 +329,13 @@ function getWebhookSignatureDiagnostics(req) {
   const bodyDataIdSha256Prefix = getSha256Prefix(bodyDataId);
   const xRequestIdSha256Prefix = getSha256Prefix(requestId);
   const signatureTsSha256Prefix = getSha256Prefix(ts);
+  const rawQueryString = getRawQueryString(req);
+  const manifestFinal = typeof ts === "string" && ts !== ""
+    ? buildManifest({ dataId: queryDataId, requestId, timestamp: ts })
+    : "";
+  const xRequestIdDuplicateCount = getXRequestIdHeaderCount(req);
+  const signatureTsNumericValid = /^\d+$/.test(String(ts));
+  const signatureTsAgeSeconds = getTimestampAgeSeconds(ts);
   const manifestComponentFingerprintsPresent = Boolean(
     queryDataIdSha256Prefix ||
       bodyDataIdSha256Prefix ||
@@ -300,6 +345,13 @@ function getWebhookSignatureDiagnostics(req) {
 
   return {
     ...getProxyHeaderDiagnostics(req.headers),
+    request_url_query_present: rawQueryString !== "",
+    raw_query_string_length: getValueLength(rawQueryString),
+    raw_query_string_sha256_prefix: getSha256Prefix(rawQueryString),
+    manifest_final_length: getValueLength(manifestFinal),
+    manifest_final_sha256_prefix: getSha256Prefix(manifestFinal),
+    has_duplicate_x_request_id: xRequestIdDuplicateCount > 1,
+    x_request_id_duplicate_count: xRequestIdDuplicateCount,
     has_query_data_id: hasQueryDataId,
     has_body_data_id: hasBodyDataId,
     query_data_id_type: typeof queryDataId,
@@ -318,6 +370,8 @@ function getWebhookSignatureDiagnostics(req) {
     has_signature_ts: typeof ts === "string" && ts !== "",
     signature_ts_length: getValueLength(ts),
     signature_ts_sha256_prefix: signatureTsSha256Prefix,
+    signature_ts_numeric_valid: signatureTsNumericValid,
+    signature_ts_age_seconds: signatureTsAgeSeconds,
     has_signature_v1: typeof v1 === "string" && v1 !== "",
     signature_v1_length: getValueLength(v1),
     signature_data_source: hasQueryDataId ? "query_data_id" : "missing",

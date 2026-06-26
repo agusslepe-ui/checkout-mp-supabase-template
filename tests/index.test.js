@@ -67,10 +67,17 @@ function makeSignature({
   return `ts=${timestamp},v1=${digest}`;
 }
 
-function makeWebhookRequest({ headers = {}, paymentId = "PAYMENTTEST" } = {}) {
+function makeWebhookRequest({
+  headers = {},
+  paymentId = "PAYMENTTEST",
+  rawHeaders,
+  url,
+} = {}) {
   return {
     method: "POST",
     originalUrl: "/webhook",
+    url,
+    rawHeaders,
     headers,
     query: {
       type: "payment",
@@ -825,6 +832,71 @@ describe("webhook de pagos", () => {
     }
     expect(logOutput).not.toContain(invalidSignature);
     expect(logOutput).not.toContain("should-not-be-logged");
+  });
+
+  test("diagnostica query manifest duplicados y timestamp sin exponer valores completos", async () => {
+    const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1700000065000);
+    const { routes, paymentGet } = loadApp();
+    const response = createResponse();
+    const timestamp = "1700000000";
+    const invalidSignature = `ts=${timestamp},v1=${"0".repeat(64)}`;
+    const requestId = "request-duplicate-value";
+    const rawQueryString = "type=payment&data.id=PAYMENTTEST&debug=value";
+    const manifestFinal = `id:PAYMENTTEST;request-id:${requestId};ts:${timestamp};`;
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        url: `/webhook?${rawQueryString}`,
+        rawHeaders: [
+          "Host",
+          "example.test",
+          "X-Request-Id",
+          requestId,
+          "x-request-id",
+          "second-request-id-value",
+          "X-Signature",
+          invalidSignature,
+        ],
+        headers: {
+          "x-request-id": requestId,
+          "x-signature": invalidSignature,
+        },
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "firma de webhook invalida",
+          route: "/webhook",
+          method: "POST",
+          status_code: 401,
+          request_url_query_present: true,
+          raw_query_string_length: rawQueryString.length,
+          raw_query_string_sha256_prefix: sha256Prefix(rawQueryString),
+          manifest_final_length: manifestFinal.length,
+          manifest_final_sha256_prefix: sha256Prefix(manifestFinal),
+          has_duplicate_x_request_id: true,
+          x_request_id_duplicate_count: 2,
+          signature_ts_numeric_valid: true,
+          signature_ts_age_seconds: 65,
+        }),
+      ])
+    );
+
+    const logOutput = serializedLogOutput(logSpy, warnSpy, errorSpy);
+    expect(logOutput).not.toContain(rawQueryString);
+    expect(logOutput).not.toContain(manifestFinal);
+    expect(logOutput).not.toContain(requestId);
+    expect(logOutput).not.toContain("second-request-id-value");
+    expect(logOutput).not.toContain("PAYMENTTEST");
+    expect(logOutput).not.toContain(invalidSignature);
+    expect(logOutput).not.toContain("0".repeat(64));
+    dateNowSpy.mockRestore();
   });
 
   test("diagnostica de forma segura cuando data.id llega solo en el body", async () => {
