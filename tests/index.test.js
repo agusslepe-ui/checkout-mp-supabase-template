@@ -204,6 +204,18 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
         sandbox_init_point: "https://checkout.example/sandbox",
       }))
   );
+  class InvalidWebhookSignatureError extends Error {
+    constructor(message = "invalid webhook signature") {
+      super(message);
+      this.name = "InvalidWebhookSignatureError";
+    }
+  }
+  const webhookSignatureValidate = jest.fn(
+    mercadoPago.webhookSignatureValidate ||
+      (() => {
+        throw new InvalidWebhookSignatureError();
+      })
+  );
 
   const supabaseMock = {
     insertOrder: jest.fn(supabase.insertOrder || (async () => ({ data: { id: 1 }, error: null }))),
@@ -215,9 +227,13 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
   jest.doMock("dotenv", () => ({ config: jest.fn() }));
   jest.doMock("express", () => expressMock);
   jest.doMock("mercadopago", () => ({
+    InvalidWebhookSignatureError,
     MercadoPagoConfig: jest.fn(),
     Payment: jest.fn(() => ({ get: paymentGet })),
     Preference: jest.fn(() => ({ create: preferenceCreate })),
+    WebhookSignatureValidator: {
+      validate: webhookSignatureValidate,
+    },
   }));
   jest.doMock("@supabase/supabase-js", () => ({
     createClient: jest.fn(() => ({
@@ -234,6 +250,7 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
     paymentGet,
     preferenceCreate,
     supabaseMock,
+    webhookSignatureValidate,
   };
 }
 
@@ -677,6 +694,9 @@ describe("webhook de pagos", () => {
           route: "/webhook",
           method: "POST",
           status_code: 401,
+          official_sdk_validator_available: true,
+          official_sdk_validator_matches: false,
+          official_sdk_validator_error_name: "InvalidWebhookSignatureError",
           proxy_related_header_names_present: ["x-request-id"],
           has_query_data_id: true,
           has_body_data_id: true,
@@ -732,6 +752,61 @@ describe("webhook de pagos", () => {
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(invalidSignature);
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("PAYMENTTEST");
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("0".repeat(64));
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
+      requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET
+    );
+  });
+
+  test("diagnostica match del SDK oficial sin aceptar el webhook", async () => {
+    const { routes, paymentGet, supabaseMock, webhookSignatureValidate } = loadApp({
+      mercadoPago: {
+        webhookSignatureValidate: () => undefined,
+      },
+    });
+    const response = createResponse();
+    const invalidSignature = `ts=1700000000,v1=${"0".repeat(64)}`;
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        headers: {
+          "x-request-id": "request-test",
+          "x-signature": invalidSignature,
+        },
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ error: "Webhook inválido" });
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(supabaseMock.findOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
+    expect(webhookSignatureValidate).toHaveBeenCalledWith({
+      xSignature: invalidSignature,
+      xRequestId: "request-test",
+      dataId: "PAYMENTTEST",
+      secret: requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET,
+    });
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "firma de webhook invalida",
+          route: "/webhook",
+          method: "POST",
+          status_code: 401,
+          official_sdk_validator_available: true,
+          official_sdk_validator_matches: true,
+        }),
+      ])
+    );
+
+    const logOutput = serializedLogOutput(logSpy, warnSpy, errorSpy);
+    expect(logOutput).not.toContain("PAYMENTTEST");
+    expect(logOutput).not.toContain("request-test");
+    expect(logOutput).not.toContain(invalidSignature);
+    expect(logOutput).not.toContain("0".repeat(64));
+    expect(logOutput).not.toContain(requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET);
   });
 
   test("diagnostica headers proxy de forma segura sin exponer valores completos", async () => {

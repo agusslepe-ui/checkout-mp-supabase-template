@@ -1,4 +1,8 @@
 const crypto = require("crypto");
+const {
+  InvalidWebhookSignatureError,
+  WebhookSignatureValidator,
+} = require("mercadopago");
 const { mercadoPagoWebhookSecret } = require("./config");
 
 const PROXY_RELATED_HEADER_NAMES = [
@@ -226,6 +230,34 @@ function isValidWebhookSignature({ signatureHeader, requestId, dataId }) {
   );
 }
 
+function getOfficialSdkValidatorDiagnostics({ signatureHeader, requestId, dataId }) {
+  const diagnostics = {
+    official_sdk_validator_available:
+      Boolean(WebhookSignatureValidator) && Boolean(InvalidWebhookSignatureError),
+    official_sdk_validator_matches: false,
+  };
+
+  if (!diagnostics.official_sdk_validator_available) {
+    return diagnostics;
+  }
+
+  try {
+    WebhookSignatureValidator.validate({
+      xSignature: signatureHeader,
+      xRequestId: requestId,
+      dataId,
+      secret: mercadoPagoWebhookSecret,
+    });
+
+    diagnostics.official_sdk_validator_matches = true;
+  } catch (error) {
+    diagnostics.official_sdk_validator_error_name =
+      typeof error?.name === "string" ? error.name : "Error";
+  }
+
+  return diagnostics;
+}
+
 function validateWebhookSignature(req) {
   return isValidWebhookSignature({
     signatureHeader: req.headers["x-signature"],
@@ -345,6 +377,11 @@ function getWebhookSignatureDiagnostics(req) {
 
   return {
     ...getProxyHeaderDiagnostics(req.headers),
+    ...getOfficialSdkValidatorDiagnostics({
+      signatureHeader,
+      requestId,
+      dataId: queryDataId,
+    }),
     request_url_query_present: rawQueryString !== "",
     raw_query_string_length: getValueLength(rawQueryString),
     raw_query_string_sha256_prefix: getSha256Prefix(rawQueryString),
