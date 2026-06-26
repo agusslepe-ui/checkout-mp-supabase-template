@@ -70,6 +70,20 @@ Durante la investigación del webhook HMAC 401 en staging, se agregó código de
 
 **Obligación**: este código de diagnóstico temporal debe retirarse antes de avanzar a producción real. No es un riesgo en staging (los valores nunca se exponen), pero aumenta la superficie de logs y debe limpiarse.
 
+### Credenciales de prueba expuestas en sesión de diagnóstico
+
+Durante la sesión de diagnóstico del 2026-06-26, el Access Token de prueba de Mercado Pago y el Webhook Secret de prueba fueron compartidos en el chat de la sesión.
+
+**Scope del riesgo**: solo credenciales de prueba (sandbox). No se expusieron credenciales productivas. Sin embargo, las credenciales compartidas en chat pueden quedar en historial, por lo que la rotación es obligatoria antes de continuar.
+
+**Acciones requeridas antes de continuar con cualquier prueba:**
+1. Regenerar el Access Token de prueba en el panel de desarrolladores de Mercado Pago.
+2. Regenerar el Webhook Secret de prueba en el panel de Webhooks de Mercado Pago.
+3. Actualizar las variables `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel con los nuevos valores.
+4. Verificar que el staging sigue funcionando después de la rotación.
+
+**No pasar a producción** con credenciales de prueba expuestas. No usar las mismas credenciales que se usaron en la sesión de diagnóstico.
+
 ### Ausencia de controles operativos
 
 Persisten pendientes operativos: no hay rate limiting ni health checks dedicados. Tests automatizados, migración versionada, logs estructurados y rollback de staging están documentados o implementados.

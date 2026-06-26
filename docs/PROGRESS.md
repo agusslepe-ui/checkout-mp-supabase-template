@@ -10,7 +10,8 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Tests**: Jest instalado. `npm test` pasa con 29 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: resolver webhook HMAC 401 en staging. `POST /webhook` retorna 401 con `event="firma de webhook invalida"`. Secreto confirmado correcto (SHA-256 prefix coincide). Las 4 variantes HMAC candidatas fallan. Próxima acción: Codex agrega fingerprints de componentes individuales en `src/webhookSignature.js`.
+- **Pendiente más urgente**: resolver webhook 401 en staging. Diagnóstico avanzado completado: SDK oficial (`WebhookSignatureValidator` de `mercadopago` v3.1.0) también rechaza firmas reales sandbox. Simulación del panel sí valida. Traefik/EasyPanel descartado como causa. Hipótesis principal: Mercado Pago usa firma o contexto diferente para `notification_url` vs webhook global del panel. Credenciales de prueba expuestas en sesión: deben rotarse antes de continuar.
+- **Deploy activo**: dominio propio `checkout.lemont01.com` con SSL en EasyPanel. `POST /crear-preferencia` y persistencia Supabase funcionan en staging.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -49,6 +50,13 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - Webhook secret verificado: SHA-256 prefix coincide entre EasyPanel y Mercado Pago sandbox. `data.id` lowercase eliminado; el manifiesto HMAC usa valor literal.
 - Diagnóstico HMAC: 4 variantes candidatas (`query_literal`, `body_literal`, `query_lower`, `body_lower`) calculadas y logueadas; todas retornan `false` en staging.
 - Fingerprints de componentes individuales del manifiesto preparados para próximo deploy (SHA-256 8-char prefix de `queryDataId`, `bodyDataId`, `x-request-id`, `ts`; variantes de formato con y sin `;` final, con y sin `request_id`).
+- Diagnóstico de headers proxy: presencia, longitud y SHA-256 prefix de `x-original-request-id`, `x-correlation-id`, `x-request-start`, `x-forwarded-for`, `x-forwarded-host`, `x-forwarded-proto`, `forwarded`, `via`. Sin valores completos en logs.
+- Diagnóstico de query string y manifiesto: presencia, longitud y SHA-256 prefix de query string completa y manifiesto final; detección de `x-request-id` duplicados; validez numérica y age de `ts`.
+- Diagnóstico con SDK oficial `WebhookSignatureValidator` de `mercadopago` v3.1.0: `official_sdk_validator_available=true`, `official_sdk_validator_matches=false`, `official_sdk_validator_error_name="InvalidWebhookSignatureError"` en webhooks reales sandbox. Solo diagnóstico; la validación principal no cambia.
+- Verificación de Traefik/EasyPanel: SHA-256 prefix del `x-request-id` enviado en request controlado coincide con el recibido en logs. Hipótesis de proxy modificando headers descartada.
+- Configuración de dominio propio `checkout.lemont01.com` con SSL activo en EasyPanel. `BASE_URL` actualizado. Webhook sandbox de Mercado Pago apuntado al nuevo dominio.
+- Simulación desde panel de Webhooks de Mercado Pago: firma válida. Backend entra al flujo completo (`webhook recibido`, `pago detectado en webhook`). Error al consultar pago (esperable para IDs de simulación sin pago real).
+- Prueba sin `notification_url` en la preferencia: llegan eventos sin `data.id`, no útiles para confirmar pago. Restaurada `notification_url`. Tests pasan.
 
 ## Problemas resueltos documentados
 
@@ -66,28 +74,58 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Pendientes principales
 
-- Resolver webhook HMAC 401 en staging: Codex debe agregar fingerprints de componentes individuales del manifiesto en `src/webhookSignature.js` (SHA-256 8-char prefix de `queryDataId`, `bodyDataId`, `x-request-id`, `ts`; variantes de formato con y sin `;` final, con y sin `request_id`). Solo booleanos y nombre de variante en logs; nunca valores completos.
-- Retirar diagnósticos temporales (`src/webhookSignature.js` y `src/config.js`) antes de avanzar a producción real.
+- **Rotar credenciales de prueba expuestas** (acción inmediata): el Access Token de prueba y el Webhook Secret de prueba fueron compartidos en el chat de la sesión. Deben regenerarse en el panel de Mercado Pago y actualizarse en EasyPanel antes de continuar con cualquier prueba.
+- Decidir el próximo camino técnico para el webhook 401 (requiere aprobación del usuario):
+  - **Opción A**: Probar con credenciales productivas reales y un pago mínimo controlado para determinar si el problema es exclusivo del sandbox.
+  - **Opción B**: Investigar con documentación oficial o soporte de Mercado Pago la diferencia de firma entre `notification_url` de preferencia y webhook global del panel.
+  - **Opción C**: Documentar una DEC formal de estrategia alternativa (validación posterior por consulta directa a la API de MP, sin depender de la firma del webhook para el flujo sandbox). Requiere DEC antes de que Codex toque código.
+- Retirar diagnósticos temporales en `src/webhookSignature.js`, `src/app.js` y `src/config.js` antes de avanzar a producción real.
 
 El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Staging activo. Obstáculo: webhook HMAC 401.**
+**Staging activo. Diagnóstico avanzado completado. Hipótesis: diferencia de tipo de notificación.**
 
-`POST /webhook` retorna 401 con `event="firma de webhook invalida"`. El secreto coincide (confirmado por SHA-256 prefix). Las 4 variantes HMAC candidatas fallan. La hipótesis más probable es que el proxy de EasyPanel modifica `x-request-id` en tránsito, o que hay un mismatch en el formato exacto del manifiesto (punto y coma final, presencia de `request_id`).
+El diagnóstico avanzado determinó que la infraestructura (Traefik/EasyPanel) y la implementación HMAC no son el problema. El SDK oficial también rechaza las firmas reales sandbox. La simulación del panel valida correctamente. La diferencia está en el tipo de notificación que envía Mercado Pago.
 
-**Próxima acción para Codex:** agregar fingerprints seguros de componentes individuales en `src/webhookSignature.js`:
-- SHA-256 (8-char prefix) de `queryDataId` y `bodyDataId` por separado.
-- Longitud y SHA-256 (8-char prefix) de `x-request-id`.
-- Longitud y SHA-256 (8-char prefix) de `ts`.
-- Variantes de formato: oficial (con `;` final), sin `;` final, sin `request-id`, solo `body.data.id`.
-- Restricción: solo booleanos y nombre de variante en logs; nunca valores completos.
-- La validación principal no cambia: sigue rechazando firmas inválidas con 401.
+**Paso 1 — Inmediato (antes de cualquier otro paso):**
+Rotar el Access Token de prueba y el Webhook Secret de prueba expuestos en el chat de la sesión. Actualizar las variables `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel con los nuevos valores y verificar que el staging siga funcionando.
 
-Una vez identificado el componente o formato correcto: limpiar diagnósticos temporales y verificar pago completo en staging antes de pasar a producción real.
+**Paso 2 — Decidir camino técnico (requiere aprobación del usuario):**
+
+- **Opción A** — Prueba en producción real: usar credenciales productivas y un pago mínimo controlado para determinar si el problema es exclusivo del ambiente sandbox de Mercado Pago.
+- **Opción B** — Investigación formal: consultar documentación oficial o soporte de Mercado Pago sobre la diferencia de firma entre `notification_url` de preferencia y webhook global del panel.
+- **Opción C** — Estrategia alternativa (requiere DEC formal previa): validación posterior por consulta directa a la API de Mercado Pago, sin depender de la firma del webhook en el flujo sandbox. Esta opción implica un cambio de arquitectura que debe documentarse en `docs/DECISIONS.md` antes de que Codex toque código.
+
+> Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-06-26 — Diagnóstico avanzado de webhook 401: nueva hipótesis y cierre de sesión
+
+- Objetivo: continuar el diagnóstico del webhook 401 sandbox con análisis de proxy, dominio propio, SDK oficial y simulación del panel; documentar el cierre de la sesión.
+- Tarea relacionada: diagnóstico operativo de staging posterior a T-013.
+- Archivos de código afectados (diagnósticos ya en repo): `src/webhookSignature.js`, `src/app.js`, `src/config.js`.
+- Archivos de documentación actualizados: `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`, `docs/SECURITY.md`.
+- Diagnósticos realizados y evidencia recolectada:
+  - Diagnóstico de headers proxy: Traefik/EasyPanel preserva `x-request-id` en requests externos controlados (SHA-256 prefix local coincide con el recibido). Hipótesis de proxy modificando headers descartada.
+  - Inspección de Traefik v3.6.7 en EasyPanel: middlewares visibles no incluyen modificación de headers de request. Router HTTPS de la app usa solo `bad-gateway-error-page@file`.
+  - Diagnóstico de query string y manifiesto: `has_query_data_id=true`, `has_body_data_id=true`, `query_data_id_length=12`, `body_data_id_length=12`, `manifest_final_length=78`, `signature_data_source="query_data_id"`, `hmac_format_match_name="none"` en webhooks reales sandbox.
+  - Diagnóstico con SDK oficial `WebhookSignatureValidator` de `mercadopago` v3.1.0: `official_sdk_validator_available=true`, `official_sdk_validator_matches=false`, `official_sdk_validator_error_name="InvalidWebhookSignatureError"` en webhooks reales sandbox.
+  - Simulación desde panel de Webhooks de Mercado Pago: firma válida. Backend entra al flujo completo. Error al consultar pago (esperable para IDs de simulación sin pago real asociado).
+  - Dominio propio `checkout.lemont01.com` configurado con SSL en EasyPanel. `BASE_URL` y webhook MP sandbox actualizados. Logs confirmaron `x_forwarded_host_length=21`.
+  - Prueba sin `notification_url`: eventos sin `data.id`, no útiles. Restaurada `notification_url`. Tests pasan.
+- Conclusión técnica:
+  - La infraestructura (Traefik/EasyPanel) y la implementación HMAC no son el problema.
+  - El SDK oficial también rechaza las firmas de webhooks reales sandbox: no es un bug de implementación.
+  - La diferencia está en el tipo de notificación: Mercado Pago puede usar firma o clave diferente para `notification_url` de preferencia vs el webhook global del panel.
+- Riesgos de seguridad detectados:
+  - El Access Token de prueba y el Webhook Secret de prueba fueron compartidos en el chat de la sesión. Deben rotarse antes de continuar.
+- Pendientes al cerrar sesión:
+  - Rotar credenciales de prueba expuestas y actualizar EasyPanel.
+  - Decidir camino técnico (Opción A, B o C — ver "Próxima acción recomendada").
+  - Retirar diagnósticos temporales antes de producción real.
 
 ### 2026-06-26 — Cierre documental de staging y registro de investigación webhook HMAC
 

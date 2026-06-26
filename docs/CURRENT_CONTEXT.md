@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — staging activo en EasyPanel, investigación de webhook HMAC en curso).
+> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — staging activo en EasyPanel con dominio propio, diagnóstico avanzado de webhook 401 completado, hipótesis de tipo de notificación, credenciales de prueba a rotar).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -61,9 +61,11 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 No quedan tareas T-001 a T-014 pendientes.
 
-**Pendiente operativo:** el webhook de Mercado Pago retorna 401 en staging con `event="firma de webhook invalida"`. El secreto es correcto (mismo SHA-256 prefix en EasyPanel y en MP). Las 4 variantes HMAC candidatas (`query_literal`, `body_literal`, `query_lower`, `body_lower`) retornan `false`. Próxima hipótesis: el proxy de EasyPanel modifica `x-request-id`, o hay mismatch en el formato exacto del manifiesto (punto y coma final, presencia de `request_id`). Próxima acción: Codex agrega fingerprints de componentes individuales en `src/webhookSignature.js`.
+**Pendiente de seguridad (acción inmediata):** el Access Token de prueba y el Webhook Secret de prueba fueron compartidos en el chat de la sesión de diagnóstico. Deben regenerarse en el panel de Mercado Pago y actualizarse en EasyPanel antes de continuar con cualquier prueba.
 
-**Pendiente de limpieza:** los diagnósticos temporales en `src/webhookSignature.js` (candidatos HMAC y fingerprints) y `src/config.js` (prefijo SHA-256 del secret en startup) deben retirarse antes de producción real.
+**Pendiente operativo:** el webhook de Mercado Pago retorna 401 en staging vía `notification_url`. Diagnóstico avanzado completado: Traefik/EasyPanel descartado como causa (preserva `x-request-id`); SDK oficial (`WebhookSignatureValidator` de `mercadopago` v3.1.0) también rechaza firmas reales sandbox (`official_sdk_validator_matches=false`); simulación desde el panel de Webhooks sí valida firma correctamente. Hipótesis principal: Mercado Pago usa firma o contexto diferente para `notification_url` de preferencia vs el webhook global del panel. El próximo camino requiere decisión del usuario (Opción A/B/C — ver "Próximo paso recomendado").
+
+**Pendiente de limpieza:** los diagnósticos temporales en `src/webhookSignature.js`, `src/app.js` y `src/config.js` deben retirarse antes de producción real.
 
 ---
 
@@ -93,7 +95,7 @@ No quedan tareas T-001 a T-014 pendientes.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
 - **Tests**: Jest. `npm test` pasa con **29 tests**. Sin llamadas externas ni acceso a `.env`.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
-- **Deploy**: staging activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Frontend, `POST /crear-preferencia` y persistencia Supabase funcionan. `POST /webhook` retorna 401 con `event="firma de webhook invalida"`: investigación HMAC en curso. Producción real requiere completar checklist previa de DEC-016.
+- **Deploy**: staging activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Dominio propio `checkout.lemont01.com` con SSL activo. Frontend, `POST /crear-preferencia` y persistencia Supabase funcionan. `POST /webhook` retorna 401 vía `notification_url` sandbox: diagnóstico avanzado completado (SDK oficial también rechaza; simulación del panel valida). Producción real requiere checklist previa de DEC-016 y rotación previa de credenciales de prueba expuestas.
 
 ---
 
@@ -127,17 +129,18 @@ No quedan tareas T-001 a T-014 pendientes.
 
 ## Próximo paso recomendado
 
-### Resolver webhook HMAC 401 en staging
+### Próximos pasos después del diagnóstico avanzado
 
-Staging está activo. El obstáculo actual es `POST /webhook` retornando 401 con `event="firma de webhook invalida"`. El secreto coincide. Las 4 variantes candidatas fallan.
+Staging activo. Diagnóstico avanzado concluido: la infraestructura y la implementación HMAC no son el problema. La diferencia de firma es entre tipos de notificación (panel vs `notification_url` de preferencia).
 
-**Próxima acción para Codex** — agregar fingerprints de componentes individuales en `src/webhookSignature.js`:
-- SHA-256 (8-char prefix) de `queryDataId` y `bodyDataId` por separado.
-- Longitud y SHA-256 (8-char prefix) de `x-request-id`.
-- Longitud y SHA-256 (8-char prefix) de `ts`.
-- Variantes de formato: oficial (con `;` final), sin `;` final, sin `request-id`, solo `body.data.id`.
-- Restricción: solo booleanos y nombre de variante en logs. Nunca full secret, full v1, full signature, full manifest, full headers ni full data.id.
-- La validación principal no cambia: sigue respondiendo 401 a firmas inválidas.
+**Paso 1 — Inmediato (antes de cualquier otro paso):**
+Rotar el Access Token de prueba y el Webhook Secret de prueba expuestos en el chat. Actualizar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel y verificar que el staging sigue funcionando.
+
+**Paso 2 — Decidir camino técnico (requiere aprobación del usuario):**
+
+- **Opción A** — Prueba en producción real: usar credenciales productivas y un pago mínimo controlado para confirmar si el problema es exclusivo del sandbox.
+- **Opción B** — Investigación formal: consultar documentación oficial o soporte de Mercado Pago sobre la diferencia de firma entre `notification_url` de preferencia y webhook global del panel.
+- **Opción C** — Estrategia alternativa (requiere DEC formal previa): validación posterior por consulta directa a la API de Mercado Pago, sin depender de la firma del webhook para el flujo sandbox. Implica cambio de arquitectura; requiere DEC en `docs/DECISIONS.md` antes de que Codex toque código.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
