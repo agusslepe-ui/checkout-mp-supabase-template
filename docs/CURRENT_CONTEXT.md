@@ -1,14 +1,14 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-25 (13/14 tareas completadas — DEC-016 aceptada, T-013 desbloqueada).
+> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — T-013 completada, deploy real pendiente de ejecución por el usuario).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
 ---
 
-## Estado de la fase actual: P2 EN CURSO
+## Estado de la fase actual: P2 COMPLETADA
 
-Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012) y la corrección UTF-8 del error HTTP 400 (T-014) están **completadas** (13/14). T-001 a T-010 y T-014 están commiteadas y pusheadas a `origin/main`. T-011 y T-012 están completadas localmente sin commit.
+Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012), la documentación de deploy a staging (T-013) y la corrección UTF-8 del error HTTP 400 (T-014) están **completadas** (14/14). T-013 es una tarea documental: el deploy real a EasyPanel lo ejecuta el usuario siguiendo `docs/SKILLS.md` y DEC-016.
 
 ---
 
@@ -46,21 +46,20 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 | T-009 | Backend separado en módulos `src/`: `app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js`, `webhookSignature.js`. |
 | T-010 | Logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos y `LOG_LEVEL=info`. (DEC-017) |
 
-### P2 — Operación y producto (completadas)
+### P2 — Operación y producto (todas completadas)
 
 | Tarea | Descripción |
 |---|---|
 | T-011 | `GET /webhook` registrado solo cuando `NODE_ENV !== "production"`. `POST /webhook` sin cambios. |
 | T-012 | Catálogo seguro en `src/catalog.js`; el frontend envía solo `{ sku, quantity }` y el backend calcula precio, total y moneda. (DEC-013) |
+| T-013 | Deploy a staging en EasyPanel documentado con variables por nombre, checklists y rollback. (DEC-016) |
 | T-014 | Respuesta HTTP 400 para JSON inválido con `Content-Type: application/json; charset=utf-8`. |
 
 ---
 
 ## Tareas pendientes
 
-| Tarea | Descripción | Bloqueador |
-|---|---|---|
-| T-013 | Documentar y validar deploy a staging en EasyPanel. | **DEC-016 aceptada.** Lista para implementar. |
+No quedan tareas T-001 a T-014 pendientes. Queda pendiente operativo externo: el usuario debe ejecutar el deploy real a staging en EasyPanel y registrar el resultado de la checklist.
 
 ---
 
@@ -95,7 +94,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
 - **Tests**: Jest. `npm test` pasa con **29 tests**. Sin llamadas externas ni acceso a `.env`.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
-- **Versionado**: Git + GitHub. Sin deploy documentado (T-013 pendiente).
+- **Deploy**: staging documentado para EasyPanel/VPS según DEC-016. Deploy real pendiente de ejecución por el usuario.
 
 ---
 
@@ -127,13 +126,10 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 ## Próximo paso recomendado
 
-### T-013 lista para implementar — DEC-016 aceptada
+### Ejecutar staging en EasyPanel
 
-**T-013 — Documentar y validar deploy a staging en EasyPanel**
-
-> Codex debe actualizar `docs/SKILLS.md` (sección "Deploy") y `README.md` (secciones desactualizadas) con la documentación concreta de staging en EasyPanel.
-> Ver instrucciones detalladas en `docs/TASKS.md` (T-013) y `docs/DECISIONS.md` (DEC-016).
-> El deploy real lo ejecuta el usuario siguiendo la checklist de staging de DEC-016.
+> El usuario debe crear/desplegar el servicio en EasyPanel, cargar variables solo desde el panel, configurar el webhook sandbox de Mercado Pago y completar la checklist de `docs/SKILLS.md` / DEC-016.
+> Codex no debe ejecutar deploy, leer `.env`, publicar secretos ni avanzar a producción real sin una nueva autorización explícita.
 
 ---
 

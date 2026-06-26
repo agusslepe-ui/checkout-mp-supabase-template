@@ -87,6 +87,12 @@ ngrok http 3003
 
 Copiar el origen HTTPS generado a `BASE_URL`, reiniciar el servidor y abrir `http://localhost:3003`.
 
+## Deploy a staging
+
+El primer deploy definido es staging en EasyPanel sobre el VPS existente, usando la URL HTTPS gratuita de EasyPanel, `NODE_ENV=production`, `BASE_URL` con la URL pública sin barra final, Mercado Pago sandbox y el mismo proyecto Supabase actual. Las variables se cargan solo en EasyPanel y se documentan por nombre, nunca con valores reales.
+
+Ver [docs/SKILLS.md](docs/SKILLS.md) para los pasos operativos y checklists de staging/producción real. Ver [docs/DECISIONS.md](docs/DECISIONS.md) (DEC-016) para la decisión completa de entornos y rollback.
+
 ## Comandos útiles
 
 ```powershell

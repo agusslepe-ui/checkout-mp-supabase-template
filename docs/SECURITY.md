@@ -33,17 +33,17 @@
 
 ## Riesgos detectados
 
-### Webhook sin firma
+### Firma del webhook
 
-El endpoint acepta eventos sin validar `x-signature`. La consulta posterior a Mercado Pago reduce la posibilidad de falsificar un pago aprobado, pero permite tráfico no autenticado y no sustituye la validación requerida.
+Mitigado por T-001/DEC-009: el webhook valida `x-signature` y `x-request-id` con `MERCADO_PAGO_WEBHOOK_SECRET` antes de procesar pagos. Mantener el secreto solo en backend y rotarlo si se expone.
 
 ### Pago sin pedido interno
 
-Si Supabase falla, el servidor registra el error y continúa creando la preferencia. Puede existir un cobro difícil de conciliar.
+Mitigado por T-002: si Supabase no puede crear el pedido `pending`, el backend no crea la preferencia de Mercado Pago y responde con un error genérico.
 
 ### Condición de carrera
 
-La lectura del pedido y la actualización ocurren por separado. Webhooks concurrentes pueden superar simultáneamente la validación de estado.
+Mitigada por T-003/DEC-010: la transición `pending → paid` es condicional e idempotente; webhooks duplicados o concurrentes no vuelven a marcar el pedido.
 
 ### Manejo monetario
 
@@ -63,20 +63,20 @@ Mitigado por T-010/DEC-017: el backend emite logs JSON mediante `log(level, even
 
 ### Ausencia de controles operativos
 
-No se observan tests automatizados, rate limiting, health checks, monitoreo, política de retención, migraciones ni procedimiento de incidentes o rollback.
+Persisten pendientes operativos: no hay rate limiting ni health checks dedicados. Tests automatizados, migración versionada, logs estructurados y rollback de staging están documentados o implementados.
 
 ## Recomendaciones priorizadas
 
-1. Implementar y probar la validación de firma del webhook.
-2. No crear preferencias si no existe el pedido interno.
-3. Hacer atómica e idempotente la actualización de pagos.
+1. Mantener la validación de firma del webhook y rotar secretos ante exposición.
+2. Mantener la creación de preferencia bloqueada si no existe pedido interno.
+3. Mantener atómica e idempotente la actualización de pagos.
 4. Validar configuración al inicio sin mostrar valores.
-5. Adoptar una estrategia monetaria segura.
+5. Mantener la estrategia monetaria segura y la validación de moneda.
 6. Mantener logs estructurados con correlación y sin campos prohibidos.
-7. Versionar el esquema y revisar restricciones, índices y RLS.
-8. Separar entornos y credenciales; usar HTTPS estable en producción.
-9. Agregar pruebas sin llamadas ni pagos reales.
-10. Definir respuesta a incidentes, rotación, auditoría y retención.
+7. Mantener el esquema versionado y revisar restricciones, índices y RLS antes de cambios.
+8. Separar entornos y credenciales; usar HTTPS estable en staging y producción.
+9. Ejecutar pruebas sin llamadas ni pagos reales.
+10. Completar staging en EasyPanel, registrar resultados y definir controles operativos adicionales.
 
 ## Respuesta ante exposición
 

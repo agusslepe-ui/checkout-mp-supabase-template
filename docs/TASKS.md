@@ -705,7 +705,7 @@ El frontend solo envía `{ sku, quantity }`. El backend resuelve el producto, va
 
 ### T-013 — Documentar y validar deploy
 
-**Estado:** pendiente  
+**Estado:** completada
 **Prioridad:** P2  
 **DEC-016:** aceptada (2026-06-25). Esta tarea está desbloqueada.
 
@@ -793,8 +793,9 @@ No modificar la sección "Flujo principal", "Tecnologías" ni "Variables de ento
 #### Resultado esperado
 `docs/SKILLS.md` y `README.md` tienen la documentación actualizada y correcta para que el usuario pueda hacer el primer deploy a EasyPanel staging siguiendo instrucciones claras.
 
-#### Resultado esperado
 Existe documentación clara y probada para desplegar la aplicación con entornos separados y rollback definido.
+
+> **Completada el 2026-06-26.** `docs/SKILLS.md` documenta el deploy a staging en EasyPanel con variables por nombre, pasos operativos, checklist de staging, checklist previa a producción real, notas de seguridad y rollback según DEC-016. `README.md` referencia el proceso de staging y la estrategia de rollback. El deploy real queda a cargo del usuario siguiendo la checklist. Verificación: `git diff --check`, revisión de `git diff`, confirmación de que el diff toca solo Markdown permitido y búsqueda de secretos/valores reales sin hallazgos.
 
 ---
 

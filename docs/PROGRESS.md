@@ -1,16 +1,16 @@
 # Progreso
 
-Última revisión documental: 2026-06-25.
+Última revisión documental: 2026-06-26.
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012) y la corrección UTF-8 del error HTTP 400 por JSON inválido (T-014) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012), la documentación de deploy a staging (T-013) y la corrección UTF-8 del error HTTP 400 por JSON inválido (T-014) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
 - **Tests**: Jest instalado. `npm test` pasa con 29 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: T-013 requiere DEC-016.
+- **Pendiente más urgente**: ejecutar el deploy real a staging en EasyPanel siguiendo `docs/SKILLS.md` y DEC-016.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -53,21 +53,42 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Pendientes principales
 
-- Seleccionar y documentar un despliegue de producción (T-013).
+- Ejecutar y documentar el deploy real a staging en EasyPanel. El deploy lo realiza el usuario siguiendo la checklist de DEC-016.
 
 El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**13/14 tareas completadas.** T-001 a T-010 y T-014 completadas, commiteadas y pusheadas a `origin/main`. T-011 y T-012 completadas localmente, sin commit por pedido del usuario. Commits: T-001–T-006 (sesión 2026-06-24), T-007 ("Implementa validacion segura de importes y moneda"), T-008 ("Mejora identificadores unicos de pedidos"), T-009 ("Separa backend en modulos"), T-010 ("Implementa logs estructurados seguros"), T-014 ("Corrige codificacion UTF-8 en error JSON invalido").
+**14/14 tareas completadas.** T-013 dejó preparada la guía final de staging en EasyPanel, con checklists y rollback según DEC-016. El deploy real no fue ejecutado por Codex; queda a cargo del usuario.
 
 Opciones para continuar:
 
 **A — Modo aprendizaje** (recomendado antes de la próxima fase): pedir explicación conceptual de HMAC-SHA256, transición atómica, Jest mocks, RLS o la separación modular recién completada.
 
-**B — Próxima fase técnica**: T-013 requiere DEC-016.
+**B — Próxima fase técnica**: ejecutar staging en EasyPanel siguiendo `docs/SKILLS.md`, registrar resultados y decidir cuándo avanzar a producción real.
 
 ## Bitácora
+
+### 2026-06-26 — T-013 completada
+
+- Objetivo: dejar preparada y documentada la guía final de deploy a staging en EasyPanel según DEC-016.
+- Tarea relacionada: T-013.
+- Archivos afectados: `docs/SKILLS.md`, `README.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`, `docs/DESIGN.md`, `docs/SECURITY.md`.
+- Cambios realizados:
+  - `docs/SKILLS.md`: se ajustó el comando de prueba de preferencia para usar `{ sku, quantity }`, se eliminó texto obsoleto sobre ausencia de tests, se completó la guía de EasyPanel con variables por nombre, checklist de staging, checklist previa a producción real, notas de seguridad y rollback.
+  - `README.md`: se agregó una sección breve de deploy a staging que referencia `docs/SKILLS.md` y DEC-016.
+  - `docs/TASKS.md`: T-013 marcada como completada con resultado y verificaciones.
+  - `docs/CURRENT_CONTEXT.md`: contexto actualizado a 14/14 tareas completadas y deploy documentado.
+  - `docs/DESIGN.md`: se corrigió la limitación obsoleta que indicaba que no había deploy documentado.
+  - `docs/SECURITY.md`: se corrigieron riesgos ya mitigados para firma de webhook, pedido interno, condición de carrera y controles operativos.
+- Verificaciones:
+  - `git diff --check`.
+  - `git diff`.
+  - Confirmación de que el diff toca solo Markdown permitido.
+  - Confirmación de que no hay cambios en `.js`, `.env`, dependencias, `package.json` ni `package-lock.json`.
+  - Búsqueda de secretos y valores reales de variables sin hallazgos.
+- Resultado: T-013 completada como documentación. No se ejecutó deploy real, no se leyeron secretos, no se modificó código y no hubo commit ni push.
+- Pendientes o riesgos: el usuario debe ejecutar staging en EasyPanel, configurar manualmente el webhook sandbox de Mercado Pago y registrar los resultados de la checklist.
 
 ### 2026-06-25 — DEC-016 aceptada — estrategia de deploy, staging y rollback definida
 

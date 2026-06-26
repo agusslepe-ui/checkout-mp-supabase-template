@@ -34,7 +34,7 @@ Usar el origen HTTPS como `BASE_URL`, sin agregar `/webhook`, y reiniciar el ser
 Usar únicamente credenciales de prueba:
 
 ```powershell
-curl.exe -X POST http://localhost:3003/crear-preferencia
+curl.exe -X POST http://localhost:3003/crear-preferencia -H "Content-Type: application/json" -d "{\"sku\":\"REMERA-LEMONT-001\",\"quantity\":1}"
 ```
 
 Verificar que la respuesta contenga un identificador y una URL de checkout, y que Supabase tenga un pedido `pending` con la misma referencia. No publicar la respuesta completa si contiene identificadores operativos.
@@ -69,7 +69,7 @@ Estas páginas solo representan el retorno del navegador; no confirman el estado
 - Revisar que los logs no muestren secretos ni cuerpos sensibles completos.
 - Registrar en `docs/PROGRESS.md` qué se probó y qué no.
 
-Actualmente no existe una suite automatizada ni un comando `test`. No afirmar que el flujo funciona en un entorno real solo por revisión estática.
+Existe una suite Jest ejecutable con `npm.cmd test`. Aun así, no afirmar que el flujo funciona en un entorno real solo por revisión estática o por tests con dobles: staging requiere ejecutar la checklist operativa completa.
 
 ## Deploy a staging (EasyPanel)
 
@@ -100,6 +100,22 @@ Cargar solo desde el panel de EasyPanel. Nunca en el repositorio ni en archivos 
 7. Configurar manualmente el webhook sandbox en el panel de desarrolladores de Mercado Pago: URL destino `{BASE_URL}/webhook`. Sin este paso el webhook no llegará al servidor.
 8. Ejecutar la checklist de staging completa (ver `docs/DECISIONS.md` — DEC-016).
 
+### Checklist de staging
+
+Ejecutar en orden y registrar el resultado. Staging usa EasyPanel/VPS existente, URL HTTPS gratuita de EasyPanel, `NODE_ENV=production`, `BASE_URL` HTTPS pública sin barra final, Mercado Pago sandbox, el mismo Supabase actual y frontend servido desde `public/`.
+
+1. Variables cargadas en EasyPanel según la tabla anterior, solo por panel y sin valores en archivos versionados.
+2. Servicio arranca sin errores de variables faltantes.
+3. Abrir la URL HTTPS pública de EasyPanel y confirmar que el frontend carga.
+4. `POST /crear-preferencia` con `{ "sku": "REMERA-LEMONT-001", "quantity": 1 }` responde con `preference_id` y URL de checkout.
+5. Supabase muestra un pedido `pending` con referencia `LEMONT-ORDER-...`.
+6. La redirección al checkout sandbox de Mercado Pago funciona.
+7. Completar el pago en sandbox con credenciales de prueba.
+8. Mercado Pago llama a `POST /webhook` en la URL HTTPS pública.
+9. Supabase muestra el pedido con `status = 'paid'`.
+10. `GET /webhook` devuelve 404, confirmando que `NODE_ENV=production` está activo.
+11. Los logs de EasyPanel son JSON estructurado y no muestran secretos ni campos sensibles.
+
 ### Notas de seguridad
 
 - `SUPABASE_SERVICE_ROLE_KEY` nunca debe usarse en el frontend ni en archivos bajo `public/`.
@@ -118,7 +134,19 @@ Ver estrategia completa de rollback en `docs/DECISIONS.md` (DEC-016). Resumen:
 
 ### Producción real
 
-No pasar a producción real sin completar la checklist previa de DEC-016. Los requisitos mínimos son: staging validado, credenciales reales de MP, webhook de producción registrado, URL estable y plan de rollback conocido.
+No pasar a producción real sin completar esta checklist previa:
+
+1. Los 11 ítems de staging están verificados y documentados.
+2. `MERCADOPAGO_ACCESS_TOKEN` real disponible y sin exposición previa.
+3. `MERCADO_PAGO_WEBHOOK_SECRET` productivo generado y configurado en EasyPanel y Mercado Pago.
+4. Webhook productivo registrado en Mercado Pago con URL `{BASE_URL}/webhook`.
+5. `BASE_URL` apunta a una URL HTTPS estable.
+6. Si se usa `lemont01.com`: dominio recuperado, DNS al VPS y HTTPS activo antes de registrar el webhook.
+7. Variables actualizadas en EasyPanel: token sandbox reemplazado por token real y `BASE_URL` actualizada si cambió el dominio.
+8. RLS de Supabase verificado: sin policies para `anon` ni `authenticated`.
+9. Sin secretos en el repositorio: revisar `git log` y `git diff` antes de cualquier push.
+10. Pago real mínimo verificado de punta a punta.
+11. Plan de rollback conocido y ejecutable sin asistencia.
 
 ## Revisar cambios
 

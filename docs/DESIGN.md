@@ -113,7 +113,7 @@ La tabla `orders` usa `external_reference` como clave de correlación única. El
 - Puerto fijo y catálogo versionado en backend; sin fuente administrable externa todavía.
 - La ruta `GET /webhook` queda restringida a entornos no productivos.
 - No hay manejo explícito de reintentos, timeouts ni rate limits.
-- No hay deploy documentado ni infraestructura como código (T-013 pendiente).
+- El deploy a staging está documentado para EasyPanel/VPS; no hay infraestructura como código.
 
 ## Implementado y vigente
 
@@ -128,3 +128,4 @@ La tabla `orders` usa `external_reference` como clave de correlación única. El
 - Migración SQL versionada aplicada en Supabase con RLS habilitada (T-006, DEC-012).
 - `GET /webhook` condicionado a `NODE_ENV !== "production"` (T-011).
 - Catálogo seguro en `src/catalog.js`; `POST /crear-preferencia` acepta solo `{ sku, quantity }` y calcula precio, total y moneda en backend (T-012, DEC-013).
+- Deploy a staging documentado para EasyPanel/VPS con checklists y rollback (T-013, DEC-016).
