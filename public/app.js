@@ -27,7 +27,7 @@ payButton.addEventListener("click", async () => {
 
     const preference = await response.json();
     const checkoutUrl =
-      preference.sandbox_init_point || preference.init_point;
+      preference.init_point || preference.sandbox_init_point;
 
     if (!checkoutUrl) {
       throw new Error("La preferencia no incluye link de pago");
