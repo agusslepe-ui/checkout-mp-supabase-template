@@ -73,6 +73,23 @@ Opciones para continuar:
 
 ## Bitácora
 
+### 2026-06-26 — Diagnóstico seguro de variantes HMAC webhook
+
+- Objetivo: identificar qué variante del manifiesto HMAC de Mercado Pago coincide contra `v1` sin aceptar todavía ninguna variante nueva.
+- Tarea relacionada: diagnóstico operativo de staging posterior a T-013.
+- Archivos afectados: `src/webhookSignature.js`, `tests/index.test.js`, `docs/PROGRESS.md`.
+- Cambios realizados:
+  - `src/webhookSignature.js`: ante firma inválida, calcula candidatos `query_literal`, `body_literal`, `query_lower` y `body_lower`.
+  - `src/webhookSignature.js`: el diagnóstico expone solo booleanos de coincidencia y `hmac_candidate_match_name`.
+  - `tests/index.test.js`: cubre ausencia de match, match por `body_literal` y match por lowercase manteniendo respuesta `401`.
+- Verificaciones:
+  - `node --check src/webhookSignature.js`.
+  - `npm.cmd test`.
+  - `git diff --check`.
+  - `git diff`.
+- Resultado: diagnóstico temporal listo para redeploy en EasyPanel. La validación principal no cambia y no se aceptan webhooks inválidos.
+- Pendientes o riesgos: revisar el próximo log de EasyPanel y retirar este diagnóstico cuando se confirme la variante real.
+
 ### 2026-06-26 — Diagnóstico temporal de secret webhook en startup
 
 - Objetivo: confirmar en staging que EasyPanel carga la `MERCADO_PAGO_WEBHOOK_SECRET` esperada sin exponerla.

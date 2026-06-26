@@ -34,6 +34,59 @@ function getValueLength(value) {
   return String(value).length;
 }
 
+function compareSignatureHex(expectedSignature, receivedSignature) {
+  const receivedSignatureBuffer = Buffer.from(receivedSignature, "hex");
+
+  return (
+    expectedSignature.length === receivedSignatureBuffer.length &&
+    crypto.timingSafeEqual(expectedSignature, receivedSignatureBuffer)
+  );
+}
+
+function calculateSignature(manifest) {
+  return crypto
+    .createHmac("sha256", mercadoPagoWebhookSecret)
+    .update(manifest)
+    .digest();
+}
+
+function buildManifest({ dataId, requestId, timestamp }) {
+  const manifestParts = [];
+
+  if (dataId !== undefined && dataId !== null && String(dataId) !== "") {
+    manifestParts.push(`id:${String(dataId)};`);
+  }
+
+  if (typeof requestId === "string" && requestId !== "") {
+    manifestParts.push(`request-id:${requestId};`);
+  }
+
+  manifestParts.push(`ts:${timestamp};`);
+
+  return manifestParts.join("");
+}
+
+function matchesCandidate({ dataId, requestId, timestamp, receivedSignature }) {
+  if (
+    dataId === undefined ||
+    dataId === null ||
+    String(dataId) === "" ||
+    typeof requestId !== "string" ||
+    requestId === "" ||
+    !timestamp ||
+    !/^\d+$/.test(timestamp) ||
+    !receivedSignature ||
+    !/^[a-fA-F0-9]{64}$/.test(receivedSignature)
+  ) {
+    return false;
+  }
+
+  return compareSignatureHex(
+    calculateSignature(buildManifest({ dataId, requestId, timestamp })),
+    receivedSignature
+  );
+}
+
 function isValidWebhookSignature({ signatureHeader, requestId, dataId }) {
   const { ts: timestamp, v1: receivedSignature } =
     parseSignatureHeader(signatureHeader);
@@ -47,27 +100,9 @@ function isValidWebhookSignature({ signatureHeader, requestId, dataId }) {
     return false;
   }
 
-  const manifestParts = [];
-
-  if (dataId !== undefined && dataId !== null && String(dataId) !== "") {
-    manifestParts.push(`id:${String(dataId)};`);
-  }
-
-  if (typeof requestId === "string" && requestId !== "") {
-    manifestParts.push(`request-id:${requestId};`);
-  }
-
-  manifestParts.push(`ts:${timestamp};`);
-
-  const expectedSignature = crypto
-    .createHmac("sha256", mercadoPagoWebhookSecret)
-    .update(manifestParts.join(""))
-    .digest();
-  const receivedSignatureBuffer = Buffer.from(receivedSignature, "hex");
-
-  return (
-    expectedSignature.length === receivedSignatureBuffer.length &&
-    crypto.timingSafeEqual(expectedSignature, receivedSignatureBuffer)
+  return compareSignatureHex(
+    calculateSignature(buildManifest({ dataId, requestId, timestamp })),
+    receivedSignature
   );
 }
 
@@ -84,10 +119,44 @@ function getWebhookSignatureDiagnostics(req) {
   const { ts, v1 } = parseSignatureHeader(signatureHeader);
   const queryDataId = req.query?.["data.id"];
   const bodyDataId = req.body?.data?.id;
+  const requestId = req.headers["x-request-id"];
   const hasQueryDataId =
     queryDataId !== undefined && queryDataId !== null && String(queryDataId) !== "";
   const hasBodyDataId =
     bodyDataId !== undefined && bodyDataId !== null && String(bodyDataId) !== "";
+  const hmacCandidateQueryLiteralMatches = matchesCandidate({
+    dataId: queryDataId,
+    requestId,
+    timestamp: ts,
+    receivedSignature: v1,
+  });
+  const hmacCandidateBodyLiteralMatches = matchesCandidate({
+    dataId: bodyDataId,
+    requestId,
+    timestamp: ts,
+    receivedSignature: v1,
+  });
+  const hmacCandidateQueryLowerMatches = matchesCandidate({
+    dataId: hasQueryDataId ? String(queryDataId).toLowerCase() : queryDataId,
+    requestId,
+    timestamp: ts,
+    receivedSignature: v1,
+  });
+  const hmacCandidateBodyLowerMatches = matchesCandidate({
+    dataId: hasBodyDataId ? String(bodyDataId).toLowerCase() : bodyDataId,
+    requestId,
+    timestamp: ts,
+    receivedSignature: v1,
+  });
+  const hmacCandidateMatchName = hmacCandidateQueryLiteralMatches
+    ? "query_literal"
+    : hmacCandidateBodyLiteralMatches
+      ? "body_literal"
+      : hmacCandidateQueryLowerMatches
+        ? "query_lower"
+        : hmacCandidateBodyLowerMatches
+          ? "body_lower"
+          : "none";
 
   return {
     has_query_data_id: hasQueryDataId,
@@ -106,6 +175,12 @@ function getWebhookSignatureDiagnostics(req) {
     signature_v1_length: getValueLength(v1),
     signature_data_source: hasQueryDataId ? "query_data_id" : "missing",
     preserves_literal_data_id: hasQueryDataId,
+    hmac_candidate_query_literal_matches: hmacCandidateQueryLiteralMatches,
+    hmac_candidate_body_literal_matches: hmacCandidateBodyLiteralMatches,
+    hmac_candidate_query_lower_matches: hmacCandidateQueryLowerMatches,
+    hmac_candidate_body_lower_matches: hmacCandidateBodyLowerMatches,
+    hmac_candidate_any_match: hmacCandidateMatchName !== "none",
+    hmac_candidate_match_name: hmacCandidateMatchName,
   };
 }
 

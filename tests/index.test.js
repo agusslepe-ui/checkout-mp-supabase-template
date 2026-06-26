@@ -669,6 +669,12 @@ describe("webhook de pagos", () => {
           signature_v1_length: 64,
           signature_data_source: "query_data_id",
           preserves_literal_data_id: true,
+          hmac_candidate_query_literal_matches: false,
+          hmac_candidate_body_literal_matches: false,
+          hmac_candidate_query_lower_matches: false,
+          hmac_candidate_body_lower_matches: false,
+          hmac_candidate_any_match: false,
+          hmac_candidate_match_name: "none",
         }),
       ])
     );
@@ -714,6 +720,12 @@ describe("webhook de pagos", () => {
           signature_v1_length: 64,
           signature_data_source: "missing",
           preserves_literal_data_id: false,
+          hmac_candidate_query_literal_matches: false,
+          hmac_candidate_body_literal_matches: true,
+          hmac_candidate_query_lower_matches: false,
+          hmac_candidate_body_lower_matches: false,
+          hmac_candidate_any_match: true,
+          hmac_candidate_match_name: "body_literal",
         }),
       ])
     );
@@ -765,6 +777,24 @@ describe("webhook de pagos", () => {
     expect(response.statusCode).toBe(401);
     expect(response.body).toEqual({ error: "Webhook inválido" });
     expect(paymentGet).not.toHaveBeenCalled();
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "firma de webhook invalida",
+          route: "/webhook",
+          method: "POST",
+          status_code: 401,
+          hmac_candidate_query_literal_matches: false,
+          hmac_candidate_body_literal_matches: false,
+          hmac_candidate_query_lower_matches: true,
+          hmac_candidate_body_lower_matches: true,
+          hmac_candidate_any_match: true,
+          hmac_candidate_match_name: "query_lower",
+        }),
+      ])
+    );
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("PAYMENTTEST");
   });
 
   test("marca como paid un pago aprobado con importe correcto", async () => {
