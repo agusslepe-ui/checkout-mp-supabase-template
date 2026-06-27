@@ -522,6 +522,9 @@ describe("creación de preferencias", () => {
         currency_id: "ARS",
       },
     ]);
+    expect(preferenceCreate.mock.calls[0][0].body.notification_url).toBe(
+      "https://example.test/webhook?source_news=webhooks"
+    );
   });
 
   test("ignora amount y currency enviados por el cliente", async () => {
