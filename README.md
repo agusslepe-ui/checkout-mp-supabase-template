@@ -144,6 +144,6 @@ Las rutas de retorno son `/success`, `/failure` y `/pending`. Esas páginas info
 
 ## Limitaciones actuales
 
-No hay autenticación de compradores ni panel administrativo. El catálogo está definido en backend como un módulo versionado; no existe interfaz de administración de productos. El deploy a staging está documentado en `docs/SKILLS.md` y `docs/DECISIONS.md` (DEC-016); aún no se ha ejecutado.
+No hay autenticación de compradores ni panel administrativo. El catálogo está definido en backend como un módulo versionado; no existe interfaz de administración de productos. El deploy productivo fue ejecutado y el flujo `pending → paid` verificado con un pago real (2026-06-26). Ver `docs/SKILLS.md` y `docs/DECISIONS.md` (DEC-016) para la estrategia de entornos y rollback.
 
 Para el estado completo del proyecto, decisiones técnicas y próximos pasos, ver `docs/DECISIONS.md`, `docs/TASKS.md` y `docs/PROGRESS.md`.

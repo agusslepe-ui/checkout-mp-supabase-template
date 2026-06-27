@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-26 (14/14 tareas completadas — integración verificada en producción con pago real, flujo pending → paid confirmado, DEC-018 resuelta, causa raíz del 401 identificada: `notification_url` sin `?source_news=webhooks` mezclaba IPN con Webhooks).
+> Resumen compacto para agentes. Última actualización: 2026-06-27 (cierre formal de fase — 14/14 tareas completadas — flujo `pending → paid` verificado en producción real — causa raíz del 401: `notification_url` sin `?source_news=webhooks` mezclaba IPN con Webhooks + frontend priorizaba `sandbox_init_point` sobre `init_point`).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -138,6 +138,14 @@ Verificar en EasyPanel que `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` está desactivada o
 
 **Paso 3 — Limpieza de diagnósticos (Codex):**
 Retirar el código de diagnóstico temporal de `src/webhookSignature.js`, `src/app.js` y `src/config.js`. Hacer commit solo después de que el usuario lo autorice explícitamente.
+
+**Paso 4 — Commit/push de documentación (usuario):**
+Después de verificar los pasos anteriores:
+1. `git status --short` — confirmar que solo hay cambios en `docs/`.
+2. `git diff` — revisar qué cambió.
+3. `git add docs/TASKS.md docs/DECISIONS.md docs/SECURITY.md docs/CURRENT_CONTEXT.md docs/PROGRESS.md`
+4. Commit específico: `"Cierra formalmente la fase de integración productiva Mercado Pago"`
+5. `git push`
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 

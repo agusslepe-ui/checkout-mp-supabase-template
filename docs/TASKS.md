@@ -4,6 +4,37 @@ Estados posibles: `pendiente`, `en curso`, `bloqueada`, `completada`. Todas las 
 
 ---
 
+## Cierre de fase — 2026-06-27
+
+**Estado general:** 14/14 tareas completadas. Backlog cerrado.
+
+Integración productiva Mercado Pago + Supabase verificada: pagos reales aprobados actualizan pedidos de `pending` a `paid`.
+
+### Causa raíz final identificada y resuelta
+
+Dos problemas causaban fallos en el flujo productivo:
+
+1. **Frontend priorizaba `sandbox_init_point` sobre `init_point`**: podía enviar el checkout al ambiente sandbox aunque se estuviera en producción. Corregido priorizando `init_point` en el frontend.
+2. **`notification_url` sin `?source_news=webhooks`**: Mercado Pago enviaba notificaciones IPN en lugar de Webhooks. Las IPN usan un mecanismo de firma diferente al HMAC-SHA256 configurado en "Tus integraciones", causando rechazo sistemático con HTTP 401. Corregido agregando `?source_news=webhooks` a la `notification_url`.
+
+### Pendientes de seguridad (fuera del backlog)
+
+- Rotar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` productivos expuestos en capturas/chats. Acción inmediata del usuario.
+- Confirmar en EasyPanel que `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` está desactivada o ausente.
+- Autorizar a Codex la limpieza del código temporal de diagnóstico en `src/webhookSignature.js`, `src/app.js` y `src/config.js`.
+
+### Resultado final verificado en producción real (2026-06-26)
+
+1. `POST /crear-preferencia` → preferencia creada con `init_point` y `notification_url` con `?source_news=webhooks`.
+2. Pedido persistido en Supabase como `pending`.
+3. Pago real realizado en Mercado Pago Checkout Pro.
+4. Webhook recibido en `POST /webhook` con firma HMAC-SHA256 válida.
+5. Firma validada correctamente con `MERCADO_PAGO_WEBHOOK_SECRET` productivo.
+6. Pago consultado a la API de Mercado Pago y confirmado como `approved`.
+7. Pedido actualizado a `paid` en Supabase.
+
+---
+
 ## P0 — Seguridad e integridad
 
 ### T-001 — Validar la firma del webhook

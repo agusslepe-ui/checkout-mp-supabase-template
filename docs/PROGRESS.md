@@ -102,6 +102,27 @@ Retirar el código de diagnóstico temporal en `src/webhookSignature.js`, `src/a
 
 ## Bitácora
 
+### 2026-06-27 — Cierre formal de fase: integración productiva Mercado Pago + Supabase verificada
+
+- Objetivo: documentar el cierre formal de la fase de integración y consolidar el estado final del proyecto.
+- Tipo de sesión: documental. Sin modificación de código. Sin acceso a `.env`.
+- Archivos actualizados: `docs/TASKS.md`, `docs/DECISIONS.md`, `docs/SECURITY.md`, `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`.
+- Estado final: integración productiva Mercado Pago + Supabase verificada. Flujo `pending → paid` confirmado con pago real. 14/14 tareas completadas. Backlog cerrado.
+- Causa raíz final documentada:
+  1. Frontend priorizaba `sandbox_init_point` sobre `init_point`: podía enviar el checkout a sandbox aunque se estuviera en producción. Corregido priorizando `init_point`.
+  2. `notification_url` sin `?source_news=webhooks`: Mercado Pago enviaba notificaciones IPN en lugar de Webhooks (firmas diferentes). Corregido con `?source_news=webhooks`.
+- Seguridad verificada en producción real:
+  - Validación de firma HMAC-SHA256 activa: no fue desactivada en ningún momento.
+  - Webhooks inválidos siguen respondiendo HTTP 401.
+  - `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue usada temporalmente como apoyo para soporte técnico externo; debe permanecer desactivada.
+- Pendientes documentados:
+  - Rotar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` productivos expuestos en capturas/chats. Acción inmediata del usuario.
+  - Confirmar `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` desactivada en EasyPanel.
+  - Autorizar a Codex la limpieza del código temporal de diagnóstico en `src/webhookSignature.js`, `src/app.js` y `src/config.js`.
+  - Hacer commit/push de documentación actualizada (solo docs, sin código).
+  - Hacer commit/push de la limpieza técnica cuando Codex la ejecute y el usuario lo autorice.
+- Sin cambios de código. Sin acceso a `.env`. Sin commit. Sin push.
+
 ### 2026-06-26 — Cierre exitoso de integración: flujo pending → paid verificado en producción
 
 - Objetivo: documentar el cierre exitoso de la integración Mercado Pago + Supabase con pago real confirmado en producción.

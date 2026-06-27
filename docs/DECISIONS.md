@@ -677,7 +677,9 @@ No modificar la validación de firma (DEC-009) ni ningún archivo de código has
 
 **Opción ejecutada:** Opción A — verificación técnica + prueba productiva controlada.
 
-**Causa raíz identificada:** la `notification_url` de la preferencia no incluía el parámetro `?source_news=webhooks`. Sin ese parámetro, Mercado Pago envía notificaciones de tipo IPN en lugar de Webhooks. Las notificaciones IPN usan un mecanismo de firma diferente al HMAC-SHA256 configurado en "Tus integraciones". El backend rechazaba correctamente las firmas IPN con HTTP 401 porque no corresponden al algoritmo de Webhook. La simulación del panel siempre envía Webhooks (firma correcta) porque usa directamente el mecanismo de Webhooks, razón por la cual el panel siempre validaba y los webhooks reales de sandbox no.
+**Causa raíz principal identificada:** la `notification_url` de la preferencia no incluía el parámetro `?source_news=webhooks`. Sin ese parámetro, Mercado Pago envía notificaciones de tipo IPN en lugar de Webhooks. Las notificaciones IPN usan un mecanismo de firma diferente al HMAC-SHA256 configurado en "Tus integraciones". El backend rechazaba correctamente las firmas IPN con HTTP 401 porque no corresponden al algoritmo de Webhook. La simulación del panel siempre envía Webhooks (firma correcta) porque usa directamente el mecanismo de Webhooks, razón por la cual el panel siempre validaba y los webhooks reales de sandbox no.
+
+**Causa raíz adicional (frontend):** el frontend priorizaba `sandbox_init_point` sobre `init_point` en el retorno de la preferencia creada. Esto podía enviar el checkout al ambiente sandbox aunque se estuviera intentando realizar una compra productiva. Corregido priorizando `init_point` para el flujo de checkout productivo (commit `04c8112`).
 
 **Solución aplicada (Codex):** se agregó `?source_news=webhooks` a la `notification_url` de la preferencia en `src/app.js`. Esto fuerza a Mercado Pago a enviar exclusivamente notificaciones de tipo Webhook con firma HMAC-SHA256 válida.
 
