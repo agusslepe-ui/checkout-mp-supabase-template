@@ -615,7 +615,7 @@ No se requieren dependencias nuevas. Un helper propio que serializa JSON es sufi
 ## DEC-018 — Estrategia para verificar y probar el flujo de webhook con firma válida
 
 **Fecha:** 2026-06-26
-**Estado:** pendiente
+**Estado:** resuelta
 
 ### Contexto
 
@@ -673,5 +673,24 @@ Modificar el flujo de `POST /webhook` para que, ante firma inválida, realice un
 
 No modificar la validación de firma (DEC-009) ni ningún archivo de código hasta que esta DEC esté aceptada. Claude Code no prepara tareas de código para ninguna opción sin confirmación explícita del usuario.
 
-### Decisión
-> Pendiente de confirmar con el usuario.
+### Resolución (2026-06-26)
+
+**Opción ejecutada:** Opción A — verificación técnica + prueba productiva controlada.
+
+**Causa raíz identificada:** la `notification_url` de la preferencia no incluía el parámetro `?source_news=webhooks`. Sin ese parámetro, Mercado Pago envía notificaciones de tipo IPN en lugar de Webhooks. Las notificaciones IPN usan un mecanismo de firma diferente al HMAC-SHA256 configurado en "Tus integraciones". El backend rechazaba correctamente las firmas IPN con HTTP 401 porque no corresponden al algoritmo de Webhook. La simulación del panel siempre envía Webhooks (firma correcta) porque usa directamente el mecanismo de Webhooks, razón por la cual el panel siempre validaba y los webhooks reales de sandbox no.
+
+**Solución aplicada (Codex):** se agregó `?source_news=webhooks` a la `notification_url` de la preferencia en `src/app.js`. Esto fuerza a Mercado Pago a enviar exclusivamente notificaciones de tipo Webhook con firma HMAC-SHA256 válida.
+
+**Resultado verificado en producción real (2026-06-26):**
+1. `POST /crear-preferencia` creó preferencia con `notification_url` correcta.
+2. Pedido creado en Supabase con `status = 'pending'`.
+3. Pago real realizado en Mercado Pago Checkout Pro.
+4. Webhook recibido en `POST /webhook` con firma HMAC-SHA256 válida.
+5. Firma validada correctamente con `MERCADO_PAGO_WEBHOOK_SECRET` productivo.
+6. Pago consultado a la API de Mercado Pago y confirmado como aprobado.
+7. Pedido actualizado a `status = 'paid'` en Supabase.
+
+**Pendientes al cierre:**
+- Rotar credenciales productivas expuestas en capturas/chats (ver `docs/SECURITY.md`).
+- Confirmar que `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` está desactivada en EasyPanel.
+- Retirar código de diagnóstico temporal de `src/webhookSignature.js`, `src/app.js` y `src/config.js` (tarea para Codex).

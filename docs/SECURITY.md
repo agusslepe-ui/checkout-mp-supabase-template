@@ -105,6 +105,28 @@ Durante la sesión de diagnóstico del 2026-06-26, el Access Token de prueba de 
 
 **No pasar a producción** con credenciales de prueba expuestas. No usar las mismas credenciales que se usaron en la sesión de diagnóstico.
 
+### Credenciales productivas expuestas en capturas/chats
+
+Durante la sesión de cierre del 2026-06-26, el Access Token productivo y el Webhook Secret productivo de Mercado Pago fueron visibles en capturas de pantalla o mensajes del chat de la sesión.
+
+**Scope del riesgo**: credenciales productivas reales. Alcance máximo: cualquier actor que acceda al historial del chat puede usar el Access Token para realizar pagos, reembolsos o consultas en la cuenta real de Mercado Pago del usuario.
+
+**Acción obligatoria antes de continuar en producción:**
+1. Revocar y regenerar el Access Token productivo en el panel de desarrolladores de Mercado Pago.
+2. Revocar y regenerar el Webhook Secret productivo en "Tus integraciones" de Mercado Pago.
+3. Actualizar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel con los nuevos valores.
+4. Verificar que el flujo productivo sigue funcionando después de la rotación.
+
+No operar en producción hasta que esta rotación esté confirmada.
+
+### Variable de diagnóstico `MP_SUPPORT_CAPTURE_FULL_WEBHOOK`
+
+Durante la investigación del 401 en staging se agregó la variable de entorno `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` como flag de diagnóstico temporal. Esta variable, si se activa, captura el cuerpo completo del webhook recibido, lo que incluye datos sensibles del pago y del comprador.
+
+**Regla permanente**: `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` debe permanecer desactivada (valor ausente, vacío o `false`) en todos los entornos, incluyendo producción y staging. Activarla solo en entorno local controlado con datos ficticios, con autorización explícita del usuario y durante el tiempo mínimo necesario.
+
+Antes de cualquier deploy productivo: confirmar en EasyPanel que esta variable está desactivada o ausente.
+
 ### Ausencia de controles operativos
 
 Persisten pendientes operativos: no hay rate limiting ni health checks dedicados. Tests automatizados, migración versionada, logs estructurados y rollback de staging están documentados o implementados.

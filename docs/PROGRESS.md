@@ -1,6 +1,6 @@
 # Progreso
 
-Última revisión documental: 2026-06-26.
+Última revisión documental: 2026-06-26. Integración Mercado Pago verificada en producción.
 
 ## Estado actual
 
@@ -10,8 +10,8 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Tests**: Jest instalado. `npm test` pasa con 29 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
-- **Pendiente más urgente**: soporte/consulta técnica de Mercado Pago confirmó que los pagos de prueba con credenciales de prueba no envían notificaciones reales. El 401 en staging vía `notification_url` con credenciales sandbox puede ser comportamiento esperado, no un bug del código. Se identifican dos puntos técnicos a verificar en la implementación HMAC antes de cualquier prueba productiva: (a) `data.id` debe provenir de query params (denominado `data.id_url` en la documentación oficial); (b) si falta algún valor del template del manifiesto, debe excluirse antes del cálculo HMAC, no incluirse como cadena vacía. Credenciales de prueba expuestas en sesión anterior: deben rotarse. Ver DEC-018.
-- **Deploy activo**: dominio propio `checkout.lemont01.com` con SSL en EasyPanel. `POST /crear-preferencia` y persistencia Supabase funcionan en staging.
+- **Integración completa**: el flujo `pending → paid` fue verificado en producción real con pago real. Causa raíz del webhook 401 identificada y resuelta: la `notification_url` sin `?source_news=webhooks` hacía que Mercado Pago enviara notificaciones IPN en lugar de Webhooks, con firma diferente. Agregar `?source_news=webhooks` resolvió el problema. Ver DEC-018 (resuelta).
+- **Deploy productivo activo**: dominio `checkout.lemont01.com` con SSL. Flujo completo de pago real verificado. `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` debe mantenerse desactivado. Credenciales productivas expuestas en capturas/chats: pendiente rotación.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -57,6 +57,8 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - Configuración de dominio propio `checkout.lemont01.com` con SSL activo en EasyPanel. `BASE_URL` actualizado. Webhook sandbox de Mercado Pago apuntado al nuevo dominio.
 - Simulación desde panel de Webhooks de Mercado Pago: firma válida. Backend entra al flujo completo (`webhook recibido`, `pago detectado en webhook`). Error al consultar pago (esperable para IDs de simulación sin pago real).
 - Prueba sin `notification_url` en la preferencia: llegan eventos sin `data.id`, no útiles para confirmar pago. Restaurada `notification_url`. Tests pasan.
+- **Corrección `notification_url` con `source_news=webhooks`**: se identificó que la `notification_url` sin el parámetro `?source_news=webhooks` causaba que Mercado Pago enviara notificaciones IPN en lugar de Webhooks. Las notificaciones IPN no usan el mismo algoritmo HMAC-SHA256 de Webhooks, lo que causaba el rechazo sistemático de la firma. Solución: agregar `?source_news=webhooks` a la `notification_url`.
+- **Pago productivo real verificado end-to-end**: webhook recibido con firma válida, pago detectado en webhook, pago consultado a la API de Mercado Pago (`Payment.get`), pago aprobado confirmado por API, pedido actualizado de `pending` a `paid` en Supabase. Flujo completo `pending → paid` verificado en producción.
 
 ## Problemas resueltos documentados
 
@@ -71,33 +73,60 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - **Staging: `SUPABASE_URL` con path o trailing slash**: la URL incluía `/rest/v1` o barra final, causando error `PGRST125`. Resuelto: usar solo URL base (`https://xxxx.supabase.co`) sin path ni barra final.
 - **Staging: Tipo de clave Supabase incorrecto**: se intentó usar la clave publishable en lugar de `service_role` JWT. Resuelto: confirmar uso de `service_role` JWT en backend.
 - **Staging: `data.id` en lowercase**: el manifiesto HMAC aplicaba `.toLowerCase()` a `data.id`. Resuelto: usar el valor literal de `data.id`.
+- **Webhook 401 con `notification_url` (causa raíz)**: la `notification_url` sin `?source_news=webhooks` hacía que Mercado Pago enviara notificaciones de tipo IPN con firma diferente a la de Webhooks. El backend rechazaba la firma IPN como inválida (HTTP 401). Resuelto: agregar `?source_news=webhooks` al parámetro `notification_url` de la preferencia.
 
 ## Pendientes principales
 
-- **Rotar credenciales de prueba expuestas** (acción inmediata): el Access Token de prueba y el Webhook Secret de prueba fueron compartidos en el chat de la sesión. Deben regenerarse en el panel de Mercado Pago y actualizarse en EasyPanel antes de continuar con cualquier prueba.
-- Decidir el próximo camino técnico para el webhook — ver **DEC-018** actualizada (`docs/DECISIONS.md`). El soporte de Mercado Pago confirmó que la vía recomendada para probar notificaciones en sandbox es la simulación desde "Tus integraciones", no pagos de prueba reales. DEC-018 incluye además dos puntos técnicos a verificar en el HMAC antes de probar en producción. No tocar código hasta que DEC-018 esté aceptada.
-- Retirar diagnósticos temporales en `src/webhookSignature.js`, `src/app.js` y `src/config.js` antes de avanzar a producción real.
+- **Rotar credenciales productivas expuestas** (acción inmediata): credenciales productivas de Mercado Pago fueron expuestas en capturas/chats de la sesión de verificación productiva. Deben rotarse antes de cualquier uso continuo en producción. Ver `docs/SECURITY.md`.
+- **Mantener `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` desactivado**: esta variable de diagnóstico debe permanecer apagada. Si se activa temporalmente para diagnóstico futuro, debe apagarse inmediatamente después.
+- Retirar diagnósticos temporales en `src/webhookSignature.js`, `src/app.js` y `src/config.js` (código de diagnóstico del período de investigación HMAC).
 
 El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Staging activo. Soporte confirmó comportamiento sandbox. Pendiente: verificación técnica y decisión del usuario.**
+**Integración productiva verificada. Flujo `pending → paid` funcionando en producción.**
 
-Soporte/consulta de Mercado Pago confirmó que los pagos de prueba con credenciales de prueba no envían notificaciones reales con firma válida. La simulación desde "Tus integraciones" es la vía recomendada para sandbox. Se identificaron además dos puntos técnicos a verificar en la implementación HMAC.
+La integración Mercado Pago + Supabase está completa y verificada con un pago productivo real. La causa raíz del webhook 401 fue identificada y resuelta (`source_news=webhooks`).
 
-**Paso 1 — Inmediato (antes de cualquier prueba técnica):**
-Rotar el Access Token de prueba y el Webhook Secret de prueba expuestos en el chat. Actualizar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel y verificar que el staging sigue funcionando.
+**Paso 1 — Inmediato (seguridad):**
+Rotar las credenciales productivas de Mercado Pago expuestas en capturas/chats de la sesión. Ver `docs/SECURITY.md`.
 
-**Paso 2 — Verificar puntos técnicos del HMAC (antes de producción):**
-Revisar en `src/webhookSignature.js` si: (a) `data.id` proviene de query params (denominado `data.id_url` en documentación oficial); (b) valores faltantes del template del manifiesto se excluyen antes del HMAC en lugar de incluirse como cadena vacía. Esta verificación es necesaria antes de cualquier prueba en producción.
+**Paso 2 — Verificar `MP_SUPPORT_CAPTURE_FULL_WEBHOOK`:**
+Confirmar que esta variable de diagnóstico está desactivada (apagada) en EasyPanel antes de continuar operando en producción.
 
-**Paso 3 — Confirmar DEC-018:**
-Ver **DEC-018** actualizada en `docs/DECISIONS.md`. Las opciones y los nuevos puntos técnicos están documentados con sus riesgos. No modificar código hasta que DEC-018 esté aceptada.
+**Paso 3 — Limpieza de diagnósticos temporales:**
+Retirar el código de diagnóstico temporal en `src/webhookSignature.js`, `src/app.js` y `src/config.js` agregado durante la investigación HMAC. Esto reduce la superficie de logs en producción.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-06-26 — Cierre exitoso de integración: flujo pending → paid verificado en producción
+
+- Objetivo: documentar el cierre exitoso de la integración Mercado Pago + Supabase con pago real confirmado en producción.
+- Tipo de sesión: documental. Sin modificación de código. Sin acceso a `.env`.
+- Archivos actualizados: `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`, `docs/SECURITY.md`, `docs/DECISIONS.md`.
+- Causa raíz identificada y resuelta:
+  - La `notification_url` de la preferencia sin el parámetro `?source_news=webhooks` hacía que Mercado Pago enviara notificaciones de tipo IPN en lugar de Webhooks.
+  - Las notificaciones IPN no usan el mismo algoritmo de firma HMAC-SHA256 de Webhooks configurados en "Tus integraciones". El backend rechazaba correctamente la firma IPN como inválida (HTTP 401).
+  - La simulación del panel siempre enviaba Webhooks (firma correcta) porque el panel usa directamente el mecanismo de Webhooks.
+  - Solución: agregar `?source_news=webhooks` a la `notification_url` de la preferencia fuerza a Mercado Pago a enviar exclusivamente notificaciones de tipo Webhook con firma HMAC-SHA256 correcta.
+- Flujo verificado en producción real:
+  1. `POST /crear-preferencia` → preferencia creada con `notification_url` correcta.
+  2. Pedido persistido en Supabase como `pending`.
+  3. Pago real realizado en Mercado Pago Checkout Pro.
+  4. Webhook recibido en `POST /webhook`.
+  5. Firma HMAC-SHA256 validada correctamente con `MERCADO_PAGO_WEBHOOK_SECRET` productivo.
+  6. Pago detectado en webhook.
+  7. Pago consultado a la API de Mercado Pago (`Payment.get`).
+  8. Pago aprobado confirmado por la API.
+  9. Pedido actualizado de `pending` a `paid` en Supabase.
+- Pendientes al cerrar:
+  - `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` debe mantenerse desactivado.
+  - Rotar credenciales productivas expuestas en capturas/chats.
+- DEC-018 marcada como resuelta.
+- Sin cambios de código en esta sesión documental. Sin commit. Sin push. Sin acceso a `.env`.
 
 ### 2026-06-26 — Respuesta de soporte Mercado Pago: confirmación de comportamiento sandbox y puntos técnicos HMAC
 
