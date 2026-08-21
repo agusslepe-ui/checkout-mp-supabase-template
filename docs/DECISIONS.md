@@ -696,3 +696,66 @@ No modificar la validación de firma (DEC-009) ni ningún archivo de código has
 - Rotar credenciales productivas expuestas en capturas/chats (ver `docs/SECURITY.md`).
 - La captura completa asociada a `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue retirada de `src/app.js` el 2026-08-20; configurar la variable ya no activa ningún comportamiento.
 - Retirar los demás diagnósticos temporales de `src/webhookSignature.js` y `src/config.js` permanece como una tarea separada.
+
+---
+
+## DEC-019 — Política de respuestas HTTP de `POST /webhook`
+
+**Fecha:** 2026-08-21
+**Estado:** aceptada
+
+### Contexto
+
+Esta integración ya operó en producción con credenciales productivas de Mercado Pago y procesó pagos reales, incluyendo transferencias efectivas desde compradores hacia la cuenta productiva del comercio. El trabajo actual es el endurecimiento de una integración productiva existente, no la preparación inicial de un prototipo exclusivamente sandbox.
+
+Actualmente `POST /webhook` puede responder HTTP 200 después de capturar errores al consultar un pago en Mercado Pago o al consultar/actualizar un pedido en Supabase. Un 200 confirma la recepción al proveedor aunque el procesamiento necesario no haya finalizado y puede dejar pedidos en `pending` sin un nuevo intento automático.
+
+### Decisión
+
+`POST /webhook` aplicará la siguiente política:
+
+1. **Firma ausente o inválida — HTTP 401.** Se conserva el comportamiento definido por DEC-009. La validación HMAC existente no se modifica.
+2. **Procesamiento exitoso — HTTP 200.** Incluye la consulta autoritativa del pago y, cuando corresponde, la transición confirmada del pedido a `paid`.
+3. **Resultados definitivos o idempotentes — HTTP 200.** Repetir la misma notificación no resolvería ni cambiaría estos resultados:
+   - evento irrelevante;
+   - pago no aprobado;
+   - pedido ya `paid`;
+   - duplicado concurrente;
+   - diferencia de importe;
+   - diferencia de moneda;
+   - pedido inexistente después de una consulta exitosa;
+   - pago aprobado sin `external_reference`;
+   - evento firmado sin ID utilizable.
+4. **Fallos temporales o recuperables — HTTP 503.** Se permite que Mercado Pago reintente cuando el procesamiento no pudo completarse por:
+   - timeout o error de red consultando Mercado Pago;
+   - respuesta 429 de Mercado Pago;
+   - respuesta 5xx de Mercado Pago;
+   - respuesta 401/403 de Mercado Pago por credenciales o configuración, acompañada de un log crítico seguro;
+   - error de conexión o consulta con Supabase;
+   - error durante el `UPDATE pending → paid`;
+   - resultado ambiguo de una dependencia.
+5. **Excepciones internas inesperadas durante el procesamiento — HTTP 503.** La respuesta será genérica y segura para permitir un reintento del proveedor.
+
+Las respuestas HTTP nunca incluirán secretos, firmas, datos sensibles, referencias internas completas, payloads externos ni mensajes internos de los SDK de Mercado Pago o Supabase. Los logs conservarán la política segura de DEC-017.
+
+La transición atómica `pending → paid` y la idempotencia establecidas por DEC-010 deben conservarse. Un cambio de código derivado de esta decisión no debe debilitar esos controles ni la validación HMAC de DEC-009.
+
+### Alcance actual
+
+Esta decisión desbloqueó T-015. La implementación se completó el 2026-08-21: el handler clasifica los resultados del procesamiento, devuelve 503 ante fallos recuperables o inesperados y conserva 200 para resultados exitosos, definitivos o idempotentes.
+
+No se implementarán en esta etapa colas, workers ni persistencia adicional de webhooks. Una arquitectura que persista durablemente la notificación antes de responder y la procese de forma asíncrona queda registrada solo como posible endurecimiento futuro y requerirá una decisión y autorización separadas.
+
+### Consecuencias y riesgos
+
+- Los fallos temporales dejarán de confirmarse falsamente con HTTP 200 y podrán recibir reintentos de Mercado Pago.
+- Pueden aumentar las entregas duplicadas durante caídas de dependencias; la idempotencia y la transición atómica existentes son obligatorias para absorberlas con seguridad.
+- Clasificar erróneamente un fallo definitivo como temporal puede provocar reintentos prolongados; clasificar un fallo temporal como definitivo puede dejar un pedido en `pending`.
+- Las credenciales productivas documentadas como expuestas se consideran comprometidas y deben rotarse antes del próximo despliegue productivo.
+
+### Implementación verificada (2026-08-21)
+
+- `src/app.js` implementa la matriz 401/200/503 sin modificar la validación HMAC, la creación de preferencias ni la transición atómica.
+- `tests/index.test.js` cubre eventos definitivos, errores de Mercado Pago, errores de consulta/actualización de Supabase, excepciones inesperadas y ausencia de datos sensibles en respuestas 503.
+- La suite completa pasó con 50 tests.
+- No se agregaron colas, workers, persistencia, migraciones ni dependencias.

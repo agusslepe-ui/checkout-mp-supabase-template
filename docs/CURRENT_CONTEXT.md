@@ -1,14 +1,14 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-06-27 (cierre formal de fase — 14/14 tareas completadas — flujo `pending → paid` verificado en producción real — causa raíz del 401: `notification_url` sin `?source_news=webhooks` mezclaba IPN con Webhooks + frontend priorizaba `sandbox_init_point` sobre `init_point`).
+> Resumen compacto para agentes. Última actualización: 2026-08-21 (auditoría y endurecimiento de una integración con operación productiva real; DEC-019 y T-015 implementadas).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
 ---
 
-## Estado de la fase actual: INTEGRACIÓN PRODUCTIVA COMPLETADA
+## Estado de la fase actual: ENDURECIMIENTO DE INTEGRACIÓN PRODUCTIVA EXISTENTE
 
-Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migración SQL (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012), la documentación de deploy a staging (T-013) y la corrección UTF-8 del error HTTP 400 (T-014) están **completadas** (14/14). El flujo pending → paid fue verificado en producción real con un pago real. DEC-018 resuelta. Causa raíz del 401 identificada y corregida.
+Las tareas T-001 a T-015 están completadas. El flujo `pending → paid` fue verificado en producción con pagos reales. El proyecto no es exclusivamente una demo o sandbox: la fase actual audita y endurece una integración productiva existente. DEC-019 y T-015 implementan la política HTTP resiliente de `POST /webhook`.
 
 ---
 
@@ -59,7 +59,7 @@ Las tareas P0 de seguridad (T-001 a T-004), la suite de tests (T-005), la migrac
 
 ## Tareas pendientes
 
-No quedan tareas T-001 a T-014 pendientes. El flujo productivo está verificado.
+No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `POST /webhook` responde 503 ante fallos temporales o inesperados y conserva 200 para resultados exitosos, definitivos o idempotentes.
 
 **Pendiente de seguridad (acción inmediata — usuario):** credenciales productivas de Mercado Pago (Access Token y Webhook Secret) fueron visibles en capturas/chats de la sesión. Deben revocarse y regenerarse en el panel de Mercado Pago y actualizarse en EasyPanel antes de continuar operando en producción. Ver `docs/SECURITY.md`.
 
@@ -79,6 +79,7 @@ No quedan tareas T-001 a T-014 pendientes. El flujo productivo está verificado.
 | DEC-016 | Staging en EasyPanel/VPS. URL HTTPS de EasyPanel. `NODE_ENV=production`. MP sandbox. Supabase actual. Variables solo en EasyPanel. Rollback en 4 niveles. Producción real con checklist obligatoria. |
 | DEC-017 | Helper `log(level, event, extra)` propio. Formato JSON. Niveles: `info`, `warn`, `error`. Campos fijos + `request_id` por correlación. Lista explícita de campos prohibidos. Sin librería externa. |
 | DEC-018 | **Resuelta.** Causa raíz del 401: `notification_url` sin `?source_news=webhooks` hacía que MP enviara IPN en lugar de Webhooks (firma diferente). Fix: agregar `?source_news=webhooks`. Flujo pending → paid verificado en producción real el 2026-06-26. |
+| DEC-019 | **Implementada por T-015.** Política HTTP de `POST /webhook`: 401 para firma ausente/inválida; 200 para éxito y resultados definitivos/idempotentes; 503 para fallos temporales o excepciones inesperadas. Conserva HMAC, transición atómica e idempotencia. |
 
 ---
 
@@ -92,7 +93,7 @@ No quedan tareas T-001 a T-014 pendientes. El flujo productivo está verificado.
 - **Base de datos**: Supabase, tabla `orders`, acceso con `service_role` solo desde backend. RLS habilitada. Sin policies públicas para `anon` ni `authenticated`.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada y verificada el 2026-06-25.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
-- **Tests**: Jest. `npm test` pasa con **29 tests**. Sin llamadas externas ni acceso a `.env`.
+- **Tests**: Jest. La suite actual pasa con **50 tests**. Sin llamadas externas ni acceso a `.env`.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
 - **Deploy**: productivo activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Dominio propio `checkout.lemont01.com` con SSL activo. Flujo completo verificado en producción real (2026-06-26): preferencia → pago real → webhook con firma HMAC-SHA256 válida → pedido actualizado a `paid` en Supabase. La captura completa asociada a `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue retirada del código el 2026-08-20. Credenciales productivas expuestas en capturas/chats requieren rotación inmediata (ver `docs/SECURITY.md`).
 

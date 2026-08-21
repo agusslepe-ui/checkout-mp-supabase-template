@@ -51,9 +51,10 @@ function makeSignature({
   lowercaseDataId = false,
   trailingSemicolon = true,
   includeRequestId = true,
+  includeDataId = true,
 } = {}) {
   const idForManifest = lowercaseDataId ? String(dataId).toLowerCase() : String(dataId);
-  const manifestParts = [`id:${idForManifest};`];
+  const manifestParts = includeDataId ? [`id:${idForManifest};`] : [];
 
   if (includeRequestId) {
     manifestParts.push(`request-id:${requestId};`);
@@ -655,6 +656,16 @@ describe("webhook de pagos", () => {
     };
   }
 
+  function expectSafeServiceUnavailable(response, forbiddenValues = []) {
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "No se pudo procesar el webhook" });
+
+    const serializedResponse = JSON.stringify(response.body);
+    for (const value of forbiddenValues) {
+      expect(serializedResponse).not.toContain(String(value));
+    }
+  }
+
   test("rechaza webhooks sin firma", async () => {
     const { routes, paymentGet } = loadApp();
     const response = createResponse();
@@ -1158,6 +1169,246 @@ describe("webhook de pagos", () => {
           timestamp: expect.any(String),
         }),
       ])
+    );
+  });
+
+  test("confirma con 200 un evento firmado irrelevante sin consultar el pago", async () => {
+    const { routes, paymentGet, supabaseMock } = loadApp();
+    const response = createResponse();
+    const request = makeWebhookRequest({ headers: validHeaders() });
+    request.query.type = "merchant_order";
+    request.body.type = "merchant_order";
+
+    await routes.post["/webhook"](request, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ received: true });
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(supabaseMock.findOrder).not.toHaveBeenCalled();
+  });
+
+  test("confirma con 200 un evento firmado sin ID utilizable", async () => {
+    const { routes, paymentGet, supabaseMock } = loadApp();
+    const response = createResponse();
+    const requestId = "request-without-payment-id";
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        paymentId: null,
+        headers: {
+          "x-request-id": requestId,
+          "x-signature": makeSignature({
+            requestId,
+            includeDataId: false,
+          }),
+        },
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ received: true });
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(supabaseMock.findOrder).not.toHaveBeenCalled();
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          event: "identificador de pago ausente",
+          request_id: requestId,
+          status_code: 200,
+        }),
+      ])
+    );
+  });
+
+  test("confirma con 200 un pago aprobado sin external_reference", async () => {
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENTTEST",
+          status: "approved",
+          transaction_amount: 100,
+          currency_id: "ARS",
+          external_reference: null,
+        }),
+      },
+    });
+    const response = createResponse();
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({ headers: validHeaders() }),
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ received: true });
+    expect(supabaseMock.findOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["error de red", new Error("network secret detail"), "mp_temporary_or_unknown_error"],
+    ["Mercado Pago 429", Object.assign(new Error("rate limit secret detail"), { response: { status: 429 } }), "mp_rate_limit_error"],
+    ["Mercado Pago 500", Object.assign(new Error("service secret detail"), { status: 500 }), "mp_service_error"],
+    ["Mercado Pago 401", Object.assign(new Error("token secret detail"), { status: 401 }), "mp_auth_or_config_error"],
+    ["Mercado Pago 403", Object.assign(new Error("permission secret detail"), { statusCode: 403 }), "mp_auth_or_config_error"],
+  ])("responde 503 ante %s sin exponer el error del SDK", async (label, sdkError, errorType) => {
+    const { routes, paymentGet, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => {
+          throw sdkError;
+        },
+      },
+    });
+    const response = createResponse();
+    const paymentId = "PAYMENT-SENSITIVE-503";
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({
+        paymentId,
+        headers: validHeaders(paymentId),
+      }),
+      response
+    );
+
+    expect(paymentGet).toHaveBeenCalledWith({ id: paymentId });
+    expect(supabaseMock.findOrder).not.toHaveBeenCalled();
+    expectSafeServiceUnavailable(response, [
+      sdkError.message,
+      paymentId,
+      requiredEnv.MERCADOPAGO_ACCESS_TOKEN,
+      requiredEnv.MERCADO_PAGO_WEBHOOK_SECRET,
+    ]);
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "error",
+          event: "error consultando pago en mercado pago",
+          status_code: 503,
+          error_type: errorType,
+        }),
+      ])
+    );
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(sdkError.message);
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(paymentId);
+  });
+
+  test("responde 503 si falla la consulta necesaria en Supabase", async () => {
+    const supabaseError = {
+      message: "supabase select internal secret",
+      details: "ORDER-SENSITIVE-503",
+      code: "PGRST500",
+    };
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENT-SENSITIVE-503",
+          status: "approved",
+          transaction_amount: 123.45,
+          currency_id: "USD",
+          external_reference: "ORDER-SENSITIVE-503",
+        }),
+      },
+      supabase: {
+        findOrder: async () => ({ data: null, error: supabaseError }),
+      },
+    });
+    const response = createResponse();
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({ headers: validHeaders() }),
+      response
+    );
+
+    expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
+    expectSafeServiceUnavailable(response, [
+      supabaseError.message,
+      supabaseError.details,
+      "PAYMENT-SENSITIVE-503",
+      "ORDER-SENSITIVE-503",
+      "123.45",
+      "USD",
+    ]);
+    const logOutput = serializedLogOutput(logSpy, warnSpy, errorSpy);
+    expect(logOutput).not.toContain(supabaseError.message);
+    expect(logOutput).not.toContain(supabaseError.details);
+    expect(logOutput).not.toContain("PAYMENT-SENSITIVE-503");
+    expect(logOutput).not.toContain("ORDER-SENSITIVE-503");
+    expect(logOutput).not.toContain("123.45");
+    expect(logOutput).not.toContain("USD");
+  });
+
+  test("responde 503 si falla el UPDATE pending a paid en Supabase", async () => {
+    const updateError = new Error("supabase update internal secret");
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENT-SENSITIVE-503",
+          status: "approved",
+          transaction_amount: 100,
+          currency_id: "ARS",
+          external_reference: "ORDER-SENSITIVE-503",
+        }),
+      },
+      supabase: {
+        updateOrder: async () => ({ data: null, error: updateError }),
+      },
+    });
+    const response = createResponse();
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({ headers: validHeaders() }),
+      response
+    );
+
+    expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(1);
+    expectSafeServiceUnavailable(response, [
+      updateError.message,
+      "PAYMENT-SENSITIVE-503",
+      "ORDER-SENSITIVE-503",
+      "100",
+      "ARS",
+    ]);
+    const logOutput = serializedLogOutput(logSpy, warnSpy, errorSpy);
+    expect(logOutput).not.toContain(updateError.message);
+    expect(logOutput).not.toContain("PAYMENT-SENSITIVE-503");
+    expect(logOutput).not.toContain("ORDER-SENSITIVE-503");
+  });
+
+  test("responde 503 genérico ante una excepción interna inesperada", async () => {
+    const unexpectedMessage = "unexpected internal sensitive detail";
+    const paymentInfo = {
+      get status() {
+        throw new Error(unexpectedMessage);
+      },
+    };
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => paymentInfo,
+      },
+    });
+    const response = createResponse();
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({ headers: validHeaders() }),
+      response
+    );
+
+    expect(supabaseMock.findOrder).not.toHaveBeenCalled();
+    expectSafeServiceUnavailable(response, [unexpectedMessage]);
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "error",
+          event: "error interno procesando webhook",
+          status_code: 503,
+          error_type: "unexpected_processing_error",
+        }),
+      ])
+    );
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
+      unexpectedMessage
     );
   });
 

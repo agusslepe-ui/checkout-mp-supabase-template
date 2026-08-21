@@ -858,3 +858,53 @@ Localizar el middleware o handler que devuelve la respuesta 400 para JSON invál
 El error de JSON inválido se muestra con codificación UTF-8 correcta.
 
 > **Completada el 2026-06-25.** El middleware de error de `src/app.js` mantiene HTTP `400` y el body `{ error: "JSON inválido" }`, agregando `Content-Type: application/json; charset=utf-8` antes de responder. `tests/index.test.js` incorpora una regresión que verifica status, body y charset UTF-8. Verificación: `node --check src/app.js`, `npm.cmd test` (19 tests), `git diff --check` y revisión de `git diff`.
+
+---
+
+### T-015 — Aplicar la política HTTP resiliente de `POST /webhook`
+
+**Estado:** completada
+**Prioridad:** P0
+**Decisión:** DEC-019 aceptada e implementada el 2026-08-21.
+
+#### Objetivo
+
+Evitar que `POST /webhook` confirme con HTTP 200 fallos temporales que impidieron consultar el pago o persistir la transición del pedido, permitiendo el reintento del proveedor sin alterar los controles HMAC, atómicos e idempotentes existentes.
+
+#### Archivos probablemente involucrados
+
+- `src/app.js`
+- `src/orders.js`
+- `src/payments.js`, solo si resulta necesario normalizar categorías de error del SDK
+- `tests/index.test.js`
+
+#### Reglas de implementación
+
+- Implementar exactamente la matriz HTTP de DEC-019.
+- Conservar sin cambios funcionales la validación HMAC de DEC-009.
+- Conservar la transición atómica `pending → paid` y la idempotencia de DEC-010.
+- Usar respuestas genéricas y seguras; nunca devolver secretos, datos sensibles ni mensajes internos de SDK.
+- No agregar colas, workers, persistencia adicional de webhooks, dependencias ni migraciones.
+- No realizar pagos reales ni llamadas externas en pruebas automatizadas.
+
+#### Criterios de aceptación
+
+- Firma ausente o inválida continúa respondiendo 401.
+- Procesamiento exitoso y resultados definitivos/idempotentes definidos en DEC-019 responden 200.
+- Fallos temporales de Mercado Pago o Supabase responden 503.
+- Excepciones internas inesperadas durante el procesamiento responden 503 con cuerpo genérico.
+- Mercado Pago 401/403 por credenciales/configuración responde 503 y genera un log crítico seguro.
+- La suite cubre al menos errores de red/timeout, 429 y 5xx de Mercado Pago; errores de consulta y actualización de Supabase; excepción inesperada; casos exitosos, definitivos e idempotentes.
+- La suite completa pasa sin llamadas externas y sin leer `.env`.
+
+#### Riesgos
+
+- Una clasificación incorrecta puede generar reintentos prolongados o confirmar prematuramente un evento no procesado.
+- Los 503 pueden aumentar duplicados durante incidentes; los controles atómicos e idempotentes no deben debilitarse.
+- La forma interna de los errores del SDK puede variar; evitar acoplamiento innecesario y cubrir la clasificación con tests.
+
+#### Resultado esperado
+
+`POST /webhook` confirma con 200 solo procesamiento exitoso o resultados definitivos/idempotentes, y devuelve 503 ante fallos recuperables o inesperados para que Mercado Pago pueda reintentar.
+
+> **Completada el 2026-08-21.** `src/app.js` devuelve 503 con cuerpo genérico ante errores de Mercado Pago, errores necesarios de Supabase y excepciones inesperadas; conserva 401 para firma ausente/inválida y 200 para éxito o resultados definitivos/idempotentes. `tests/index.test.js` amplió la suite de 39 a 50 tests y verifica que ningún 503 exponga mensajes internos, secretos, IDs de pago, `external_reference`, importes ni monedas. Verificación: `node --check src/app.js`, `node --check tests/index.test.js`, `npm.cmd test` (50/50) y `git diff --check`.

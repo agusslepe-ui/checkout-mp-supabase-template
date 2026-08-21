@@ -96,6 +96,39 @@ function logInvalidWebhookSignature(req, logContext) {
   console.warn(JSON.stringify(entry));
 }
 
+const WEBHOOK_PROCESSING_ERROR_RESPONSE = {
+  error: "No se pudo procesar el webhook",
+};
+
+function getExternalErrorStatus(error) {
+  const status = error?.status ?? error?.statusCode ?? error?.response?.status;
+  const numericStatus = Number(status);
+
+  return Number.isInteger(numericStatus) ? numericStatus : null;
+}
+
+function getMercadoPagoErrorType(error) {
+  const status = getExternalErrorStatus(error);
+
+  if (status === 401 || status === 403) {
+    return "mp_auth_or_config_error";
+  }
+
+  if (status === 429) {
+    return "mp_rate_limit_error";
+  }
+
+  if (status >= 500 && status <= 599) {
+    return "mp_service_error";
+  }
+
+  return "mp_temporary_or_unknown_error";
+}
+
+function respondWebhookUnavailable(res) {
+  return res.status(503).json(WEBHOOK_PROCESSING_ERROR_RESPONSE);
+}
+
 app.get("/success", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "success.html"));
 });
@@ -138,28 +171,47 @@ app.post("/webhook", async (req, res) => {
     logContext.request_id = req.headers["x-request-id"];
   }
 
-  log("info", "webhook recibido", logContext);
-
-  const eventType =
-    req.query.topic || req.body?.topic || req.query.type || req.body?.type;
-  const paymentId =
-    req.query.id ||
-    req.body?.resource ||
-    req.body?.data?.id ||
-    req.query["data.id"];
-
-  if (eventType !== "payment") {
-    log("info", "evento ignorado", {
-      ...logContext,
-      status_code: 200,
-    });
-    return res.json({ received: true });
-  }
-
-  log("info", "pago detectado en webhook", logContext);
-
   try {
-    const paymentInfo = await getPayment(paymentId);
+    log("info", "webhook recibido", logContext);
+
+    const eventType =
+      req.query.topic || req.body?.topic || req.query.type || req.body?.type;
+    const paymentId =
+      req.query.id ||
+      req.body?.resource ||
+      req.body?.data?.id ||
+      req.query["data.id"];
+
+    if (eventType !== "payment") {
+      log("info", "evento ignorado", {
+        ...logContext,
+        status_code: 200,
+      });
+      return res.json({ received: true });
+    }
+
+    if (paymentId === undefined || paymentId === null || String(paymentId) === "") {
+      log("warn", "identificador de pago ausente", {
+        ...logContext,
+        status_code: 200,
+      });
+      return res.json({ received: true });
+    }
+
+    log("info", "pago detectado en webhook", logContext);
+
+    let paymentInfo;
+
+    try {
+      paymentInfo = await getPayment(paymentId);
+    } catch (error) {
+      log("error", "error consultando pago en mercado pago", {
+        ...logContext,
+        status_code: 503,
+        error_type: getMercadoPagoErrorType(error),
+      });
+      return respondWebhookUnavailable(res);
+    }
 
     log("info", "pago consultado en mercado pago", logContext);
 
@@ -191,8 +243,10 @@ app.post("/webhook", async (req, res) => {
         } catch (error) {
           log("error", "error actualizando pedido en supabase", {
             ...logContext,
+            status_code: 503,
             error_type: "supabase_error",
           });
+          return respondWebhookUnavailable(res);
         }
       }
     } else {
@@ -202,13 +256,15 @@ app.post("/webhook", async (req, res) => {
       });
     }
   } catch (error) {
-    log("error", "error consultando pago en mercado pago", {
+    log("error", "error interno procesando webhook", {
       ...logContext,
-      error_type: "mp_api_error",
+      status_code: 503,
+      error_type: "unexpected_processing_error",
     });
+    return respondWebhookUnavailable(res);
   }
 
-  res.json({ received: true });
+  return res.json({ received: true });
 });
 
 if (process.env.NODE_ENV !== "production") {

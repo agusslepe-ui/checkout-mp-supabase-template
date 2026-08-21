@@ -1,13 +1,13 @@
 # Progreso
 
-Última revisión documental: 2026-06-26. Integración Mercado Pago verificada en producción.
+Última revisión documental: 2026-08-21. Integración Mercado Pago verificada en producción y actualmente en fase de auditoría y endurecimiento.
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas P0 de seguridad (T-001 a T-004), la suite de pruebas automatizadas (T-005), la migración SQL versionada (T-006), la estrategia monetaria explícita (T-007), los identificadores robustos de pedidos (T-008), el refactor modular del backend (T-009), la observabilidad segura (T-010), la restricción de `GET /webhook` fuera de producción (T-011), el catálogo seguro del servidor (T-012), la documentación de deploy a staging (T-013) y la corrección UTF-8 del error HTTP 400 por JSON inválido (T-014) están completadas. La migración fue aplicada y verificada manualmente en Supabase el 2026-06-25.
+El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas T-001 a T-015 están completadas y la integración procesó pagos reales en producción. La fase actual es de auditoría y endurecimiento de esa integración productiva existente. DEC-019 y T-015 aplican una política HTTP resiliente en `POST /webhook`.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
-- **Tests**: Jest instalado. `npm test` pasa con 29 tests.
+- **Tests**: Jest instalado. La suite actual pasa con 50 tests.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
 - **Integración completa**: el flujo `pending → paid` fue verificado en producción real con pago real. Causa raíz del webhook 401 identificada y resuelta: la `notification_url` sin `?source_news=webhooks` hacía que Mercado Pago enviara notificaciones IPN en lugar de Webhooks, con firma diferente. Agregar `?source_news=webhooks` resolvió el problema. Ver DEC-018 (resuelta).
@@ -80,6 +80,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 - **Rotar credenciales productivas expuestas** (acción inmediata): credenciales productivas de Mercado Pago fueron expuestas en capturas/chats de la sesión de verificación productiva. Deben rotarse antes de cualquier uso continuo en producción. Ver `docs/SECURITY.md`.
 - **Captura completa retirada**: `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` ya no se lee en runtime y no puede activar el registro de la URL ni de headers completos.
 - Retirar los demás diagnósticos temporales en `src/webhookSignature.js` y `src/config.js` permanece fuera del alcance de esta tarea.
+- **T-015 completada**: `POST /webhook` devuelve 503 para fallos temporales o inesperados y mantiene 200 para éxito y resultados definitivos/idempotentes.
 
 El detalle verificable está en `docs/TASKS.md`.
 
@@ -95,12 +96,33 @@ Rotar las credenciales productivas de Mercado Pago expuestas en capturas/chats d
 **Paso 2 — Captura completa retirada:**
 La capacidad controlada históricamente por `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue eliminada del código el 2026-08-20 y la variable ya no tiene efecto.
 
-**Paso 3 — Limpieza de diagnósticos temporales:**
-Retirar, en una tarea separada, los diagnósticos temporales de `src/webhookSignature.js` y `src/config.js` agregados durante la investigación HMAC.
+**Paso 3 — T-015 completada:**
+La política de DEC-019 está implementada y verificada con 50 tests, conservando HMAC, transición atómica e idempotencia.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-08-21 — T-015 completada
+
+- Objetivo: evitar confirmaciones HTTP 200 cuando un fallo temporal o inesperado impide procesar correctamente un webhook de pago.
+- Implementación: `src/app.js` responde 503 con cuerpo genérico ante errores de Mercado Pago, errores necesarios de Supabase y excepciones internas inesperadas; conserva 401 y 200 según DEC-019.
+- Casos definitivos agregados explícitamente: evento irrelevante, evento firmado sin ID utilizable y pago aprobado sin `external_reference`, todos con 200.
+- Seguridad: ninguna respuesta 503 incluye mensajes internos, secretos, IDs de pago, `external_reference`, importes ni monedas; los logs usan categorías seguras.
+- Controles preservados: validación HMAC, pago aprobado → `paid`, comparación de importe/moneda, pedido ya pagado, duplicados concurrentes, transición atómica e idempotencia.
+- Tests: suite ampliada de 39 a 50; 50/50 pasan sin llamadas externas.
+- Verificación: `node --check src/app.js`, `node --check tests/index.test.js`, `npm.cmd test` y `git diff --check`.
+- Archivos de código afectados: `src/app.js` y `tests/index.test.js`. `src/orders.js` y `src/payments.js` no fueron modificados.
+
+### 2026-08-21 — DEC-019 aceptada y T-015 desbloqueada
+
+- Objetivo: formalizar la política de respuestas HTTP de `POST /webhook` antes de modificar el comportamiento productivo.
+- Contexto: la integración ya procesó pagos reales en producción; el trabajo actual es auditoría y endurecimiento, no preparación inicial de un prototipo exclusivamente sandbox.
+- Decisión: 401 para firma ausente/inválida; 200 para procesamiento exitoso y resultados definitivos/idempotentes; 503 para fallos temporales, resultados ambiguos de dependencias o excepciones internas inesperadas.
+- Controles preservados: validación HMAC de DEC-009, transición atómica e idempotencia de DEC-010, y respuestas/logs seguros de DEC-017.
+- Alcance diferido: no se implementan colas, workers ni persistencia adicional de webhooks; quedan como posible endurecimiento futuro sujeto a decisión separada.
+- Tarea: T-015 creada en estado pendiente y desbloqueada, sin cambios en `src/` ni `tests/`.
+- Archivos afectados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/CURRENT_CONTEXT.md` y `docs/PROGRESS.md`.
 
 ### 2026-08-20 — Retirada de `MP_SUPPORT_CAPTURE_FULL_WEBHOOK`
 
