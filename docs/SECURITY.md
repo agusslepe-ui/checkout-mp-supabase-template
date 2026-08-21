@@ -127,6 +127,15 @@ Durante la investigación del 401 en staging se agregó la variable de entorno `
 
 **Estado (2026-08-20): retirada.** Se eliminó de `src/app.js` la lectura de la variable, la captura de la URL y los headers completos, y la llamada desde `POST /webhook`. Configurar el nombre histórico de la variable ya no activa ningún comportamiento. Una prueba de regresión verifica que no reaparezcan el evento ni los campos de captura, permitiendo a la vez el uso normal de `request_id` en logs estructurados.
 
+Al cierre del 2026-08-21 se confirmó además que no se registran la firma completa, el `x-request-id` completo ni los nombres de campos de la captura retirada. Las pruebas negativas permanecen activas.
+
+### Auditoría de dependencias (2026-08-21)
+
+- `npm audit` detectó 2 vulnerabilidades high.
+- `npm audit fix` actualizó únicamente dependencias transitivas compatibles, sin cambio manual de dependencias directas.
+- La auditoría posterior reportó 0 vulnerabilidades conocidas.
+- La suite continuó pasando después de la actualización y posteriormente quedó en 50/50 tras T-015.
+
 ### Ausencia de controles operativos
 
 Persisten pendientes operativos: no hay rate limiting ni health checks dedicados. Tests automatizados, migración versionada, logs estructurados y rollback de staging están documentados o implementados.

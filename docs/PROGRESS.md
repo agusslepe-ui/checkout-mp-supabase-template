@@ -8,6 +8,7 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
 - **Tests**: Jest instalado. La suite actual pasa con 50 tests.
+- **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó solo dependencias transitivas compatibles. Verificación posterior: 0 vulnerabilidades conocidas y tests pasando.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
 - **Integración completa**: el flujo `pending → paid` fue verificado en producción real con pago real. Causa raíz del webhook 401 identificada y resuelta: la `notification_url` sin `?source_news=webhooks` hacía que Mercado Pago enviara notificaciones IPN en lugar de Webhooks, con firma diferente. Agregar `?source_news=webhooks` resolvió el problema. Ver DEC-018 (resuelta).
@@ -86,22 +87,28 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Integración productiva verificada. Flujo `pending → paid` funcionando en producción.**
-
-La integración Mercado Pago + Supabase está completa y verificada con un pago productivo real. La causa raíz del webhook 401 fue identificada y resuelta (`source_news=webhooks`).
-
-**Paso 1 — Inmediato (seguridad):**
-Rotar las credenciales productivas de Mercado Pago expuestas en capturas/chats de la sesión. Ver `docs/SECURITY.md`.
-
-**Paso 2 — Captura completa retirada:**
-La capacidad controlada históricamente por `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue eliminada del código el 2026-08-20 y la variable ya no tiene efecto.
-
-**Paso 3 — T-015 completada:**
-La política de DEC-019 está implementada y verificada con 50 tests, conservando HMAC, transición atómica e idempotencia.
+1. Reconstruir `.env` local desde `.env.example`, sin reutilizar credenciales comprometidas.
+2. Reconectar Supabase y verificar la tabla `orders`.
+3. Configurar credenciales nuevas/rotadas de Mercado Pago, el webhook y `BASE_URL`.
+4. Ejecutar el flujo controlado `pending → preferencia → pago → webhook → paid`.
+5. Conectar el nuevo frontend de LEMONT solo después de verificar el backend.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-08-21 — Cierre de sesión de endurecimiento
+
+- Captura sensible retirada: `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` no tiene efecto en runtime; no se registran firma completa, `x-request-id` completo ni campos antiguos de captura. Se conservan regresiones para impedir su reactivación.
+- Secuencia de pruebas: después de la limpieza de captura se verificaron 39/39 tests; después de T-015, la suite quedó en 50/50.
+- Dependencias: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó únicamente dependencias transitivas compatibles. La auditoría posterior reportó 0 vulnerabilidades y los tests continuaron pasando.
+- DEC-019 registrada e implementada por T-015: 401 para firma ausente/inválida; 200 para éxito y resultados definitivos/idempotentes; 503 para fallos temporales o inesperados de Mercado Pago, Supabase o procesamiento interno.
+- T-015 preservó HMAC, transición atómica e idempotencia. No fue necesario modificar `src/orders.js` ni `src/payments.js`.
+- Regresiones críticas confirmadas: HMAC, pago aprobado → `paid`, importe incorrecto, moneda incorrecta, pedido ya `paid`, duplicados concurrentes y transición atómica.
+- `git diff --check` finalizó correctamente; solo se observaron advertencias informativas LF → CRLF.
+- Seguridad pendiente: las credenciales productivas antiguas documentadas como expuestas se consideran comprometidas y deben rotarse antes del próximo despliegue productivo.
+- Próxima sesión: reconstruir configuración local desde `.env.example`, reconectar Supabase, verificar `orders`, configurar credenciales nuevas de Mercado Pago y ejecutar una prueba end-to-end controlada antes de conectar el nuevo frontend de LEMONT.
+- Esta entrada documenta el estado verificado; no implica que la reconstrucción de `.env`, la rotación, la reconexión ni la nueva prueba end-to-end ya se hayan realizado.
 
 ### 2026-08-21 — T-015 completada
 

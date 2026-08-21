@@ -39,7 +39,7 @@ Las tareas T-001 a T-015 están completadas. El flujo `pending → paid` fue ver
 
 | Tarea | Descripción |
 |---|---|
-| T-005 | Suite Jest; `npm test` pasa con 29 tests. Cubre todos los flujos críticos sin llamadas externas. |
+| T-005 | Suite Jest; la suite actual pasa con 50 tests. Cubre todos los flujos críticos sin llamadas externas. |
 | T-006 | `supabase/migrations/001_create_orders.sql` con DDL, restricciones, índices y RLS. Aplicada y verificada en Supabase el 2026-06-25. (DEC-012) |
 | T-007 | Comparación de importes normalizada a centavos (`Math.round`), validación de moneda contra `order.currency`, logs genéricos. (DEC-011) |
 | T-008 | Identificadores de pedido con `LEMONT-ORDER-${crypto.randomUUID()}` para unicidad bajo concurrencia. |
@@ -94,6 +94,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada y verificada el 2026-06-25.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
 - **Tests**: Jest. La suite actual pasa con **50 tests**. Sin llamadas externas ni acceso a `.env`.
+- **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó únicamente dependencias transitivas compatibles. Estado verificado al cierre: **0 vulnerabilidades conocidas** y 50/50 tests pasando.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
 - **Deploy**: productivo activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Dominio propio `checkout.lemont01.com` con SSL activo. Flujo completo verificado en producción real (2026-06-26): preferencia → pago real → webhook con firma HMAC-SHA256 válida → pedido actualizado a `paid` en Supabase. La captura completa asociada a `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue retirada del código el 2026-08-20. Credenciales productivas expuestas en capturas/chats requieren rotación inmediata (ver `docs/SECURITY.md`).
 
@@ -111,7 +112,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | `src/payments.js` | Integración Mercado Pago: `createPreference`, `Payment.get`. |
 | `src/orders.js` | Operaciones Supabase: `createPendingOrder`, `markOrderAsPaid`. Validación importe/moneda. |
 | `src/webhookSignature.js` | Validación de firma HMAC-SHA256 de Mercado Pago. |
-| `tests/index.test.js` | Suite Jest con **29 tests**. Mocks de MP, Supabase, dotenv y Express. |
+| `tests/index.test.js` | Suite Jest con **50 tests**. Mocks de MP, Supabase, dotenv y Express. |
 | `supabase/migrations/001_create_orders.sql` | Migración SQL versionada: DDL, restricciones, índices y RLS. Aplicada el 2026-06-25. |
 | `Dockerfile` | Build de staging con Node.js 22; instala con `npm ci`, expone `3003` y ejecuta `npm start`. |
 | `.dockerignore` | Excluye `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales del contexto Docker. |
@@ -129,22 +130,13 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso recomendado
 
-**Paso 1 — Inmediato (usuario):**
-Revocar y regenerar el Access Token productivo y el Webhook Secret productivo de Mercado Pago expuestos en capturas/chats. Actualizar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel. Verificar que el flujo productivo sigue funcionando después de la rotación.
-
-**Paso 2 — Captura completa retirada:**
-La limpieza de `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` se completó el 2026-08-20. No requiere configuración para impedir la captura porque el código ya no lee la variable.
-
-**Paso 3 — Otros diagnósticos:**
-Los diagnósticos temporales de `src/webhookSignature.js` y `src/config.js` permanecen fuera del alcance de esta tarea.
-
-**Paso 4 — Commit/push de documentación (usuario):**
-Después de verificar los pasos anteriores:
-1. `git status --short` — confirmar que solo hay cambios en `docs/`.
-2. `git diff` — revisar qué cambió.
-3. `git add docs/TASKS.md docs/DECISIONS.md docs/SECURITY.md docs/CURRENT_CONTEXT.md docs/PROGRESS.md`
-4. Commit específico: `"Cierra formalmente la fase de integración productiva Mercado Pago"`
-5. `git push`
+1. Reconstruir el `.env` local usando exclusivamente `.env.example` como contrato, sin reutilizar credenciales documentadas como expuestas.
+2. Configurar: `MERCADOPAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET`, `BASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `LOG_LEVEL`.
+3. Reconectar primero Supabase y verificar que la tabla `orders` corresponda al esquema versionado.
+4. Rotar/configurar credenciales nuevas de Mercado Pago; las credenciales productivas antiguas expuestas se consideran comprometidas y no deben reutilizarse.
+5. Configurar el webhook y `BASE_URL` con la URL HTTPS del entorno.
+6. Ejecutar una prueba end-to-end controlada: `pending → preferencia → pago → webhook → paid`.
+7. Después de verificar el backend completo, conectar el nuevo frontend de LEMONT.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 

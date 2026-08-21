@@ -1,6 +1,15 @@
 # Tareas
 
-Estados posibles: `pendiente`, `en curso`, `bloqueada`, `completada`. Todas las tareas siguientes están pendientes y requieren autorización antes de modificar código o infraestructura.
+Estados posibles: `pendiente`, `en curso`, `bloqueada`, `completada`. El estado vigente de cada tarea se indica en su propia sección.
+
+## Cierre de sesión — 2026-08-21
+
+**Estado general:** T-001 a T-015 completadas. Suite actual: 50/50 tests. `npm audit`: 0 vulnerabilidades conocidas después de actualizar dependencias transitivas compatibles mediante `npm audit fix`.
+
+- Captura sensible temporal retirada y cubierta por regresiones.
+- DEC-019 aceptada; T-015 implementada sin modificar HMAC, atomicidad ni idempotencia.
+- Las credenciales productivas antiguas documentadas como expuestas no deben reutilizarse y deben rotarse antes del próximo despliegue productivo.
+- La reconstrucción de `.env`, reconexión de Supabase, configuración de credenciales nuevas y prueba end-to-end quedan pendientes para la próxima sesión; no se marcan como realizadas.
 
 ---
 
