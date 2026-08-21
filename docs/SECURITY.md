@@ -125,9 +125,7 @@ Durante la investigación del 401 en staging se agregó la variable de entorno `
 
 **Estado (2026-06-27):** la variable fue usada temporalmente como apoyo de diagnóstico para soporte técnico de Mercado Pago bajo condiciones controladas. Permitió capturar el cuerpo completo del webhook para análisis externo. El nombre correcto de la variable es `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` — no confundir con ninguna variante ortográfica incorrecta (como `MP_SUPPORT_CAPTURE_FULL_WEBPACK`).
 
-**Regla permanente**: `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` debe permanecer desactivada (valor ausente, vacío o `false`) en todos los entornos, incluyendo producción y staging. Activarla solo en entorno local controlado con datos ficticios, con autorización explícita del usuario y durante el tiempo mínimo necesario.
-
-Antes de cualquier deploy productivo: confirmar en EasyPanel que esta variable está desactivada o ausente. El código temporal que la implementa debe limpiarse antes del próximo deploy productivo (pendiente de autorización del usuario a Codex).
+**Estado (2026-08-20): retirada.** Se eliminó de `src/app.js` la lectura de la variable, la captura de la URL y los headers completos, y la llamada desde `POST /webhook`. Configurar el nombre histórico de la variable ya no activa ningún comportamiento. Una prueba de regresión verifica que no reaparezcan el evento ni los campos de captura, permitiendo a la vez el uso normal de `request_id` en logs estructurados.
 
 ### Ausencia de controles operativos
 
@@ -135,13 +133,13 @@ Persisten pendientes operativos: no hay rate limiting ni health checks dedicados
 
 ### Pendientes de seguridad post-verificación productiva (2026-06-27)
 
-Tras verificar el flujo productivo completo (2026-06-26), quedan tres pendientes de seguridad que requieren acción del usuario:
+Tras verificar el flujo productivo completo (2026-06-26), se documentaron tres acciones de seguridad:
 
 1. **Rotar `MERCADOPAGO_ACCESS_TOKEN` productivo**: fue visible en capturas/chats de la sesión de verificación. Revocar y regenerar en el panel de desarrolladores de Mercado Pago. Actualizar en EasyPanel.
 2. **Rotar `MERCADO_PAGO_WEBHOOK_SECRET` productivo**: fue visible en capturas/chats. Revocar y regenerar en "Tus integraciones" de Mercado Pago. Actualizar en EasyPanel.
-3. **Confirmar `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` desactivada**: verificar en EasyPanel que la variable está ausente o con valor falsy.
+3. **Retirar `MP_SUPPORT_CAPTURE_FULL_WEBHOOK`**: completada en código el 2026-08-20; la variable ya no tiene efecto.
 
-No operar en producción hasta completar los ítems 1 y 2. Pendiente adicional para Codex: limpiar el código temporal de diagnóstico en `src/webhookSignature.js`, `src/app.js` y `src/config.js` una vez que el usuario lo autorice.
+No operar en producción hasta completar los ítems 1 y 2. Los diagnósticos temporales restantes de `src/webhookSignature.js` y `src/config.js` no fueron modificados como parte de la retirada de la captura completa.
 
 ## Recomendaciones priorizadas
 

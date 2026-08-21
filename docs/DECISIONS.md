@@ -694,5 +694,5 @@ No modificar la validación de firma (DEC-009) ni ningún archivo de código has
 
 **Pendientes al cierre:**
 - Rotar credenciales productivas expuestas en capturas/chats (ver `docs/SECURITY.md`).
-- Confirmar que `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` está desactivada en EasyPanel.
-- Retirar código de diagnóstico temporal de `src/webhookSignature.js`, `src/app.js` y `src/config.js` (tarea para Codex).
+- La captura completa asociada a `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue retirada de `src/app.js` el 2026-08-20; configurar la variable ya no activa ningún comportamiento.
+- Retirar los demás diagnósticos temporales de `src/webhookSignature.js` y `src/config.js` permanece como una tarea separada.

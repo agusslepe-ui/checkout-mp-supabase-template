@@ -20,8 +20,8 @@ Dos problemas causaban fallos en el flujo productivo:
 ### Pendientes de seguridad (fuera del backlog)
 
 - Rotar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` productivos expuestos en capturas/chats. Acción inmediata del usuario.
-- Confirmar en EasyPanel que `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` está desactivada o ausente.
-- Autorizar a Codex la limpieza del código temporal de diagnóstico en `src/webhookSignature.js`, `src/app.js` y `src/config.js`.
+- La captura temporal controlada por `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue retirada del código el 2026-08-20. La variable ya no puede activar el registro de la URL ni de headers completos.
+- Los demás diagnósticos temporales de `src/webhookSignature.js` y `src/config.js` permanecen fuera del alcance de esta limpieza.
 
 ### Resultado final verificado en producción real (2026-06-26)
 

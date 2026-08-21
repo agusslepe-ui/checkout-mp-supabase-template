@@ -11,7 +11,7 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
 - **Integración completa**: el flujo `pending → paid` fue verificado en producción real con pago real. Causa raíz del webhook 401 identificada y resuelta: la `notification_url` sin `?source_news=webhooks` hacía que Mercado Pago enviara notificaciones IPN en lugar de Webhooks, con firma diferente. Agregar `?source_news=webhooks` resolvió el problema. Ver DEC-018 (resuelta).
-- **Deploy productivo activo**: dominio `checkout.lemont01.com` con SSL. Flujo completo de pago real verificado. `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` debe mantenerse desactivado. Credenciales productivas expuestas en capturas/chats: pendiente rotación.
+- **Deploy productivo activo**: dominio `checkout.lemont01.com` con SSL. Flujo completo de pago real verificado. La captura completa asociada a `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue retirada del código el 2026-08-20. Credenciales productivas expuestas en capturas/chats: pendiente rotación.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -78,8 +78,8 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 ## Pendientes principales
 
 - **Rotar credenciales productivas expuestas** (acción inmediata): credenciales productivas de Mercado Pago fueron expuestas en capturas/chats de la sesión de verificación productiva. Deben rotarse antes de cualquier uso continuo en producción. Ver `docs/SECURITY.md`.
-- **Mantener `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` desactivado**: esta variable de diagnóstico debe permanecer apagada. Si se activa temporalmente para diagnóstico futuro, debe apagarse inmediatamente después.
-- Retirar diagnósticos temporales en `src/webhookSignature.js`, `src/app.js` y `src/config.js` (código de diagnóstico del período de investigación HMAC).
+- **Captura completa retirada**: `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` ya no se lee en runtime y no puede activar el registro de la URL ni de headers completos.
+- Retirar los demás diagnósticos temporales en `src/webhookSignature.js` y `src/config.js` permanece fuera del alcance de esta tarea.
 
 El detalle verificable está en `docs/TASKS.md`.
 
@@ -92,15 +92,25 @@ La integración Mercado Pago + Supabase está completa y verificada con un pago 
 **Paso 1 — Inmediato (seguridad):**
 Rotar las credenciales productivas de Mercado Pago expuestas en capturas/chats de la sesión. Ver `docs/SECURITY.md`.
 
-**Paso 2 — Verificar `MP_SUPPORT_CAPTURE_FULL_WEBHOOK`:**
-Confirmar que esta variable de diagnóstico está desactivada (apagada) en EasyPanel antes de continuar operando en producción.
+**Paso 2 — Captura completa retirada:**
+La capacidad controlada históricamente por `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue eliminada del código el 2026-08-20 y la variable ya no tiene efecto.
 
 **Paso 3 — Limpieza de diagnósticos temporales:**
-Retirar el código de diagnóstico temporal en `src/webhookSignature.js`, `src/app.js` y `src/config.js` agregado durante la investigación HMAC. Esto reduce la superficie de logs en producción.
+Retirar, en una tarea separada, los diagnósticos temporales de `src/webhookSignature.js` y `src/config.js` agregados durante la investigación HMAC.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-08-20 — Retirada de `MP_SUPPORT_CAPTURE_FULL_WEBHOOK`
+
+- Objetivo: eliminar exclusivamente la capacidad temporal de registrar la URL y los headers completos del webhook.
+- Archivos de código afectados: `src/app.js` y `tests/index.test.js`.
+- Eliminado de `src/app.js`: lectura de `MP_SUPPORT_CAPTURE_FULL_WEBHOOK`, helpers dedicados a reconstruir la URL y leer headers completos, emisión del evento de captura y llamada desde `POST /webhook`.
+- Pruebas: las pruebas que exigían la captura fueron reemplazadas por regresiones que comprueban que el nombre histórico de la variable no reactiva la captura, que firmas y campos completos no aparecen, y que `request_id` sigue permitido en logs estructurados.
+- Verificación: `node --check src/app.js` y `node --check tests/index.test.js` finalizaron sin errores; la búsqueda de runtime no encontró referencias a la captura; `git diff --check` finalizó sin errores. Jest no pudo iniciar porque `node_modules` no está instalado y el comando `jest` no está disponible; no se instalaron dependencias.
+- Alcance preservado: no se modificaron la validación HMAC, el comportamiento general del webhook, Mercado Pago, Supabase, migraciones, dependencias ni `package.json`.
+- Los registros históricos posteriores conservan el contexto de por qué existió y se utilizó esta captura temporal.
 
 ### 2026-06-27 — Cierre formal de fase: integración productiva Mercado Pago + Supabase verificada
 

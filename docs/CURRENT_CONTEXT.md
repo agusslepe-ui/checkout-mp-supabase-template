@@ -63,9 +63,7 @@ No quedan tareas T-001 a T-014 pendientes. El flujo productivo está verificado.
 
 **Pendiente de seguridad (acción inmediata — usuario):** credenciales productivas de Mercado Pago (Access Token y Webhook Secret) fueron visibles en capturas/chats de la sesión. Deben revocarse y regenerarse en el panel de Mercado Pago y actualizarse en EasyPanel antes de continuar operando en producción. Ver `docs/SECURITY.md`.
 
-**Pendiente de configuración (usuario):** confirmar en EasyPanel que `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` está desactivada o ausente.
-
-**Pendiente de limpieza de código (Codex):** retirar el código de diagnóstico temporal de `src/webhookSignature.js`, `src/app.js` y `src/config.js`. No es urgente mientras la variable de diagnóstico esté desactivada, pero debe hacerse antes del próximo deploy productivo.
+**Captura completa retirada (2026-08-20):** `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` ya no se lee en runtime y no puede activar el registro de la URL ni de headers completos. Los demás diagnósticos temporales de `src/webhookSignature.js` y `src/config.js` no fueron modificados.
 
 ---
 
@@ -96,7 +94,7 @@ No quedan tareas T-001 a T-014 pendientes. El flujo productivo está verificado.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
 - **Tests**: Jest. `npm test` pasa con **29 tests**. Sin llamadas externas ni acceso a `.env`.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
-- **Deploy**: productivo activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Dominio propio `checkout.lemont01.com` con SSL activo. Flujo completo verificado en producción real (2026-06-26): preferencia → pago real → webhook con firma HMAC-SHA256 válida → pedido actualizado a `paid` en Supabase. `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` debe permanecer desactivada. Credenciales productivas expuestas en capturas/chats requieren rotación inmediata (ver `docs/SECURITY.md`).
+- **Deploy**: productivo activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Dominio propio `checkout.lemont01.com` con SSL activo. Flujo completo verificado en producción real (2026-06-26): preferencia → pago real → webhook con firma HMAC-SHA256 válida → pedido actualizado a `paid` en Supabase. La captura completa asociada a `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue retirada del código el 2026-08-20. Credenciales productivas expuestas en capturas/chats requieren rotación inmediata (ver `docs/SECURITY.md`).
 
 ---
 
@@ -133,11 +131,11 @@ No quedan tareas T-001 a T-014 pendientes. El flujo productivo está verificado.
 **Paso 1 — Inmediato (usuario):**
 Revocar y regenerar el Access Token productivo y el Webhook Secret productivo de Mercado Pago expuestos en capturas/chats. Actualizar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel. Verificar que el flujo productivo sigue funcionando después de la rotación.
 
-**Paso 2 — Confirmar variable desactivada (usuario):**
-Verificar en EasyPanel que `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` está desactivada o ausente.
+**Paso 2 — Captura completa retirada:**
+La limpieza de `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` se completó el 2026-08-20. No requiere configuración para impedir la captura porque el código ya no lee la variable.
 
-**Paso 3 — Limpieza de diagnósticos (Codex):**
-Retirar el código de diagnóstico temporal de `src/webhookSignature.js`, `src/app.js` y `src/config.js`. Hacer commit solo después de que el usuario lo autorice explícitamente.
+**Paso 3 — Otros diagnósticos:**
+Los diagnósticos temporales de `src/webhookSignature.js` y `src/config.js` permanecen fuera del alcance de esta tarea.
 
 **Paso 4 — Commit/push de documentación (usuario):**
 Después de verificar los pasos anteriores:
