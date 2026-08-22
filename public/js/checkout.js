@@ -38,9 +38,9 @@ async function crearPreferencia(sku) {
 }
 
 async function iniciarCompra(button) {
-  const card = button.closest(".product-card");
-  const status = card?.querySelector("[data-checkout-status]");
-  const sizeSelect = card?.querySelector("[data-size-select]");
+  const checkoutScope = button.closest("[data-checkout-scope]");
+  const status = checkoutScope?.querySelector("[data-checkout-status]");
+  const sizeSelect = checkoutScope?.querySelector("[data-size-select]");
   const originalLabel = button.textContent;
 
   button.disabled = true;
@@ -73,9 +73,9 @@ export function inicializarCheckout() {
 
     if (!sizeSelect) return;
 
-    const card = sizeSelect.closest(".product-card");
-    const button = card?.querySelector("button[data-checkout-button]");
-    const status = card?.querySelector("[data-checkout-status]");
+    const checkoutScope = sizeSelect.closest("[data-checkout-scope]");
+    const button = checkoutScope?.querySelector("button[data-checkout-button]");
+    const status = checkoutScope?.querySelector("[data-checkout-status]");
 
     if (!button) return;
 
