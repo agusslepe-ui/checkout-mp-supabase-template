@@ -1,10 +1,10 @@
 # Progreso
 
-Última revisión documental: 2026-08-21. Integración Mercado Pago verificada en producción y actualmente en fase de auditoría y endurecimiento.
+Última revisión documental: 2026-08-22. Backend endurecido validado de punta a punta en producción; próxima etapa: frontend de LEMONT.
 
 ## Estado actual
 
-El proyecto tiene un flujo completo de pago implementado y cubierto con tests. Las tareas T-001 a T-015 están completadas y la integración procesó pagos reales en producción. La fase actual es de auditoría y endurecimiento de esa integración productiva existente. DEC-019 y T-015 aplican una política HTTP resiliente en `POST /webhook`.
+El proyecto tiene un flujo completo de pago implementado, endurecido y cubierto con tests. Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supabase y Mercado Pago productivo, se verificó el arranque local y se desplegó la versión endurecida en EasyPanel. Un pago real de ARS 100 confirmó de punta a punta `checkout → pending → pago aprobado → webhook → paid`; la transición se volvió a verificar después del despliegue. La próxima fase es el frontend de LEMONT.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
 - **Tests**: Jest instalado. La suite actual pasa con 50 tests.
@@ -12,7 +12,7 @@ El proyecto tiene un flujo completo de pago implementado y cubierto con tests. L
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
 - **Integración completa**: el flujo `pending → paid` fue verificado en producción real con pago real. Causa raíz del webhook 401 identificada y resuelta: la `notification_url` sin `?source_news=webhooks` hacía que Mercado Pago enviara notificaciones IPN en lugar de Webhooks, con firma diferente. Agregar `?source_news=webhooks` resolvió el problema. Ver DEC-018 (resuelta).
-- **Deploy productivo activo**: dominio `checkout.lemont01.com` con SSL. Flujo completo de pago real verificado. La captura completa asociada a `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue retirada del código el 2026-08-20. Credenciales productivas expuestas en capturas/chats: pendiente rotación.
+- **Deploy productivo activo**: EasyPanel, repositorio `checkout-mp-supabase-template`, rama `main`, dominio `checkout.lemont01.com`. La versión endurecida y DEC-019/T-015 quedaron verificadas en producción. Rotación final de credenciales pendiente antes del lanzamiento público.
 
 Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
@@ -78,7 +78,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 ## Pendientes principales
 
-- **Rotar credenciales productivas expuestas** (acción inmediata): credenciales productivas de Mercado Pago fueron expuestas en capturas/chats de la sesión de verificación productiva. Deben rotarse antes de cualquier uso continuo en producción. Ver `docs/SECURITY.md`.
+- **Rotación obligatoria antes del lanzamiento público**: Access Token y Webhook Secret de Mercado Pago, y credencial privada de Supabase. Las credenciales actuales quedan limitadas a la etapa privada/controlada de desarrollo.
 - **Captura completa retirada**: `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` ya no se lee en runtime y no puede activar el registro de la URL ni de headers completos.
 - Retirar los demás diagnósticos temporales en `src/webhookSignature.js` y `src/config.js` permanece fuera del alcance de esta tarea.
 - **T-015 completada**: `POST /webhook` devuelve 503 para fallos temporales o inesperados y mantiene 200 para éxito y resultados definitivos/idempotentes.
@@ -87,15 +87,26 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-1. Reconstruir `.env` local desde `.env.example`, sin reutilizar credenciales comprometidas.
-2. Reconectar Supabase y verificar la tabla `orders`.
-3. Configurar credenciales nuevas/rotadas de Mercado Pago, el webhook y `BASE_URL`.
-4. Ejecutar el flujo controlado `pending → preferencia → pago → webhook → paid`.
-5. Conectar el nuevo frontend de LEMONT solo después de verificar el backend.
+Construir el frontend inicial de LEMONT con Home, Catálogo, Contacto y Producto/compra. Integrarlo al backend actual sin modificar innecesariamente el motor de pagos validado. Mantener HTML semántico, CSS organizado, JavaScript modular, nombres claros, responsabilidades separadas y complejidad mínima.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-08-22 — Backend endurecido validado de punta a punta en producción
+
+- Supabase fue reconectado correctamente mediante variables del entorno y se verificó el flujo de persistencia en `orders`.
+- Mercado Pago productivo fue reconectado correctamente y el backend local inició con la configuración actual.
+- Al iniciar una compra se verificó la creación de un pedido `pending`; si el comprador no completa el pago, el pedido permanece `pending`.
+- Checkout Pro productivo fue probado con una cuenta compradora real distinta de la cuenta vendedora.
+- Se confirmó una transferencia real de ARS 100.
+- Flujo verificado: `checkout → order pending → pago aprobado → webhook → order paid`.
+- La versión endurecida fue desplegada en EasyPanel desde `checkout-mp-supabase-template`, rama `main`, dominio `checkout.lemont01.com`.
+- Después del despliegue se verificó nuevamente la transición `pending → paid`.
+- Resultado: backend de pagos actual validado de punta a punta en producción. DEC-019 y T-015 permanecen vigentes.
+- Seguridad pendiente: no se rotaron todavía el Access Token ni el Webhook Secret de Mercado Pago, ni la credencial privada de Supabase. Las credenciales actuales quedan limitadas a esta etapa privada/controlada y deben rotarse antes del lanzamiento público.
+- Próxima etapa: frontend de LEMONT con Home, Catálogo, Contacto y Producto/compra, integrado sin cambios innecesarios en el motor de pagos validado.
+- Criterios del frontend: indentación consistente, legibilidad humana, HTML semántico, CSS organizado, JavaScript modular, nombres claros, responsabilidades separadas y complejidad mínima.
 
 ### 2026-08-21 — Cierre de sesión de endurecimiento
 

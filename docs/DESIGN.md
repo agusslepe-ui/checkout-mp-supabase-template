@@ -60,7 +60,7 @@ tests/
 5. `createPendingOrder` inserta un registro en `orders` con nombre, cantidad, importe total y moneda del catálogo.
 6. El servidor crea la preferencia con `unit_price`, cantidad y moneda del catálogo, además de `notification_url`, `back_urls` y `auto_return: "approved"`.
 7. Devuelve `preference_id`, `init_point` y `sandbox_init_point`.
-8. El frontend prefiere `sandbox_init_point` y redirige al comprador.
+8. El frontend utiliza `init_point` para el flujo productivo y redirige al comprador.
 
 Si falla el alta del pedido en Supabase, la creación de preferencia se detiene y el cliente recibe un error genérico (T-002, completada).
 
@@ -74,7 +74,7 @@ Si falla el alta del pedido en Supabase, la creación de preferencia se detiene 
 6. Se exige `external_reference`.
 7. `markOrderAsPaid` busca el pedido, descarta duplicados y valida moneda e importe normalizado a centavos.
 8. Actualiza estado, ID de pago, estado externo y fecha.
-9. El endpoint responde `{ "received": true }` aun cuando la consulta o actualización falle, después de registrar el error.
+9. Según DEC-019/T-015, el endpoint responde 200 para éxito y resultados definitivos/idempotentes, 401 para firma ausente/inválida y 503 genérico para fallos temporales o inesperados, permitiendo reintentos.
 
 ## Rutas
 
@@ -113,7 +113,7 @@ La tabla `orders` usa `external_reference` como clave de correlación única. El
 - Puerto fijo y catálogo versionado en backend; sin fuente administrable externa todavía.
 - La ruta `GET /webhook` queda restringida a entornos no productivos.
 - No hay manejo explícito de reintentos, timeouts ni rate limits.
-- El deploy a staging está documentado para EasyPanel/VPS; no hay infraestructura como código.
+- El backend endurecido está desplegado en EasyPanel/VPS desde la rama `main` de `checkout-mp-supabase-template`, bajo `checkout.lemont01.com`; no hay infraestructura como código.
 
 ## Implementado y vigente
 
@@ -129,3 +129,26 @@ La tabla `orders` usa `external_reference` como clave de correlación única. El
 - `GET /webhook` condicionado a `NODE_ENV !== "production"` (T-011).
 - Catálogo seguro en `src/catalog.js`; `POST /crear-preferencia` acepta solo `{ sku, quantity }` y calcula precio, total y moneda en backend (T-012, DEC-013).
 - Deploy a staging documentado para EasyPanel/VPS con checklists y rollback (T-013, DEC-016).
+- Política resiliente 401/200/503 del webhook implementada y validada en producción (T-015, DEC-019).
+
+## Transición hacia el frontend de LEMONT
+
+El backend de pagos actual fue validado de punta a punta en producción el 2026-08-22, incluyendo un pago real de ARS 100 y una nueva verificación `pending → paid` después del deploy de la versión endurecida. El frontend debe integrarse con este contrato sin modificar innecesariamente el motor de pagos.
+
+Alcance inicial del frontend:
+
+- Home.
+- Catálogo.
+- Contacto.
+- Producto/compra.
+
+Principios de diseño e implementación:
+
+- HTML semántico cuando corresponda.
+- CSS organizado y responsabilidades visuales claras.
+- JavaScript modular, entendible y separado por responsabilidad.
+- Buena indentación, nombres claros y legibilidad humana.
+- Evitar abstracciones o complejidad que no aporten valor al alcance inicial.
+- Preservar el contrato seguro `{ sku, quantity }` de `POST /crear-preferencia`; el frontend no controla precios, moneda ni confirmación de pago.
+
+La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado.

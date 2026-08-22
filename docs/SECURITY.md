@@ -117,7 +117,13 @@ Durante la sesión de cierre del 2026-06-26, el Access Token productivo y el Web
 3. Actualizar `MERCADOPAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET` en EasyPanel con los nuevos valores.
 4. Verificar que el flujo productivo sigue funcionando después de la rotación.
 
-No operar en producción hasta que esta rotación esté confirmada.
+**Estado al 2026-08-22:** la rotación todavía no se realizó. Las credenciales actuales se utilizaron para una verificación productiva privada/controlada y quedan restringidas a esa etapa. No declarar la tienda lista para clientes reales ni realizar el lanzamiento público hasta completar la rotación y volver a verificar el flujo.
+
+La rotación final obligatoria incluye:
+
+1. `MERCADOPAGO_ACCESS_TOKEN`.
+2. `MERCADO_PAGO_WEBHOOK_SECRET`.
+3. Credencial privada de Supabase usada por el backend.
 
 ### Variable de diagnóstico `MP_SUPPORT_CAPTURE_FULL_WEBHOOK`
 
@@ -148,7 +154,7 @@ Tras verificar el flujo productivo completo (2026-06-26), se documentaron tres a
 2. **Rotar `MERCADO_PAGO_WEBHOOK_SECRET` productivo**: fue visible en capturas/chats. Revocar y regenerar en "Tus integraciones" de Mercado Pago. Actualizar en EasyPanel.
 3. **Retirar `MP_SUPPORT_CAPTURE_FULL_WEBHOOK`**: completada en código el 2026-08-20; la variable ya no tiene efecto.
 
-No operar en producción hasta completar los ítems 1 y 2. Los diagnósticos temporales restantes de `src/webhookSignature.js` y `src/config.js` no fueron modificados como parte de la retirada de la captura completa.
+No realizar el lanzamiento público hasta rotar las tres credenciales privadas indicadas y verificar nuevamente el flujo productivo. Los diagnósticos temporales restantes de `src/webhookSignature.js` y `src/config.js` no fueron modificados como parte de la retirada de la captura completa.
 
 ## Recomendaciones priorizadas
 

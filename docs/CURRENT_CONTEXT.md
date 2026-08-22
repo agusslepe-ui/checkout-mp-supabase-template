@@ -1,14 +1,14 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-08-21 (auditoría y endurecimiento de una integración con operación productiva real; DEC-019 y T-015 implementadas).
+> Resumen compacto para agentes. Última actualización: 2026-08-22 (backend endurecido validado de punta a punta en producción; próxima etapa: frontend de LEMONT).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
 ---
 
-## Estado de la fase actual: ENDURECIMIENTO DE INTEGRACIÓN PRODUCTIVA EXISTENTE
+## Estado de la fase actual: BACKEND PRODUCTIVO VALIDADO — INICIO DE ETAPA FRONTEND
 
-Las tareas T-001 a T-015 están completadas. El flujo `pending → paid` fue verificado en producción con pagos reales. El proyecto no es exclusivamente una demo o sandbox: la fase actual audita y endurece una integración productiva existente. DEC-019 y T-015 implementan la política HTTP resiliente de `POST /webhook`.
+Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supabase y Mercado Pago productivo, el backend local inició correctamente y la versión endurecida fue desplegada desde `checkout-mp-supabase-template`, rama `main`, en `checkout.lemont01.com`. Se verificó con una cuenta compradora real distinta de la vendedora una transferencia de ARS 100 y el flujo completo `checkout → order pending → pago aprobado → webhook → order paid`. Después del despliegue se repitió correctamente la transición `pending → paid`. El backend actual queda validado de punta a punta en producción; DEC-019 y T-015 permanecen vigentes.
 
 ---
 
@@ -61,7 +61,7 @@ Las tareas T-001 a T-015 están completadas. El flujo `pending → paid` fue ver
 
 No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `POST /webhook` responde 503 ante fallos temporales o inesperados y conserva 200 para resultados exitosos, definitivos o idempotentes.
 
-**Pendiente de seguridad (acción inmediata — usuario):** credenciales productivas de Mercado Pago (Access Token y Webhook Secret) fueron visibles en capturas/chats de la sesión. Deben revocarse y regenerarse en el panel de Mercado Pago y actualizarse en EasyPanel antes de continuar operando en producción. Ver `docs/SECURITY.md`.
+**Pendiente obligatorio antes del lanzamiento público:** rotar el Access Token y Webhook Secret de Mercado Pago y la credencial privada de Supabase. Las credenciales actuales se usarán solo durante esta etapa privada/controlada de desarrollo y no deben reutilizarse para declarar la tienda lista para clientes reales. Ver `docs/SECURITY.md`.
 
 **Captura completa retirada (2026-08-20):** `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` ya no se lee en runtime y no puede activar el registro de la URL ni de headers completos. Los demás diagnósticos temporales de `src/webhookSignature.js` y `src/config.js` no fueron modificados.
 
@@ -96,7 +96,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Tests**: Jest. La suite actual pasa con **50 tests**. Sin llamadas externas ni acceso a `.env`.
 - **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó únicamente dependencias transitivas compatibles. Estado verificado al cierre: **0 vulnerabilidades conocidas** y 50/50 tests pasando.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
-- **Deploy**: productivo activo en EasyPanel/VPS según DEC-016. Dockerfile Node.js 22 en uso. Dominio propio `checkout.lemont01.com` con SSL activo. Flujo completo verificado en producción real (2026-06-26): preferencia → pago real → webhook con firma HMAC-SHA256 válida → pedido actualizado a `paid` en Supabase. La captura completa asociada a `MP_SUPPORT_CAPTURE_FULL_WEBHOOK` fue retirada del código el 2026-08-20. Credenciales productivas expuestas en capturas/chats requieren rotación inmediata (ver `docs/SECURITY.md`).
+- **Deploy**: versión endurecida activa en EasyPanel desde el repositorio `checkout-mp-supabase-template`, rama `main`, dominio `checkout.lemont01.com`. El 2026-08-22 se verificó nuevamente `pending → paid` con Checkout Pro productivo y transferencia real de ARS 100. La captura sensible está retirada. La rotación final de credenciales sigue pendiente antes del lanzamiento público.
 
 ---
 
@@ -130,13 +130,25 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso recomendado
 
-1. Reconstruir el `.env` local usando exclusivamente `.env.example` como contrato, sin reutilizar credenciales documentadas como expuestas.
-2. Configurar: `MERCADOPAGO_ACCESS_TOKEN`, `MERCADO_PAGO_WEBHOOK_SECRET`, `BASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `LOG_LEVEL`.
-3. Reconectar primero Supabase y verificar que la tabla `orders` corresponda al esquema versionado.
-4. Rotar/configurar credenciales nuevas de Mercado Pago; las credenciales productivas antiguas expuestas se consideran comprometidas y no deben reutilizarse.
-5. Configurar el webhook y `BASE_URL` con la URL HTTPS del entorno.
-6. Ejecutar una prueba end-to-end controlada: `pending → preferencia → pago → webhook → paid`.
-7. Después de verificar el backend completo, conectar el nuevo frontend de LEMONT.
+La próxima etapa es construir el frontend de LEMONT e integrarlo con el backend validado, evitando cambios innecesarios en el motor de pagos.
+
+Alcance inicial:
+
+- Home.
+- Catálogo.
+- Contacto.
+- Producto/compra.
+
+Criterios de implementación:
+
+- Buena indentación y legibilidad humana.
+- HTML semántico cuando corresponda.
+- CSS organizado.
+- JavaScript modular y entendible.
+- Nombres claros y responsabilidades separadas.
+- Evitar complejidad innecesaria y priorizar mantenimiento por personas.
+
+Antes de declarar la tienda lista para clientes reales se deben rotar las tres credenciales privadas pendientes y volver a verificar el flujo productivo.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 

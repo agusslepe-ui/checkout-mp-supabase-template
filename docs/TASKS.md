@@ -2,6 +2,20 @@
 
 Estados posibles: `pendiente`, `en curso`, `bloqueada`, `completada`. El estado vigente de cada tarea se indica en su propia sección.
 
+## Cierre de backend productivo — 2026-08-22
+
+**Estado verificado:** T-001 a T-015 permanecen completadas y el backend endurecido fue validado de punta a punta en producción.
+
+- Supabase y Mercado Pago productivo reconectados; backend local iniciado correctamente.
+- Persistencia verificada: una compra crea `orders.status = 'pending'`; una compra no completada permanece `pending`.
+- Pago real de ARS 100 verificado con cuenta compradora distinta de la vendedora.
+- Flujo completo verificado antes y después del deploy: `checkout → pending → pago aprobado → webhook → paid`.
+- Deploy verificado en EasyPanel desde `checkout-mp-supabase-template`, rama `main`, dominio `checkout.lemont01.com`.
+- DEC-019 y T-015 vigentes en producción.
+- No se crea una tarea completada nueva por esta verificación; se registra como cierre operativo del backend existente.
+- Pendiente obligatorio: rotar Access Token y Webhook Secret de Mercado Pago y la credencial privada de Supabase antes del lanzamiento público.
+- Próxima etapa, todavía no marcada como completada: frontend de LEMONT (Home, Catálogo, Contacto y Producto/compra).
+
 ## Cierre de sesión — 2026-08-21
 
 **Estado general:** T-001 a T-015 completadas. Suite actual: 50/50 tests. `npm audit`: 0 vulnerabilidades conocidas después de actualizar dependencias transitivas compatibles mediante `npm audit fix`.
