@@ -1,8 +1,24 @@
 # Progreso
 
-Última revisión documental: 2026-08-22. Etapa 3 cerrada y validada: variantes por talle, persistencia y checkout productivo; próxima etapa por decidir.
+Última revisión documental: 2026-08-22. Etapa 5 cerrada: cliente y entrega persistidos; prueba productiva posterior a Etapa 5 pendiente.
 
 ## Estado actual
+
+### Cierre de Etapa 5 — datos de cliente y entrega (2026-08-22)
+
+- Flujo implementado: `Producto → talle → Continuar → entrega.html → cliente/domicilio → validación → POST /crear-preferencia → pending → Checkout Pro → webhook → paid`.
+- `entrega.html` está implementada y funcional. Campos obligatorios: nombre, apellido, email, teléfono, provincia, localidad, código postal, calle y número. Piso/departamento y referencia son opcionales.
+- Entre Producto y Entrega viajan únicamente `product id`, `sku` y `quantity`; no se coloca PII en la URL.
+- `/crear-preferencia` recibe solamente `sku`, `quantity`, `customer` y `delivery`. Precio, moneda, total, producto, variante, máximo, estado y `external_reference` siguen bajo autoridad del backend.
+- `003_add_order_customer_delivery.sql` fue aplicada correctamente. Las doce columnas nuevas son nullable; los pedidos históricos no se modificaron.
+- Los pedidos nuevos guardan producto, SKU, talle, cliente, dirección, país `AR` y estado `pending`.
+- Verificación manual completada: `Producto → Entrega → Supabase`, incluido pedido `pending`.
+- Pendiente sin marcar como completada: prueba posterior a Etapa 5 con datos nuevos, pago real, webhook y transición a `paid`.
+- Suite automatizada: **61/61 tests**, 1 suite y 0 fallos. Se mantienen las regresiones de pagos, HMAC, webhook, idempotencia, atomicidad y concurrencia.
+- Privacidad: no se registran PII ni el body completo; los errores son genéricos.
+- ARS 1.000 continúa siendo un precio temporal de prueba, no comercial.
+- No existen cotización, costo de envío, proveedor logístico, tracking, sucursales ni estados logísticos. La etapa solo deja preparado el destino.
+- Próxima etapa sugerida: cotización de envío, previa investigación de operador, API, credenciales, pruebas, origen, peso/dimensiones reales, modalidades y total autoritativo.
 
 ### Cierre de Etapa 3 — variantes de Remera LEMONT (2026-08-22)
 
@@ -16,7 +32,7 @@
 - Antes de esta actualización documental, Git fue verificado en `main`, sincronizado con `origin/main`, con `working tree clean` y `git diff --check` correcto. Después del cierre quedan únicamente cambios Markdown sin commit.
 - Home, Catálogo y Contacto funcionan con HTML/CSS/JavaScript vanilla; catálogo y filtros se generan con JavaScript, y las tarjetas no comerciales permanecen en `Próximamente`.
 - Las imágenes de Stitch siguen siendo URLs temporales y deben reemplazarse por assets propios optimizados en `public/assets/images/`.
-- La próxima etapa concreta no fue decidida. Permanecen posibles: detalle de producto, imágenes reales, guía de talles, stock, panel, reportes, Contacto final y guía de estudio.
+- En ese cierre la próxima etapa todavía no estaba decidida. Se conserva como antecedente histórico.
 
 ### Pendientes que no cambian
 
@@ -27,7 +43,7 @@
 El proyecto tiene un flujo completo de pago implementado, endurecido y cubierto con tests. Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supabase y Mercado Pago productivo, se verificó el arranque local y se desplegó la versión endurecida en EasyPanel. Un pago real de ARS 100 confirmó de punta a punta `checkout → pending → pago aprobado → webhook → paid`; la transición se volvió a verificar después del despliegue. La próxima fase es el frontend de LEMONT.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
-- **Tests**: Jest instalado. La suite actual pasa con 50 tests.
+- **Tests**: Jest instalado. Estado actual: 61/61 tests, 1 suite, 0 fallos. Las cifras anteriores permanecen en la bitácora como hitos históricos.
 - **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó solo dependencias transitivas compatibles. Verificación posterior: 0 vulnerabilidades conocidas y tests pasando.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.

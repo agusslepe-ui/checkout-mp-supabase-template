@@ -1,5 +1,22 @@
 # Tareas
 
+## Estado al cierre de Etapa 5 — 2026-08-22
+
+La Etapa 5 está implementada y verificada hasta la creación del pedido `pending`: Producto selecciona talle, Entrega recopila y valida cliente/domicilio, y `/crear-preferencia` recibe solo `sku`, `quantity`, `customer` y `delivery`. La migración 003 fue aplicada con columnas nullable y sin alterar pedidos históricos. Suite: **61/61 tests**, 1 suite, 0 fallos.
+
+Permanece pendiente la prueba productiva específica posterior a Etapa 5: datos nuevos → pago real → webhook → `paid`. No se considera completada sin esa evidencia.
+
+### Próxima etapa sugerida — cotización de envío (pendiente)
+
+- Investigar y decidir operador logístico inicial y API disponible.
+- Definir credenciales y entorno de pruebas.
+- Definir origen del envío y medir peso/dimensiones reales; no inventarlos.
+- Diseñar cotización y modalidades domicilio/sucursal.
+- Definir cómo sumar el envío al total autoritativo del backend.
+- No hay proveedor, costo, tracking, sucursales ni estados logísticos implementados todavía.
+
+Pendientes transversales: rotar las tres credenciales privadas antes del lanzamiento público, reemplazar imágenes externas de Stitch por assets propios optimizados y restaurar el precio comercial definitivo.
+
 ## Cierre verificado de Etapa 3 — 2026-08-22
 
 La Etapa 3 quedó completada y verificada con variantes de la Remera LEMONT por talle: `LEM-REM-001-S`, `LEM-REM-001-M`, `LEM-REM-001-L` y `LEM-REM-001-XL`. El SKU temporal `REMERA-LEMONT-001` fue retirado. El selector no elige talle por defecto, Comprar permanece deshabilitado hasta elegirlo y el frontend envía solo `{ sku, quantity: 1 }`.
@@ -37,7 +54,7 @@ Estados posibles: `pendiente`, `en curso`, `bloqueada`, `completada`. El estado 
 
 ## Cierre de sesión — 2026-08-21
 
-**Estado general:** T-001 a T-015 completadas. Suite actual: 50/50 tests. `npm audit`: 0 vulnerabilidades conocidas después de actualizar dependencias transitivas compatibles mediante `npm audit fix`.
+**Estado general:** T-001 a T-015 completadas. Suite actual: 61/61 tests. `npm audit`: 0 vulnerabilidades conocidas después de actualizar dependencias transitivas compatibles mediante `npm audit fix`.
 
 - Captura sensible temporal retirada y cubierta por regresiones.
 - DEC-019 aceptada; T-015 implementada sin modificar HMAC, atomicidad ni idempotencia.

@@ -1,12 +1,22 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-08-22 (Etapa 3 cerrada: variantes por talle y checkout productivo verificados; próxima etapa por decidir).
+> Resumen compacto para agentes. Última actualización: 2026-08-22 (Etapa 5 cerrada: cliente y entrega persistidos; validación productiva posterior a Etapa 5 pendiente).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
 ---
 
-## Estado de la fase actual: ETAPA 3 VALIDADA — VARIANTES COMERCIALES POR TALLE
+## Estado de la fase actual: ETAPA 5 VALIDADA LOCALMENTE — CLIENTE Y ENTREGA
+
+La Etapa 5 incorpora los datos del cliente y del domicilio antes de iniciar Mercado Pago. El flujo implementado es `Producto → selección de talle → Continuar → entrega.html → datos del cliente y domicilio → validación → POST /crear-preferencia → pedido pending → Checkout Pro → webhook → paid`.
+
+`entrega.html` está implementada y funcional. Requiere nombre, apellido, email, teléfono, provincia, localidad, código postal, calle y número; piso/departamento y referencia de entrega son opcionales. Producto transporta hacia Entrega únicamente `product id`, `sku` y `quantity`, sin PII en la URL. El request de creación de preferencia contiene solo `sku`, `quantity`, `customer` y `delivery`; el backend conserva la autoridad sobre producto, variante, precio, moneda, cantidad máxima, total, estado y `external_reference`.
+
+La migración `supabase/migrations/003_add_order_customer_delivery.sql` fue aplicada correctamente. Sus doce columnas de cliente y destino son nullable, los pedidos históricos no fueron alterados y los pedidos nuevos guardan producto, SKU, talle, cliente, domicilio, `shipping_country_code = AR` y estado `pending`. Se verificó manualmente `Producto → Entrega → Supabase` y la creación del pedido `pending`. La prueba productiva específica posterior a Etapa 5 —datos nuevos → pago real → webhook → `paid`— permanece pendiente.
+
+La suite actual pasa con **61/61 tests**, 1 suite y 0 fallos. Los tests nuevos de validación y persistencia coexisten con las regresiones de SKUs, variantes, precio, moneda, `pending`, HMAC, webhook, idempotencia, atomicidad, importes y concurrencia.
+
+### Antecedente: Etapa 3
 
 La Etapa 3 incorporó la Remera LEMONT con variantes inequívocas por talle: `LEM-REM-001-S`, `LEM-REM-001-M`, `LEM-REM-001-L` y `LEM-REM-001-XL`. El SKU temporal `REMERA-LEMONT-001` fue retirado y se rechaza. El frontend exige seleccionar S, M, L o XL antes de habilitar Comprar y envía únicamente `{ sku, quantity: 1 }`; precio, moneda, nombre, talle, importe, referencia y estado no provienen del cliente.
 
@@ -14,7 +24,7 @@ La migración `supabase/migrations/002_add_order_product_variant.sql` fue aplica
 
 El precio vigente de la Remera LEMONT es **temporalmente ARS 1.000** para pruebas productivas privadas/controladas. No es el precio comercial definitivo y debe revisarse antes del lanzamiento. `src/catalog.js` sigue siendo la autoridad sobre precio, moneda, nombre y cantidad máxima; todos los SKUs mantienen `maxQuantity: 1`. No existe selector de cantidad, control de inventario ni reserva de stock.
 
-La suite actual pasa con **55/55 tests**. Antes de esta actualización documental, Git fue verificado en `main`, sincronizado con `origin/main` y con `working tree clean`; `git diff --check` fue correcto. Después de documentar el cierre quedan únicamente estos cambios Markdown sin commit.
+Al cierre de la Etapa 3 la suite pasaba con **55/55 tests**. Esa cifra se conserva como antecedente histórico; el estado actual está indicado arriba.
 
 ---
 
@@ -51,7 +61,7 @@ Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supab
 
 | Tarea | Descripción |
 |---|---|
-| T-005 | Suite Jest; la suite actual pasa con 55 tests. Cubre los flujos críticos y las variantes S/M/L/XL sin llamadas externas. |
+| T-005 | Suite Jest; la suite actual pasa con 61 tests. Cubre flujos críticos, variantes y datos de cliente/entrega sin llamadas externas. |
 | T-006 | `supabase/migrations/001_create_orders.sql` con DDL, restricciones, índices y RLS. Aplicada y verificada en Supabase el 2026-06-25. (DEC-012) |
 | T-007 | Comparación de importes normalizada a centavos (`Math.round`), validación de moneda contra `order.currency`, logs genéricos. (DEC-011) |
 | T-008 | Identificadores de pedido con `LEMONT-ORDER-${crypto.randomUUID()}` para unicidad bajo concurrencia. |
@@ -106,9 +116,10 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Logs**: JSON estructurado por helper propio `log()`, con `request_id`, niveles y lista explícita de campos prohibidos.
 - **Base de datos**: Supabase, tabla `orders`, acceso con `service_role` solo desde backend. RLS habilitada. Sin policies públicas para `anon` ni `authenticated`.
 - **Migraciones SQL**: `001_create_orders.sql` aplicada y verificada; `002_add_order_product_variant.sql` aplicada y verificada con columnas nullable para SKU y talle.
+- **Datos de entrega**: `003_add_order_customer_delivery.sql` aplicada y verificada; agrega doce columnas nullable sin completar pedidos históricos.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
-- **Tests**: Jest. La suite actual pasa con **55 tests**. Sin llamadas externas ni acceso a `.env`.
-- **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó únicamente dependencias transitivas compatibles. Estado verificado al cierre: **0 vulnerabilidades conocidas** y 50/50 tests pasando.
+- **Tests**: Jest. La suite actual pasa con **61 tests**, 1 suite y 0 fallos. Sin llamadas externas ni acceso a `.env`.
+- **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó únicamente dependencias transitivas compatibles. Estado verificado: **0 vulnerabilidades conocidas**; la suite actual pasa 61/61.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
 - **Deploy**: versión endurecida activa en EasyPanel desde el repositorio `checkout-mp-supabase-template`, rama `main`, dominio `checkout.lemont01.com`. El 2026-08-22 se verificó nuevamente `pending → paid` con Checkout Pro productivo y transferencia real de ARS 100. La captura sensible está retirada. La rotación final de credenciales sigue pendiente antes del lanzamiento público.
 
@@ -126,9 +137,10 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | `src/payments.js` | Integración Mercado Pago: `createPreference`, `Payment.get`. |
 | `src/orders.js` | Operaciones Supabase: `createPendingOrder`, `markOrderAsPaid`. Validación importe/moneda. |
 | `src/webhookSignature.js` | Validación de firma HMAC-SHA256 de Mercado Pago. |
-| `tests/index.test.js` | Suite Jest con **50 tests**. Mocks de MP, Supabase, dotenv y Express. |
+| `tests/index.test.js` | Suite Jest con **61 tests**. Mocks de MP, Supabase, dotenv y Express. |
 | `supabase/migrations/001_create_orders.sql` | Migración SQL versionada: DDL, restricciones, índices y RLS. Aplicada el 2026-06-25. |
 | `supabase/migrations/002_add_order_product_variant.sql` | Agrega `product_sku` y `product_size` nullable. Aplicada y verificada sin alterar registros históricos. |
+| `supabase/migrations/003_add_order_customer_delivery.sql` | Agrega datos de cliente y destino como columnas nullable. Aplicada y verificada sin alterar registros históricos. |
 | `Dockerfile` | Build de staging con Node.js 22; instala con `npm ci`, expone `3003` y ejecuta `npm start`. |
 | `.dockerignore` | Excluye `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales del contexto Docker. |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). Incluye `LOG_LEVEL=info`. |
@@ -145,7 +157,9 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso
 
-La próxima etapa concreta todavía debe decidirse. Posibles bloques, ninguno marcado como completado:
+La próxima etapa sugerida es **cotización de envío**, como bloque separado y todavía no implementado. Antes de programarla hay que decidir operador, API, credenciales, entorno de pruebas, origen, peso y dimensiones reales, cotización, domicilio/sucursal y composición autoritativa del total. No deben inventarse peso ni dimensiones.
+
+También permanecen posibles, ninguno marcado como completado:
 
 - Página de detalle del producto.
 - Imágenes reales y optimizadas de LEMONT.

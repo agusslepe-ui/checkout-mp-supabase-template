@@ -31,6 +31,14 @@
 - Mantener producto y precio bajo control del servidor.
 - No revelar si una referencia interna sensible existe mediante errores públicos detallados.
 
+## Privacidad de cliente y entrega — Etapa 5
+
+Los datos de cliente y domicilio se usan para preparar el pedido y su futura entrega. Está prohibido registrar nombre, apellido, email, teléfono, provincia, localidad, código postal, calle, número, piso/departamento, referencia o el body completo del checkout. Tampoco deben aparecer en URLs, errores públicos ni mensajes internos expuestos al navegador.
+
+Los errores de validación son genéricos. Una entrada inválida se rechaza antes de consultar Supabase o Mercado Pago. La navegación Producto → Entrega transporta solo `product id`, `sku` y `quantity`. Los pedidos históricos permanecen sin datos inventados porque las columnas de la migración 003 son nullable.
+
+La suite actual pasa con **61/61 tests**, incluida una regresión que verifica ausencia de PII en logs y respuestas inválidas. Esta protección debe coexistir con las regresiones de HMAC, webhook, atomicidad e idempotencia.
+
 ## Riesgos detectados
 
 ### Firma del webhook

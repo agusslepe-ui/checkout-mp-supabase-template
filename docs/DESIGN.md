@@ -48,20 +48,21 @@ src/
   orders.js                   # createPendingOrder, markOrderAsPaid — Supabase
   webhookSignature.js         # Validación HMAC-SHA256 de x-signature — DEC-009
 tests/
-  index.test.js               # Suite Jest con 29 tests
+  index.test.js               # Suite Jest actual: 61 tests
 ```
 
 ## Flujo de creación de pago
 
-1. El comprador selecciona S, M, L o XL. Sin variante, el botón Comprar permanece deshabilitado.
-2. El frontend envía `POST /crear-preferencia` únicamente con `{ sku, quantity: 1 }`.
-3. El servidor resuelve el producto y su talle mediante `getProduct(sku)`.
-4. El servidor valida que `quantity` sea un entero entre 1 y `product.maxQuantity`; los cuatro SKUs actuales tienen máximo 1.
-5. El servidor calcula `total = product.unitPrice * quantity` y genera `LEMONT-ORDER-${crypto.randomUUID()}`.
-6. `createPendingOrder` inserta nombre, SKU, talle, cantidad, importe total y moneda del catálogo.
-7. El servidor crea la preferencia con título de variante, `unit_price`, cantidad y moneda autoritativos, además de `notification_url`, `back_urls` y `auto_return: "approved"`.
-8. Devuelve `preference_id`, `init_point` y `sandbox_init_point`.
-9. El frontend prioriza `init_point`; `sandbox_init_point` queda como fallback.
+1. El comprador selecciona S, M, L o XL. Sin variante, Continuar permanece deshabilitado.
+2. Producto abre Entrega con `product id`, `sku` y `quantity: 1`, sin PII en la URL.
+3. Entrega recopila y valida cliente y domicilio.
+4. El frontend envía `POST /crear-preferencia` únicamente con `{ sku, quantity, customer, delivery }`.
+5. El servidor resuelve el producto y su talle mediante `getProduct(sku)` y valida los datos de entrada.
+6. El servidor valida que `quantity` sea un entero entre 1 y `product.maxQuantity`; los cuatro SKUs actuales tienen máximo 1.
+7. El servidor calcula `total = product.unitPrice * quantity` y genera `LEMONT-ORDER-${crypto.randomUUID()}`.
+8. `createPendingOrder` inserta producto, variante, valores autoritativos, cliente y destino con estado `pending`.
+9. El servidor crea la preferencia con título de variante, `unit_price`, cantidad y moneda autoritativos, además de `notification_url`, `back_urls` y `auto_return: "approved"`.
+10. Devuelve `preference_id`, `init_point` y `sandbox_init_point`; el frontend prioriza `init_point` y conserva `sandbox_init_point` como fallback.
 
 Si falla el alta del pedido en Supabase, la creación de preferencia se detiene y el cliente recibe un error genérico (T-002, completada).
 
@@ -91,7 +92,22 @@ Si falla el alta del pedido en Supabase, la creación de preferencia se detiene 
 
 ## Persistencia
 
-La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. `001_create_orders.sql` define la tabla y `002_add_order_product_variant.sql` agrega `product_sku` y `product_size` como columnas nullable. La segunda migración fue aplicada sin completar datos históricos; los pedidos nuevos guardan la variante. La transición `pending → paid` es atómica e idempotente mediante `UPDATE WHERE status = 'pending'`; un webhook duplicado recibe cero filas afectadas y se trata como duplicado sin error (T-003, DEC-010).
+La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. `001_create_orders.sql` define la tabla, `002_add_order_product_variant.sql` agrega SKU/talle y `003_add_order_customer_delivery.sql` agrega cliente y destino. Las columnas aditivas son nullable y las migraciones fueron aplicadas sin completar datos históricos. Los pedidos nuevos guardan variante, cliente, dirección y país `AR`. La transición `pending → paid` es atómica e idempotente mediante `UPDATE WHERE status = 'pending'`; un webhook duplicado recibe cero filas afectadas y se trata como duplicado sin error (T-003, DEC-010).
+
+## Flujo de compra con entrega
+
+1. Producto selecciona una variante por talle.
+2. Producto abre `entrega.html` transportando solo `product id`, `sku` y `quantity`.
+3. Entrega recopila nombre, apellido, email, teléfono y domicilio; piso/departamento y referencia son opcionales.
+4. El navegador envía únicamente `sku`, `quantity`, `customer` y `delivery`.
+5. El backend valida y normaliza antes de consultar Supabase o Mercado Pago.
+6. Supabase registra el pedido `pending`; luego Checkout Pro continúa con el flujo existente.
+
+El frontend no controla precio, moneda, total, nombre, talle separado, estado, `external_reference` ni identificadores de Mercado Pago. No existe PII en la URL. La prueba manual hasta Supabase/pending está verificada; la prueba real posterior a Etapa 5 hasta `paid` está pendiente.
+
+## Preparación logística
+
+La Etapa 5 solo prepara país, provincia, localidad, código postal, calle, número, unidad y referencia. No hay cotización automática, costo, Correo Argentino, Andreani, OCA, tracking, sucursal ni estados logísticos. Peso y dimensiones no están definidos. Una futura etapa separada deberá elegir proveedor/API, origen, credenciales, entorno, modalidades y cómo incorporar el envío al total autoritativo.
 
 ## Variantes y limitaciones comerciales actuales
 
@@ -159,8 +175,8 @@ Principios de diseño e implementación:
 - JavaScript modular, entendible y separado por responsabilidad.
 - Buena indentación, nombres claros y legibilidad humana.
 - Evitar abstracciones o complejidad que no aporten valor al alcance inicial.
-- Preservar el contrato seguro `{ sku, quantity }` de `POST /crear-preferencia`; el frontend no controla precios, moneda ni confirmación de pago.
+- Preservar el contrato seguro `{ sku, quantity, customer, delivery }` de `POST /crear-preferencia`; el frontend no controla precios, moneda ni confirmación de pago.
 
 Home, Catálogo y Contacto están implementados en HTML/CSS/JavaScript vanilla. El catálogo y los filtros se generan con JavaScript, la Remera LEMONT permite seleccionar talle e iniciar el checkout real y las demás tarjetas permanecen en `Próximamente`. Las imágenes externas provenientes de Stitch son temporales y deben sustituirse por assets propios optimizados en `public/assets/images/`.
 
-La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado. La próxima etapa concreta todavía no está definida.
+La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado. La próxima etapa sugerida es cotización de envío y todavía no está implementada.
