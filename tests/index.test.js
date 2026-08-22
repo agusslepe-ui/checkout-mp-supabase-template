@@ -99,7 +99,7 @@ function makePreferenceRequest(body = {}) {
 }
 
 const validPreferenceBody = {
-  sku: "REMERA-LEMONT-001",
+  sku: "LEM-REM-001-S",
   quantity: 1,
 };
 
@@ -469,21 +469,21 @@ describe("creación de preferencias", () => {
     expect(preferenceCreate).not.toHaveBeenCalled();
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("100");
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
-      "REMERA-LEMONT-001"
+      "LEM-REM-001-S"
     );
   });
 
   test.each([
     ["cero", 0],
     ["negativa", -1],
-    ["mayor al maximo", 11],
+    ["mayor al maximo", 2],
     ["no entera", 1.5],
   ])("rechaza cantidad %s sin crear preferencia", async (caseName, quantity) => {
     const { routes, preferenceCreate, supabaseMock } = loadApp();
     const response = createResponse();
 
     await routes.post["/crear-preferencia"](
-      makePreferenceRequest({ sku: "REMERA-LEMONT-001", quantity }),
+      makePreferenceRequest({ sku: "LEM-REM-001-S", quantity }),
       response
     );
 
@@ -491,17 +491,17 @@ describe("creación de preferencias", () => {
     expect(response.body).toEqual({ error: "Cantidad inválida" });
     expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
-    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("100");
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("30000");
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
-      "REMERA-LEMONT-001"
+      "LEM-REM-001-S"
     );
   });
 
-  test("calcula amount desde catalogo para cantidad valida", async () => {
+  test("calcula amount y persiste la variante desde catalogo", async () => {
     const { routes, supabaseMock, preferenceCreate } = loadApp();
 
     await routes.post["/crear-preferencia"](
-      makePreferenceRequest({ sku: "REMERA-LEMONT-001", quantity: 3 }),
+      makePreferenceRequest({ sku: "LEM-REM-001-S", quantity: 1 }),
       createResponse()
     );
 
@@ -509,17 +509,19 @@ describe("creación de preferencias", () => {
     expect(insertedOrder).toEqual(
       expect.objectContaining({
         product_name: "Remera LEMONT",
-        quantity: 3,
-        amount: 300,
+        product_sku: "LEM-REM-001-S",
+        product_size: "S",
+        quantity: 1,
+        amount: 30000,
         currency: "ARS",
         status: "pending",
       })
     );
     expect(preferenceCreate.mock.calls[0][0].body.items).toEqual([
       {
-        title: "Remera LEMONT",
-        quantity: 3,
-        unit_price: 100,
+        title: "Remera LEMONT - Talle S",
+        quantity: 1,
+        unit_price: 30000,
         currency_id: "ARS",
       },
     ]);
@@ -533,8 +535,8 @@ describe("creación de preferencias", () => {
 
     await routes.post["/crear-preferencia"](
       makePreferenceRequest({
-        sku: "REMERA-LEMONT-001",
-        quantity: 2,
+        sku: "LEM-REM-001-M",
+        quantity: 1,
         amount: 1,
         currency: "USD",
         price: 1,
@@ -543,15 +545,66 @@ describe("creación de preferencias", () => {
     );
 
     const insertedOrder = supabaseMock.insertOrder.mock.calls[0][0];
-    expect(insertedOrder.amount).toBe(200);
+    expect(insertedOrder.amount).toBe(30000);
     expect(insertedOrder.currency).toBe("ARS");
+    expect(insertedOrder.product_sku).toBe("LEM-REM-001-M");
+    expect(insertedOrder.product_size).toBe("M");
     expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual(
       expect.objectContaining({
-        quantity: 2,
-        unit_price: 100,
+        quantity: 1,
+        unit_price: 30000,
         currency_id: "ARS",
       })
     );
+  });
+
+  test.each([
+    ["LEM-REM-001-S", "S"],
+    ["LEM-REM-001-M", "M"],
+    ["LEM-REM-001-L", "L"],
+    ["LEM-REM-001-XL", "XL"],
+  ])("acepta la variante %s y conserva su talle", async (sku, size) => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest({ sku, quantity: 1 }),
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(supabaseMock.insertOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_name: "Remera LEMONT",
+        product_sku: sku,
+        product_size: size,
+        quantity: 1,
+        amount: 30000,
+        currency: "ARS",
+        status: "pending",
+      })
+    );
+    expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual({
+      title: `Remera LEMONT - Talle ${size}`,
+      quantity: 1,
+      unit_price: 30000,
+      currency_id: "ARS",
+    });
+  });
+
+  test("rechaza el SKU temporal anterior", async () => {
+    const { routes, preferenceCreate, supabaseMock } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest({ sku: "REMERA-LEMONT-001", quantity: 1 }),
+      response
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "Producto no encontrado" });
+    expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
   });
 
   test("genera external_reference con prefijo trazable", async () => {

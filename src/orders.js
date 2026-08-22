@@ -11,6 +11,8 @@ function importesCoinciden(a, b) {
 async function createPendingOrder({
   external_reference,
   product_name,
+  product_sku,
+  product_size,
   quantity,
   amount,
   currency,
@@ -21,6 +23,8 @@ async function createPendingOrder({
     .insert({
       external_reference,
       product_name,
+      product_sku,
+      product_size,
       quantity,
       amount,
       currency,

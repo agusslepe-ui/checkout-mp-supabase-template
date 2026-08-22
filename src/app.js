@@ -319,7 +319,7 @@ app.post("/crear-preferencia", async (req, res) => {
   try {
     const total = product.unitPrice * quantity;
     const preferenceItem = {
-      title: product.name,
+      title: product.checkoutTitle,
       quantity,
       unit_price: product.unitPrice,
       currency_id: product.currency,
@@ -332,6 +332,8 @@ app.post("/crear-preferencia", async (req, res) => {
       await createPendingOrder({
         external_reference: externalReference,
         product_name: product.name,
+        product_sku: product.sku,
+        product_size: product.size,
         quantity,
         amount: total,
         currency: product.currency,

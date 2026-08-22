@@ -1,9 +1,14 @@
 const CHECKOUT_ENDPOINT = "/crear-preferencia";
-const PURCHASE_SKU = "REMERA-LEMONT-001";
+const PURCHASE_SKUS = new Set([
+  "LEM-REM-001-S",
+  "LEM-REM-001-M",
+  "LEM-REM-001-L",
+  "LEM-REM-001-XL",
+]);
 const PURCHASE_QUANTITY = 1;
 
 async function crearPreferencia(sku) {
-  if (sku !== PURCHASE_SKU) {
+  if (!PURCHASE_SKUS.has(sku)) {
     throw new Error("invalid_product");
   }
 
@@ -35,11 +40,13 @@ async function crearPreferencia(sku) {
 async function iniciarCompra(button) {
   const card = button.closest(".product-card");
   const status = card?.querySelector("[data-checkout-status]");
+  const sizeSelect = card?.querySelector("[data-size-select]");
   const originalLabel = button.textContent;
 
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   button.textContent = "Preparando pago…";
+  if (sizeSelect) sizeSelect.disabled = true;
   if (status) status.textContent = "";
 
   try {
@@ -56,12 +63,29 @@ async function iniciarCompra(button) {
     button.disabled = false;
     button.removeAttribute("aria-busy");
     button.textContent = originalLabel;
+    if (sizeSelect) sizeSelect.disabled = false;
   }
 }
 
 export function inicializarCheckout() {
+  document.addEventListener("change", (event) => {
+    const sizeSelect = event.target.closest("select[data-size-select]");
+
+    if (!sizeSelect) return;
+
+    const card = sizeSelect.closest(".product-card");
+    const button = card?.querySelector("button[data-checkout-button]");
+    const status = card?.querySelector("[data-checkout-status]");
+
+    if (!button) return;
+
+    button.dataset.checkoutSku = sizeSelect.value;
+    button.disabled = !sizeSelect.value;
+    if (status) status.textContent = "";
+  });
+
   document.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-checkout-sku]");
+    const button = event.target.closest("button[data-checkout-button]");
 
     if (!button || button.disabled) return;
     iniciarCompra(button);
