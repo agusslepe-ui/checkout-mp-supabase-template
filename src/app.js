@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const path = require("path");
 const express = require("express");
 const { getProduct } = require("./catalog");
+const { CheckoutInputError, parseCheckoutInput } = require("./checkoutInput");
 const { baseUrl, mercadoPagoAccessToken } = require("./config");
 const { log } = require("./logger");
 const { createPendingOrder, markOrderAsPaid } = require("./orders");
@@ -316,6 +317,22 @@ app.post("/crear-preferencia", async (req, res) => {
     });
   }
 
+  let checkoutInput;
+  try {
+    checkoutInput = parseCheckoutInput(req.body);
+  } catch (error) {
+    if (!(error instanceof CheckoutInputError)) throw error;
+
+    log("warn", "datos de checkout invalidos", {
+      ...logContext,
+      status_code: 400,
+      error_type: "checkout_input_error",
+    });
+    return res.status(400).json({
+      error: "Revisá los datos del comprador y la entrega",
+    });
+  }
+
   try {
     const total = product.unitPrice * quantity;
     const preferenceItem = {
@@ -338,6 +355,7 @@ app.post("/crear-preferencia", async (req, res) => {
         amount: total,
         currency: product.currency,
         status: "pending",
+        ...checkoutInput,
       });
 
       log("info", "pedido persistido", {

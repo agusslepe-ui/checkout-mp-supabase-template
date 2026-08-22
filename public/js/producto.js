@@ -55,16 +55,15 @@ function renderProduct(product) {
           <p>${product.material}</p>
         </div>
 
-        <div class="product-detail__purchase" data-checkout-scope>
+        <div class="product-detail__purchase" data-delivery-scope>
           <label class="product-card__size" for="product-size">
             Talle
-            <select id="product-size" data-size-select>
+            <select id="product-size" data-delivery-size>
               <option value="">Elegí un talle</option>
               ${sizeOptions}
             </select>
           </label>
-          <button class="product-card__buy" type="button" data-checkout-button disabled>Comprar</button>
-          <p class="product-card__status" data-checkout-status aria-live="polite"></p>
+          <button class="product-card__buy" type="button" data-delivery-button disabled>Continuar</button>
         </div>
 
         <details class="product-detail__details">
@@ -80,6 +79,31 @@ function renderProduct(product) {
     </article>`;
 
   detailRoot.addEventListener("click", handleGalleryClick);
+  initializeDeliveryNavigation(product);
+}
+
+function initializeDeliveryNavigation(product) {
+  const sizeSelect = detailRoot.querySelector("[data-delivery-size]");
+  const continueButton = detailRoot.querySelector("[data-delivery-button]");
+
+  sizeSelect.addEventListener("change", () => {
+    continueButton.disabled = !sizeSelect.value;
+  });
+
+  continueButton.addEventListener("click", () => {
+    const selectedVariant = product.variantes.find(
+      ({ sku }) => sku === sizeSelect.value
+    );
+
+    if (!selectedVariant) return;
+
+    const params = new URLSearchParams({
+      id: product.id,
+      sku: selectedVariant.sku,
+      quantity: "1",
+    });
+    window.location.assign(`entrega.html?${params.toString()}`);
+  });
 }
 
 function handleGalleryClick(event) {

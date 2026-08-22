@@ -1,5 +1,4 @@
 import { productos, crearTarjetaProducto } from "./productos.js";
-import { inicializarCheckout } from "./checkout.js";
 
 const page = document.body.dataset.page;
 const links = [{ key: "inicio", label: "Inicio", href: "index.html" }, { key: "catalogo", label: "Catálogo", href: "catalogo.html" }, { key: "contacto", label: "Contacto", href: "contacto.html" }];
@@ -21,6 +20,5 @@ menu?.addEventListener("click", (event) => { if (event.target.closest("a")) { me
 
 const featured = document.querySelector("[data-featured-products]");
 productos.filter(({ destacado }) => destacado).forEach((producto) => featured?.append(crearTarjetaProducto(producto)));
-inicializarCheckout();
 
 function createFragment(markup) { const template = document.createElement("template"); template.innerHTML = markup.trim(); return template.content; }

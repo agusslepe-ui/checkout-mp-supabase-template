@@ -101,6 +101,21 @@ function makePreferenceRequest(body = {}) {
 const validPreferenceBody = {
   sku: "LEM-REM-001-S",
   quantity: 1,
+  customer: {
+    firstName: "Ana María",
+    lastName: "O'Connor",
+    email: "ANA.CLIENTE@EXAMPLE.TEST",
+    phone: "+54 11 2345-6789",
+  },
+  delivery: {
+    province: "AR-B",
+    locality: "La Plata",
+    postalCode: "B1900ABC",
+    street: "Calle 12",
+    streetNumber: "345",
+    apartment: "",
+    notes: "Portón negro",
+  },
 };
 
 function createQueryBuilder(supabaseMock) {
@@ -501,7 +516,7 @@ describe("creación de preferencias", () => {
     const { routes, supabaseMock, preferenceCreate } = loadApp();
 
     await routes.post["/crear-preferencia"](
-      makePreferenceRequest({ sku: "LEM-REM-001-S", quantity: 1 }),
+      makePreferenceRequest(validPreferenceBody),
       createResponse()
     );
 
@@ -535,6 +550,7 @@ describe("creación de preferencias", () => {
 
     await routes.post["/crear-preferencia"](
       makePreferenceRequest({
+        ...validPreferenceBody,
         sku: "LEM-REM-001-M",
         quantity: 1,
         amount: 1,
@@ -568,7 +584,7 @@ describe("creación de preferencias", () => {
     const response = createResponse();
 
     await routes.post["/crear-preferencia"](
-      makePreferenceRequest({ sku, quantity: 1 }),
+      makePreferenceRequest({ ...validPreferenceBody, sku }),
       response
     );
 
@@ -582,6 +598,18 @@ describe("creación de preferencias", () => {
         amount: 1000,
         currency: "ARS",
         status: "pending",
+        customer_first_name: "Ana María",
+        customer_last_name: "O'Connor",
+        customer_email: "ana.cliente@example.test",
+        customer_phone: "541123456789",
+        shipping_country_code: "AR",
+        shipping_province: "AR-B",
+        shipping_locality: "La Plata",
+        shipping_postal_code: "B1900ABC",
+        shipping_street: "Calle 12",
+        shipping_street_number: "345",
+        shipping_apartment: null,
+        shipping_notes: "Portón negro",
       })
     );
     expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual({
@@ -603,6 +631,74 @@ describe("creación de preferencias", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ error: "Producto no encontrado" });
+    expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["customer ausente", { customer: undefined }],
+    ["email inválido", { customer: { ...validPreferenceBody.customer, email: "correo-invalido" } }],
+    ["teléfono inválido", { customer: { ...validPreferenceBody.customer, phone: "123" } }],
+    ["provincia inválida", { delivery: { ...validPreferenceBody.delivery, province: "XX" } }],
+    ["código postal inválido", { delivery: { ...validPreferenceBody.delivery, postalCode: "12" } }],
+  ])("rechaza %s antes de consultar dependencias", async (caseName, override) => {
+    const { routes, preferenceCreate, supabaseMock } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest({ ...validPreferenceBody, ...override }),
+      response
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({
+      error: "Revisá los datos del comprador y la entrega",
+    });
+    expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
+  test("no expone datos personales cuando rechaza los datos de checkout", async () => {
+    const privateValues = [
+      "NombrePrivado",
+      "ApellidoPrivado",
+      "privado@example.test",
+      "+54 11 9999-8888",
+      "LocalidadPrivada",
+      "Calle Privada",
+      "Referencia Privada",
+    ];
+    const { routes, preferenceCreate, supabaseMock } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest({
+        ...validPreferenceBody,
+        customer: {
+          firstName: privateValues[0],
+          lastName: privateValues[1],
+          email: privateValues[2],
+          phone: privateValues[3],
+        },
+        delivery: {
+          ...validPreferenceBody.delivery,
+          locality: privateValues[4],
+          street: privateValues[5],
+          notes: privateValues[6],
+          postalCode: "INVALIDO",
+        },
+      }),
+      response
+    );
+
+    const observableOutput = `${JSON.stringify(response.body)} ${serializedLogOutput(
+      logSpy,
+      warnSpy,
+      errorSpy
+    )}`;
+    for (const privateValue of privateValues) {
+      expect(observableOutput).not.toContain(privateValue);
+    }
     expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
   });

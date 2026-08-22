@@ -17,6 +17,18 @@ async function createPendingOrder({
   amount,
   currency,
   status,
+  customer_first_name,
+  customer_last_name,
+  customer_email,
+  customer_phone,
+  shipping_country_code,
+  shipping_province,
+  shipping_locality,
+  shipping_postal_code,
+  shipping_street,
+  shipping_street_number,
+  shipping_apartment,
+  shipping_notes,
 }) {
   const { data, error } = await supabase
     .from("orders")
@@ -29,6 +41,18 @@ async function createPendingOrder({
       amount,
       currency,
       status,
+      customer_first_name,
+      customer_last_name,
+      customer_email,
+      customer_phone,
+      shipping_country_code,
+      shipping_province,
+      shipping_locality,
+      shipping_postal_code,
+      shipping_street,
+      shipping_street_number,
+      shipping_apartment,
+      shipping_notes,
     })
     .select()
     .single();
