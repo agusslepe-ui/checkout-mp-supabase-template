@@ -139,12 +139,6 @@ function createQueryBuilder(supabaseMock) {
       this.payload = undefined;
     }
 
-    insert(payload) {
-      this.mode = "insert";
-      this.payload = payload;
-      return this;
-    }
-
     update(payload) {
       this.mode = "update";
       this.payload = payload;
@@ -152,21 +146,13 @@ function createQueryBuilder(supabaseMock) {
     }
 
     select() {
-      this.mode = this.mode === "update" ? "update-select" : this.mode === "insert" ? "insert-select" : "find";
+      this.mode = this.mode === "update" ? "update-select" : "find";
       return this;
     }
 
     eq(field, value) {
       this.filters.push([field, value]);
       return this;
-    }
-
-    single() {
-      if (this.mode !== "insert-select") {
-        throw new Error("Unexpected single() query in test double");
-      }
-
-      return supabaseMock.insertOrder(this.payload);
     }
 
     maybeSingle() {
@@ -259,7 +245,19 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl } = {}) 
   );
 
   const supabaseMock = {
-    insertOrder: jest.fn(supabase.insertOrder || (async () => ({ data: { id: 1 }, error: null }))),
+    createPendingOrderRpc: jest.fn(
+      supabase.createPendingOrderRpc ||
+        (async () => ({
+          data: {
+            order_id: 1,
+            external_reference: "LEMONT-ORDER-RPC-TEST",
+            amount: 1000,
+            currency: "ARS",
+            status: "pending",
+          },
+          error: null,
+        }))
+    ),
     findOrder: jest.fn(supabase.findOrder || (async () => ({ data: { status: "pending", amount: 100, currency: "ARS" }, error: null }))),
     updateOrder: jest.fn(supabase.updateOrder || (async () => ({ data: { status: "paid" }, error: null }))),
   };
@@ -279,6 +277,11 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl } = {}) 
   jest.doMock("@supabase/supabase-js", () => ({
     createClient: jest.fn(() => ({
       from: jest.fn(() => new QueryBuilder()),
+      rpc: jest.fn((functionName, parameters) => ({
+        single: jest.fn(() =>
+          supabaseMock.createPendingOrderRpc(functionName, parameters)
+        ),
+      })),
     })),
   }));
 
@@ -455,7 +458,7 @@ describe("creación de preferencias", () => {
     supabaseError.hint = "sensitive hint";
     const { routes, preferenceCreate } = loadApp({
       supabase: {
-        insertOrder: async () => ({ data: null, error: supabaseError }),
+        createPendingOrderRpc: async () => ({ data: null, error: supabaseError }),
       },
     });
     const response = createResponse();
@@ -499,7 +502,7 @@ describe("creación de preferencias", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ error: "Producto no encontrado" });
-    expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("100");
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
@@ -523,7 +526,7 @@ describe("creación de preferencias", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ error: "Cantidad inválida" });
-    expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("1000");
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
@@ -539,18 +542,20 @@ describe("creación de preferencias", () => {
       createResponse()
     );
 
-    const insertedOrder = supabaseMock.insertOrder.mock.calls[0][0];
-    expect(insertedOrder).toEqual(
-      expect.objectContaining({
-        product_name: "Remera LEMONT",
+    const [rpcName, rpcParameters] =
+      supabaseMock.createPendingOrderRpc.mock.calls[0];
+    expect(rpcName).toBe("create_pending_order_with_items");
+    expect(rpcParameters.p_expected_amount).toBe(1000);
+    expect(rpcParameters.p_currency).toBe("ARS");
+    expect(rpcParameters.p_items).toEqual([
+      {
         product_sku: "LEM-REM-001-S",
+        product_name: "Remera LEMONT",
         product_size: "S",
         quantity: 1,
-        amount: 1000,
-        currency: "ARS",
-        status: "pending",
-      })
-    );
+        unit_price: 1000,
+      },
+    ]);
     expect(preferenceCreate.mock.calls[0][0].body.items).toEqual([
       {
         title: "Remera LEMONT - Talle S",
@@ -575,15 +580,29 @@ describe("creación de preferencias", () => {
         amount: 1,
         currency: "USD",
         price: 1,
+        total: 1,
+        product_name: "Producto manipulado",
+        product_size: "XXL",
+        unit_price: 1,
+        status: "paid",
+        external_reference: "REFERENCIA-DEL-NAVEGADOR",
       }),
       createResponse()
     );
 
-    const insertedOrder = supabaseMock.insertOrder.mock.calls[0][0];
-    expect(insertedOrder.amount).toBe(1000);
-    expect(insertedOrder.currency).toBe("ARS");
-    expect(insertedOrder.product_sku).toBe("LEM-REM-001-M");
-    expect(insertedOrder.product_size).toBe("M");
+    const [, rpcParameters] = supabaseMock.createPendingOrderRpc.mock.calls[0];
+    expect(rpcParameters.p_expected_amount).toBe(1000);
+    expect(rpcParameters.p_currency).toBe("ARS");
+    expect(rpcParameters.p_items[0]).toEqual({
+      product_sku: "LEM-REM-001-M",
+      product_name: "Remera LEMONT",
+      product_size: "M",
+      quantity: 1,
+      unit_price: 1000,
+    });
+    expect(rpcParameters).not.toHaveProperty("p_external_reference");
+    expect(rpcParameters).not.toHaveProperty("p_status");
+    expect(rpcParameters).not.toHaveProperty("p_shipping_country_code");
     expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual(
       expect.objectContaining({
         quantity: 1,
@@ -608,29 +627,33 @@ describe("creación de preferencias", () => {
     );
 
     expect(response.statusCode).toBe(200);
-    expect(supabaseMock.insertOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        product_name: "Remera LEMONT",
-        product_sku: sku,
-        product_size: size,
-        quantity: 1,
-        amount: 1000,
-        currency: "ARS",
-        status: "pending",
-        customer_first_name: "Ana María",
-        customer_last_name: "O'Connor",
-        customer_email: "ana.cliente@example.test",
-        customer_phone: "541123456789",
-        shipping_country_code: "AR",
-        shipping_province: "AR-B",
-        shipping_locality: "La Plata",
-        shipping_postal_code: "B1900ABC",
-        shipping_street: "Calle 12",
-        shipping_street_number: "345",
-        shipping_apartment: null,
-        shipping_notes: "Portón negro",
-      })
-    );
+    const [rpcName, rpcParameters] =
+      supabaseMock.createPendingOrderRpc.mock.calls[0];
+    expect(rpcName).toBe("create_pending_order_with_items");
+    expect(rpcParameters).toEqual({
+      p_expected_amount: 1000,
+      p_currency: "ARS",
+      p_customer_first_name: "Ana María",
+      p_customer_last_name: "O'Connor",
+      p_customer_email: "ana.cliente@example.test",
+      p_customer_phone: "541123456789",
+      p_shipping_province: "AR-B",
+      p_shipping_locality: "La Plata",
+      p_shipping_postal_code: "B1900ABC",
+      p_shipping_street: "Calle 12",
+      p_shipping_street_number: "345",
+      p_shipping_apartment: null,
+      p_shipping_notes: "Portón negro",
+      p_items: [
+        {
+          product_sku: sku,
+          product_name: "Remera LEMONT",
+          product_size: size,
+          quantity: 1,
+          unit_price: 1000,
+        },
+      ],
+    });
     expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual({
       title: `Remera LEMONT - Talle ${size}`,
       quantity: 1,
@@ -650,7 +673,7 @@ describe("creación de preferencias", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ error: "Producto no encontrado" });
-    expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
   });
 
@@ -673,7 +696,7 @@ describe("creación de preferencias", () => {
     expect(response.body).toEqual({
       error: "Revisá los datos del comprador y la entrega",
     });
-    expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
   });
 
@@ -718,85 +741,81 @@ describe("creación de preferencias", () => {
     for (const privateValue of privateValues) {
       expect(observableOutput).not.toContain(privateValue);
     }
-    expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
   });
 
-  test("genera external_reference con prefijo trazable", async () => {
-    const randomUUIDSpy = jest
-      .spyOn(crypto, "randomUUID")
-      .mockReturnValue("11111111-1111-4111-8111-111111111111");
+  test("propaga a Mercado Pago la external_reference devuelta por la RPC", async () => {
+    const rpcExternalReference =
+      "LEMONT-ORDER-11111111-1111-4111-8111-111111111111";
     const { routes, supabaseMock, preferenceCreate } = loadApp();
 
+    supabaseMock.createPendingOrderRpc.mockResolvedValueOnce({
+      data: {
+        order_id: 81,
+        external_reference: rpcExternalReference,
+        amount: 1000,
+        currency: "ARS",
+        status: "pending",
+      },
+      error: null,
+    });
+
     await routes.post["/crear-preferencia"](
       makePreferenceRequest(validPreferenceBody),
       createResponse()
     );
 
-    const insertedOrder = supabaseMock.insertOrder.mock.calls[0][0];
-    expect(insertedOrder.external_reference).toBe(
-      "LEMONT-ORDER-11111111-1111-4111-8111-111111111111"
-    );
     expect(preferenceCreate.mock.calls[0][0].body.external_reference).toBe(
-      insertedOrder.external_reference
+      rpcExternalReference
     );
+    const [, rpcParameters] = supabaseMock.createPendingOrderRpc.mock.calls[0];
+    expect(rpcParameters).not.toHaveProperty("p_external_reference");
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
-      insertedOrder.external_reference
+      rpcExternalReference
     );
-    randomUUIDSpy.mockRestore();
   });
 
-  test("la referencia no depende solo de Date.now", async () => {
-    const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1700000000000);
-    const randomUUIDSpy = jest
-      .spyOn(crypto, "randomUUID")
-      .mockReturnValue("22222222-2222-4222-8222-222222222222");
-    const { routes, supabaseMock } = loadApp();
+  test("una respuesta RPC vacía impide crear la preferencia", async () => {
+    const { routes, preferenceCreate } = loadApp({
+      supabase: {
+        createPendingOrderRpc: async () => ({ data: null, error: null }),
+      },
+    });
+    const response = createResponse();
 
     await routes.post["/crear-preferencia"](
       makePreferenceRequest(validPreferenceBody),
-      createResponse()
+      response
     );
 
-    const insertedOrder = supabaseMock.insertOrder.mock.calls[0][0];
-    expect(insertedOrder.external_reference).toBe(
-      "LEMONT-ORDER-22222222-2222-4222-8222-222222222222"
-    );
-    expect(insertedOrder.external_reference).not.toBe("LEMONT-ORDER-1700000000000");
-    expect(dateNowSpy).not.toHaveBeenCalled();
-    randomUUIDSpy.mockRestore();
-    dateNowSpy.mockRestore();
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({ error: "No se pudo iniciar el pago" });
+    expect(preferenceCreate).not.toHaveBeenCalled();
   });
 
-  test("dos pedidos generados en el mismo instante no repiten external_reference", async () => {
-    const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1700000000000);
-    const randomUUIDSpy = jest
-      .spyOn(crypto, "randomUUID")
-      .mockReturnValueOnce("request-33333333-3333-4333-8333-333333333333")
-      .mockReturnValueOnce("33333333-3333-4333-8333-333333333333")
-      .mockReturnValueOnce("request-44444444-4444-4444-8444-444444444444")
-      .mockReturnValueOnce("44444444-4444-4444-8444-444444444444");
-    const { routes, supabaseMock } = loadApp();
+  test.each([
+    ["sin order_id", { external_reference: "LEMONT-ORDER-TEST", amount: 1000, currency: "ARS", status: "pending" }],
+    ["sin external_reference", { order_id: 1, amount: 1000, currency: "ARS", status: "pending" }],
+    ["con amount inesperado", { order_id: 1, external_reference: "LEMONT-ORDER-TEST", amount: 999, currency: "ARS", status: "pending" }],
+    ["con currency inesperada", { order_id: 1, external_reference: "LEMONT-ORDER-TEST", amount: 1000, currency: "USD", status: "pending" }],
+    ["con status inesperado", { order_id: 1, external_reference: "LEMONT-ORDER-TEST", amount: 1000, currency: "ARS", status: "paid" }],
+  ])("una respuesta RPC %s impide crear la preferencia", async (caseName, data) => {
+    const { routes, preferenceCreate } = loadApp({
+      supabase: {
+        createPendingOrderRpc: async () => ({ data, error: null }),
+      },
+    });
+    const response = createResponse();
 
     await routes.post["/crear-preferencia"](
       makePreferenceRequest(validPreferenceBody),
-      createResponse()
-    );
-    await routes.post["/crear-preferencia"](
-      makePreferenceRequest(validPreferenceBody),
-      createResponse()
+      response
     );
 
-    const references = supabaseMock.insertOrder.mock.calls.map(
-      ([payload]) => payload.external_reference
-    );
-    expect(references).toEqual([
-      "LEMONT-ORDER-33333333-3333-4333-8333-333333333333",
-      "LEMONT-ORDER-44444444-4444-4444-8444-444444444444",
-    ]);
-    expect(new Set(references).size).toBe(2);
-    randomUUIDSpy.mockRestore();
-    dateNowSpy.mockRestore();
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({ error: "No se pudo iniciar el pago" });
+    expect(preferenceCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -2039,7 +2058,7 @@ describe("webhook de pagos", () => {
     await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
 
     expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
-    expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
     expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

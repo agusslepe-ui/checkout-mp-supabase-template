@@ -9,56 +9,60 @@ function importesCoinciden(a, b) {
 }
 
 async function createPendingOrder({
-  external_reference,
-  product_name,
-  product_sku,
-  product_size,
-  quantity,
-  amount,
+  expectedAmount,
   currency,
-  status,
-  customer_first_name,
-  customer_last_name,
-  customer_email,
-  customer_phone,
-  shipping_country_code,
-  shipping_province,
-  shipping_locality,
-  shipping_postal_code,
-  shipping_street,
-  shipping_street_number,
-  shipping_apartment,
-  shipping_notes,
+  customer,
+  delivery,
+  items,
 }) {
   const { data, error } = await supabase
-    .from("orders")
-    .insert({
-      external_reference,
-      product_name,
-      product_sku,
-      product_size,
-      quantity,
-      amount,
-      currency,
-      status,
-      customer_first_name,
-      customer_last_name,
-      customer_email,
-      customer_phone,
-      shipping_country_code,
-      shipping_province,
-      shipping_locality,
-      shipping_postal_code,
-      shipping_street,
-      shipping_street_number,
-      shipping_apartment,
-      shipping_notes,
+    .rpc("create_pending_order_with_items", {
+      p_expected_amount: expectedAmount,
+      p_currency: currency,
+      p_customer_first_name: customer.firstName,
+      p_customer_last_name: customer.lastName,
+      p_customer_email: customer.email,
+      p_customer_phone: customer.phone,
+      p_shipping_province: delivery.province,
+      p_shipping_locality: delivery.locality,
+      p_shipping_postal_code: delivery.postalCode,
+      p_shipping_street: delivery.street,
+      p_shipping_street_number: delivery.streetNumber,
+      p_shipping_apartment: delivery.apartment,
+      p_shipping_notes: delivery.notes,
+      p_items: items,
     })
-    .select()
     .single();
 
   if (error) {
     throw error;
+  }
+
+  const requiredFields = [
+    "order_id",
+    "external_reference",
+    "amount",
+    "currency",
+    "status",
+  ];
+  const hasValidOrderId =
+    (typeof data?.order_id === "number" &&
+      Number.isSafeInteger(data.order_id) &&
+      data.order_id > 0) ||
+    (typeof data?.order_id === "string" && /^[1-9][0-9]*$/.test(data.order_id));
+
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !requiredFields.every((field) => Object.prototype.hasOwnProperty.call(data, field)) ||
+    !hasValidOrderId ||
+    typeof data.external_reference !== "string" ||
+    data.external_reference.trim() === "" ||
+    !Number.isFinite(Number(data.amount)) ||
+    typeof data.currency !== "string" ||
+    typeof data.status !== "string"
+  ) {
+    throw new Error("invalid pending order RPC response");
   }
 
   return data;

@@ -379,22 +379,49 @@ app.post("/crear-preferencia", async (req, res) => {
       unit_price: product.unitPrice,
       currency_id: product.currency,
     };
-    const externalReference = `LEMONT-ORDER-${crypto.randomUUID()}`;
+    const orderItems = [
+      {
+        product_sku: product.sku,
+        product_name: product.name,
+        product_size: product.size,
+        quantity,
+        unit_price: product.unitPrice,
+      },
+    ];
 
     log("info", "inicio de creacion de preferencia", logContext);
 
+    let createdOrder;
     try {
-      await createPendingOrder({
-        external_reference: externalReference,
-        product_name: product.name,
-        product_sku: product.sku,
-        product_size: product.size,
-        quantity,
-        amount: total,
+      createdOrder = await createPendingOrder({
+        expectedAmount: total,
         currency: product.currency,
-        status: "pending",
-        ...checkoutInput,
+        customer: {
+          firstName: checkoutInput.customer_first_name,
+          lastName: checkoutInput.customer_last_name,
+          email: checkoutInput.customer_email,
+          phone: checkoutInput.customer_phone,
+        },
+        delivery: {
+          province: checkoutInput.shipping_province,
+          locality: checkoutInput.shipping_locality,
+          postalCode: checkoutInput.shipping_postal_code,
+          street: checkoutInput.shipping_street,
+          streetNumber: checkoutInput.shipping_street_number,
+          apartment: checkoutInput.shipping_apartment,
+          notes: checkoutInput.shipping_notes,
+        },
+        items: orderItems,
       });
+
+      if (
+        Math.round(Number(createdOrder.amount) * 100) !==
+          Math.round(total * 100) ||
+        createdOrder.currency !== product.currency ||
+        createdOrder.status !== "pending"
+      ) {
+        throw new Error("incompatible pending order RPC response");
+      }
 
       log("info", "pedido persistido", {
         ...logContext,
@@ -409,7 +436,7 @@ app.post("/crear-preferencia", async (req, res) => {
 
     const result = await createPreference({
       items: [preferenceItem],
-      external_reference: externalReference,
+      external_reference: createdOrder.external_reference,
       notification_url: `${baseUrl}/webhook?source_news=webhooks`,
       back_urls: {
         success: `${baseUrl}/success`,
