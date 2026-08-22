@@ -1,28 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Remera LEMONT</title>
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body>
-    <main class="page">
-      <section class="product">
-        <div class="product-media">
-          <span>LEMONT</span>
-        </div>
-        <div class="product-info">
-          <p class="eyebrow">Producto de prueba</p>
-          <h1>Remera LEMONT</h1>
-          <p class="description">Remera basica para validar Checkout Pro.</p>
-          <p class="price">$100</p>
-          <button id="pay-button" type="button">Pagar con Mercado Pago</button>
-          <p id="status-message" class="status" aria-live="polite"></p>
-        </div>
-      </section>
-    </main>
-
-    <script src="/app.js"></script>
-  </body>
-</html>
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="LEMONT — prendas esenciales, diseño honesto y producción consciente.">
+  <title>LEMONT — Esenciales contemporáneos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/reset.css"><link rel="stylesheet" href="css/styles.css"><link rel="stylesheet" href="css/components.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body data-page="inicio">
+  <div data-site-header></div>
+  <main>
+    <section class="hero" aria-labelledby="hero-title"><div class="hero__content shell">
+      <p class="eyebrow eyebrow--light">Nueva colección · 2026</p><h1 id="hero-title">LEMONT</h1>
+      <p>Génesis. El inicio de algo eterno.</p><a class="button button--accent" href="catalogo.html">Ver colección</a>
+    </div></section>
+    <section class="intro section section--light" aria-labelledby="intro-title"><div class="shell intro__grid">
+      <p class="eyebrow">Esencia Lemont</p><div><h2 id="intro-title">Diseño honesto para el día a día.</h2>
+      <p>Prendas que nacen para acompañarte. Formas simples, materiales nobles y una identidad que no necesita explicaciones.</p></div>
+    </div></section>
+    <section class="section section--dark" aria-labelledby="featured-title"><div class="shell">
+      <div class="section-heading"><div><p class="eyebrow eyebrow--accent">Selección</p><h2 id="featured-title">Piezas esenciales</h2></div>
+      <a class="text-link" href="catalogo.html">Ver catálogo <span aria-hidden="true">↗</span></a></div>
+      <div class="product-grid product-grid--featured" data-featured-products></div>
+    </div></section>
+    <div data-values-strip></div>
+    <section class="section section--dark editorial" aria-labelledby="editorial-title"><div class="shell editorial__grid">
+      <div class="editorial__image image-frame"><img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAE7LrptSi5VYl3Bf_N7kTuYrnzeLDHuhUkPT_Y1vnzTs5a8t5qfhyZIaY1r5xIOZeWHNA7KBGRh7Gh0ubekgaElfTPbjUtimpl9b4rsGQ9C5TSNRbDPJuzkPe32gss4GzuPw-f3PYcSpeppmeps9PpklTAu-T19o4gWX7PPPn9DhczfNvvCHy_HeFmITGLSHjfd-YZZ_ufjmwlbbjCowLG8xrSHz8TiIlnl6L8ETuHHQ7QPFKP5mabtkvlh-ZjQqKQaxE" alt="Rollos de tela en tonos neutros" loading="lazy"></div>
+      <div class="editorial__copy"><p class="eyebrow eyebrow--accent">Nuestra forma de hacer</p><h2 id="editorial-title">No es ropa.<br>Es identidad.</h2>
+      <p>Elegimos menos elementos y les damos más intención. Cada textura, cada proporción y cada terminación forma parte de un lenguaje propio.</p>
+      <a class="text-link" href="contacto.html">Conocé LEMONT <span aria-hidden="true">↗</span></a></div>
+    </div></section>
+  </main><div data-site-footer></div>
+</body></html>

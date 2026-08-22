@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+
+<html lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<style>
+@layer base {
+  html, body { margin: 0; padding: 0; }
+  body { overscroll-behavior: none; }
+  main > :first-child { margin-top: 0 !important; }
+  main > :last-child { margin-bottom: 0 !important; }
+}
+::-webkit-scrollbar { display: none; }
+</style>
+<script src="https://cdn.tailwindcss.com"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "on-error-container": "#93000a",
+                "surface-container": "#eeeeee",
+                "on-surface-variant": "#444748",
+                "tertiary-container": "#ffffff",
+                "on-secondary-container": "#646464",
+                "surface-container-lowest": "#ffffff",
+                "on-tertiary-fixed": "#1a1c1c",
+                "secondary-container": "#e2e2e2",
+                "on-secondary-fixed-variant": "#474747",
+                "on-tertiary": "#ffffff",
+                "on-error": "#ffffff",
+                "tertiary-fixed": "#e2e2e2",
+                "on-tertiary-container": "#747676",
+                "inverse-on-surface": "#f1f1f1",
+                "surface-dim": "#dadada",
+                "surface-container-highest": "#e2e2e2",
+                "secondary-fixed-dim": "#c6c6c6",
+                "primary-fixed": "#e2e2e2",
+                "tertiary": "#5d5f5f",
+                "outline-variant": "#c4c7c8",
+                "error": "#ba1a1a",
+                "secondary-fixed": "#e2e2e2",
+                "surface-variant": "#e2e2e2",
+                "surface-bright": "#f9f9f9",
+                "secondary": "#5e5e5e",
+                "on-primary-fixed-variant": "#454747",
+                "surface": "#f9f9f9",
+                "on-secondary": "#ffffff",
+                "surface-container-high": "#e8e8e8",
+                "on-tertiary-fixed-variant": "#454747",
+                "inverse-primary": "#c6c6c7",
+                "background": "#f9f9f9",
+                "primary": "#5d5f5f",
+                "primary-fixed-dim": "#c6c6c7",
+                "surface-container-low": "#f3f3f3",
+                "primary-container": "#ffffff",
+                "outline": "#747878",
+                "tertiary-fixed-dim": "#c6c6c7",
+                "on-surface": "#1a1c1c",
+                "on-primary": "#ffffff",
+                "on-background": "#1a1c1c",
+                "inverse-surface": "#2f3131",
+                "surface-tint": "#5d5f5f",
+                "error-container": "#ffdad6",
+                "on-primary-fixed": "#1a1c1c",
+                "on-primary-container": "#747676",
+                "on-secondary-fixed": "#1b1b1b"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "full": "0.75rem"
+        },
+        "spacing": {
+                "section-gap": "120px",
+                "gutter": "24px",
+                "unit": "4px",
+                "margin-desktop": "64px",
+                "margin-mobile": "16px"
+        },
+        "fontFamily": {
+                "label-caps": [
+                        "Inter"
+                ],
+                "headline-lg-mobile": [
+                        "Hanken Grotesk"
+                ],
+                "headline-lg": [
+                        "Hanken Grotesk"
+                ],
+                "display-lg": [
+                        "Hanken Grotesk"
+                ],
+                "body-md": [
+                        "Inter"
+                ],
+                "body-lg": [
+                        "Inter"
+                ]
+        },
+        "fontSize": {
+                "label-caps": [
+                        "12px",
+                        {
+                                "lineHeight": "1",
+                                "letterSpacing": "0.1em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "headline-lg-mobile": [
+                        "24px",
+                        {
+                                "lineHeight": "1.2",
+                                "letterSpacing": "0.02em",
+                                "fontWeight": "500"
+                        }
+                ],
+                "headline-lg": [
+                        "32px",
+                        {
+                                "lineHeight": "1.2",
+                                "letterSpacing": "0.02em",
+                                "fontWeight": "500"
+                        }
+                ],
+                "display-lg": [
+                        "64px",
+                        {
+                                "lineHeight": "1.1",
+                                "letterSpacing": "0.02em",
+                                "fontWeight": "600"
+                        }
+                ],
+                "body-md": [
+                        "16px",
+                        {
+                                "lineHeight": "1.5",
+                                "letterSpacing": "0.01em",
+                                "fontWeight": "400"
+                        }
+                ],
+                "body-lg": [
+                        "18px",
+                        {
+                                "lineHeight": "1.6",
+                                "letterSpacing": "0.01em",
+                                "fontWeight": "400"
+                        }
+                ]
+        }
+},
+    },
+  }
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@100..900&amp;family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+</head>
+<body class="bg-black font-body-md text-white">
+<header class="fixed top-0 w-full z-50 bg-black/90 backdrop-blur-md shadow-[0_1px_0_0_rgba(255,255,255,0.05)]">
+<div class="h-20 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between">
+<div class="flex items-center gap-4">
+<img alt="Logo LEMONT" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBvpoovaHpmbwKZUEIOw4umAfQLHaHBipAl6gZh1MQCzo9ij-EPjbzj3Nh9GVfNTFRWgkJZhErBMDAFvTeFglYw_gDLdytpsL8qOYEVwvGQhz5ZYgkE0npmhYP5DtIjCxZqU3m-4Nu8Isr2l8s4_QbRlRv9WBxj3Ra_hZAdkoqxdogmGaii1ZbsAQPZA8lzbqTjcgxTavYA0p-BijAwrIGrNOBPzVLpEBWnfPra7eCoPsaLePp14L7aVdIXG16j2LRCTY8"/>
+<span class="font-headline-lg text-headline-lg tracking-tight text-white"><br/></span>
+</div>
+<nav class="hidden md:flex items-center gap-12" data-active-classes="text-white font-bold">
+<a class="font-label-caps text-label-caps text-white/70 hover:text-white uppercase transition-colors" data-path="home" href="#">HOME</a>
+<a class="font-label-caps text-label-caps text-white/70 hover:text-white uppercase transition-colors" data-path="catalogo" href="#">CATÁLOGO</a>
+<a aria-current="page" class="uppercase transition-colors text-white font-bold" data-path="contacto" href="#">CONTACTO</a>
+</nav>
+<div class="flex items-center gap-6">
+<div class="w-8 h-8 rounded-full bg-[#F88379] flex items-center justify-center">
+<span class="material-symbols-outlined text-black text-[18px]">person</span>
+</div>
+<button class="md:hidden flex items-center"><span class="material-symbols-outlined text-white">menu</span></button>
+</div>
+</div>
+</header>
+<main class="w-full pt-20 bg-black">
+<div class="flex flex-col w-full">
+<section class="w-full px-margin-mobile lg:px-margin-desktop py-section-gap flex flex-col items-center">
+<div class="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-gutter md:gap-16 lg:gap-32">
+<!-- Contact Information Side -->
+<div class="flex flex-col space-y-12 order-2 md:order-1 pt-12 md:pt-0">
+<div class="space-y-6">
+<h1 class="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-white tracking-widest uppercase">
+            CONTACTO
+          </h1>
+<p class="font-body-lg text-body-lg text-white/70 max-w-sm">
+            ¿Tenés alguna consulta? Estamos para ayudarte. Escribinos y nos pondremos en contacto a la brevedad.
+          </p>
+</div>
+<div class="flex flex-col space-y-8">
+<!-- WhatsApp -->
+<a class="group flex flex-col space-y-2 cursor-pointer" href="#">
+<span class="font-label-caps text-label-caps text-[#F88379] group-hover:text-white transition-colors duration-300 flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">chat_bubble</span>
+              WHATSAPP
+            </span>
+<span class="font-body-md text-body-md text-white group-hover:opacity-70 transition-opacity duration-300">
+              +54 11 1234 5678
+            </span>
+</a>
+<!-- Email -->
+<a class="group flex flex-col space-y-2 cursor-pointer" href="mailto:hola@lemont.com">
+<span class="font-label-caps text-label-caps text-[#F88379] group-hover:text-white transition-colors duration-300 flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">mail</span>
+              EMAIL
+            </span>
+<span class="font-body-md text-body-md text-white group-hover:opacity-70 transition-opacity duration-300">
+              hola@lemont.com
+            </span>
+</a>
+<!-- Instagram -->
+<a class="group flex flex-col space-y-2 cursor-pointer" href="#">
+<span class="font-label-caps text-label-caps text-[#F88379] group-hover:text-white transition-colors duration-300 flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">photo_camera</span>
+              INSTAGRAM
+            </span>
+<span class="font-body-md text-body-md text-white group-hover:opacity-70 transition-opacity duration-300">
+              @lemont.home
+            </span>
+</a>
+</div>
+</div>
+<!-- Form Side -->
+<div class="flex flex-col order-1 md:order-2 bg-[#111] p-8 md:p-12 relative overflow-hidden">
+<form class="flex flex-col space-y-8 relative z-10 w-full" id="contactForm">
+<div class="relative w-full group">
+<input class="block w-full px-0 py-3 font-body-md text-body-md text-white bg-transparent border-0 border-b border-white/20 focus:ring-0 focus:border-[#F88379] transition-colors duration-300 peer placeholder-transparent" id="name" placeholder="Nombre" required="" type="text"/>
+<label class="absolute left-0 top-3 font-label-caps text-label-caps text-white/50 transition-all duration-300 peer-placeholder-shown:top-3 peer-placeholder-shown:text-body-md peer-placeholder-shown:font-body-md peer-focus:-top-4 peer-focus:text-label-caps peer-focus:font-label-caps peer-focus:text-[#F88379] -translate-y-4 peer-placeholder-shown:translate-y-0 peer-focus:-translate-y-4" for="name">
+              NOMBRE COMPLETO
+            </label>
+</div>
+<div class="relative w-full group">
+<input class="block w-full px-0 py-3 font-body-md text-body-md text-white bg-transparent border-0 border-b border-white/20 focus:ring-0 focus:border-[#F88379] transition-colors duration-300 peer placeholder-transparent" id="email" placeholder="Email" required="" type="email"/>
+<label class="absolute left-0 top-3 font-label-caps text-label-caps text-white/50 transition-all duration-300 peer-placeholder-shown:top-3 peer-placeholder-shown:text-body-md peer-placeholder-shown:font-body-md peer-focus:-top-4 peer-focus:text-label-caps peer-focus:font-label-caps peer-focus:text-[#F88379] -translate-y-4 peer-placeholder-shown:translate-y-0 peer-focus:-translate-y-4" for="email">
+              CORREO ELECTRÓNICO
+            </label>
+</div>
+<div class="relative w-full group mt-12">
+<textarea class="block w-full px-0 py-3 font-body-md text-body-md text-white bg-transparent border-0 border-b border-white/20 focus:ring-0 focus:border-[#F88379] transition-colors duration-300 peer placeholder-transparent resize-none" id="message" placeholder="Mensaje" required="" rows="4"></textarea>
+<label class="absolute left-0 top-3 font-label-caps text-label-caps text-white/50 transition-all duration-300 peer-placeholder-shown:top-3 peer-placeholder-shown:text-body-md peer-placeholder-shown:font-body-md peer-focus:-top-4 peer-focus:text-label-caps peer-focus:font-label-caps peer-focus:text-[#F88379] -translate-y-4 peer-placeholder-shown:translate-y-0 peer-focus:-translate-y-4" for="message">
+              TU MENSAJE
+            </label>
+</div>
+<div class="pt-8">
+<button class="w-full md:w-auto px-12 py-4 bg-[#F88379] text-black font-label-caps text-label-caps uppercase tracking-widest hover:bg-white transition-colors duration-300 flex justify-center items-center gap-2 group/btn" type="submit">
+              ENVIAR MENSAJE
+              <span class="material-symbols-outlined text-[16px] group-hover/btn:translate-x-1 transition-transform duration-300">arrow_forward</span>
+</button>
+</div>
+<!-- Success Message Toast (Hidden by default) -->
+<div class="hidden absolute inset-0 bg-[#111] flex-col items-center justify-center text-center z-20 space-y-4 opacity-0 transition-opacity duration-500" id="successMsg">
+<div class="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-[24px] text-[#F88379]">check</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg-mobile text-white">MENSAJE ENVIADO</h3>
+<p class="font-body-md text-body-md text-white/70">Gracias por escribirnos. Te responderemos pronto.</p>
+<button class="mt-8 font-label-caps text-label-caps border-b border-white/50 pb-1 hover:text-white hover:border-white transition-colors" id="resetBtn" type="button">
+              ENVIAR OTRO MENSAJE
+            </button>
+</div>
+</form>
+</div>
+</div>
+</section>
+<!-- Editorial Image Break -->
+<section class="w-full px-margin-mobile lg:px-margin-desktop pb-section-gap">
+<div class="w-full h-96 md:h-[500px] overflow-hidden relative group rounded-2xl">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out" data-alt="A professional working on orders at a desk, representing the office and professional aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC6TXo9LvZbgnfafbHHG3qwf2uyKtaYC9yV9VVckwIkLexv_Xd-qrp4csEA5l361aP8wp2Nmbe8K_3Dhh0GOgdbX8HgUM1RRx843rkyMkoymxH5VtwmepOF5OnRtkqKks_c2EdziJlGfqpoWCJUtgCaac-hD2oaq4a2kWEWHrk6-NvsUvO3l39bkNNu4SWYjRyljreXn9mBSpl5js2safc3I6g4vobSzM6FX1DaNe-OdOg5tQsbbNH_tHcfiA2YZUtQRmo"/>
+<div class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
+<div class="absolute inset-0 flex items-center justify-center p-8">
+<div class="bg-[#111] px-8 py-6 text-center max-w-sm flex flex-col items-center space-y-2">
+<span class="font-label-caps text-label-caps text-[#F88379] tracking-widest uppercase">VISITANOS</span>
+<span class="font-body-md text-body-md text-white">Atención personalizada con cita previa.</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Brand Icons Banner -->
+<section class="w-full bg-[#F88379] py-8">
+<div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop">
+<div class="grid grid-cols-2 md:grid-cols-5 gap-8 items-center">
+<!-- Item 1 -->
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-black text-2xl">public</span>
+<div class="flex flex-col">
+<span class="font-label-caps text-[10px] leading-tight text-black uppercase font-bold">Mentalidad Global</span>
+<span class="font-label-caps text-[10px] leading-tight text-black/70 uppercase">Sin Fronteras.</span>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-black text-2xl">auto_awesome</span>
+<div class="flex flex-col">
+<span class="font-label-caps text-[10px] leading-tight text-black uppercase font-bold">Calidad Sobre</span>
+<span class="font-label-caps text-[10px] leading-tight text-black/70 uppercase">Todo.</span>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-black text-2xl">track_changes</span>
+<div class="flex flex-col">
+<span class="font-label-caps text-[10px] leading-tight text-black uppercase font-bold">Enfocados En</span>
+<span class="font-label-caps text-[10px] leading-tight text-black/70 uppercase">Lo Que Importa.</span>
+</div>
+</div>
+<!-- Item 4 -->
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-black text-2xl">waves</span>
+<div class="flex flex-col">
+<span class="font-label-caps text-[10px] leading-tight text-black uppercase font-bold">Fluye, Pero No</span>
+<span class="font-label-caps text-[10px] leading-tight text-black/70 uppercase">Seguimos Corrientes.</span>
+</div>
+</div>
+<!-- Item 5 -->
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-black text-2xl">barcode</span>
+<div class="flex flex-col">
+<span class="font-label-caps text-[10px] leading-tight text-black uppercase font-bold">Lemont © 2024</span>
+<span class="font-label-caps text-[10px] leading-tight text-black/70 uppercase">Todos Los Derechos.</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('contactForm');
+      const successMsg = document.getElementById('successMsg');
+      const resetBtn = document.getElementById('resetBtn');
+
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        // Simulate sending
+        const btn = form.querySelector('button[type="submit"]');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="material-symbols-outlined animate-spin">refresh</span> ENVIANDO...';
+        btn.disabled = true;
+
+        setTimeout(() => {
+          successMsg.classList.remove('hidden');
+          // Trigger reflow
+          void successMsg.offsetWidth;
+          successMsg.classList.remove('opacity-0');
+          successMsg.classList.add('opacity-100');
+          
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }, 1200);
+      });
+
+      resetBtn.addEventListener('click', () => {
+        successMsg.classList.remove('opacity-100');
+        successMsg.classList.add('opacity-0');
+        setTimeout(() => {
+          successMsg.classList.add('hidden');
+          form.reset();
+        }, 500);
+      });
+    });
+  </script>
+</div>
+</main>
+<footer class="w-full bg-surface-bright py-section-gap">
+<div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col items-center gap-10">
+<div class="text-center space-y-4">
+<span class="font-headline-lg text-headline-lg uppercase block tracking-widest text-on-surface">LEMONT</span>
+<p class="font-body-md text-on-surface/70 max-w-md">Calidad sobre todo. Enfocados en lo que importa.</p>
+</div>
+<div class="flex gap-8">
+<a class="font-label-caps text-label-caps text-on-surface/70 hover:text-on-surface flex items-center gap-2 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px]">photo_camera</span> INSTAGRAM
+</a>
+<a class="font-label-caps text-label-caps text-on-surface/70 hover:text-on-surface flex items-center gap-2 transition-colors" href="#">
+<span class="material-symbols-outlined text-[16px]">chat_bubble</span> WHATSAPP
+</a>
+</div>
+<div class="w-full max-w-[120px] h-px bg-on-surface/10"></div>
+<div class="font-label-caps text-label-caps text-on-surface/50 tracking-widest uppercase">© 2024 LEMONT. TODOS LOS DERECHOS RESERVADOS.</div>
+</div>
+</footer>
+</body></html>
