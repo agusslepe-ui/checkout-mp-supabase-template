@@ -37,7 +37,17 @@ Los datos de cliente y domicilio se usan para preparar el pedido y su futura ent
 
 Los errores de validación son genéricos. Una entrada inválida se rechaza antes de consultar Supabase o Mercado Pago. La navegación Producto → Entrega transporta solo `product id`, `sku` y `quantity`. Los pedidos históricos permanecen sin datos inventados porque las columnas de la migración 003 son nullable.
 
-La suite actual pasa con **61/61 tests**, incluida una regresión que verifica ausencia de PII en logs y respuestas inválidas. Esta protección debe coexistir con las regresiones de HMAC, webhook, atomicidad e idempotencia.
+Al cierre de Etapa 5 la suite pasaba **61/61 tests**, incluida una regresión de ausencia de PII. El estado vigente tras Etapa 6A es 75/75.
+
+## Seguridad de cotización MiCorreo — Etapa 6A
+
+- `MICORREO_USER`, `MICORREO_PASSWORD`, JWT y Basic Auth son secretos de backend; nunca se persisten, registran ni envían al navegador.
+- Tampoco se registran `customerId`, códigos postales, domicilio, PII, request completo o respuesta completa de Correo Argentino.
+- `.env.example` contiene únicamente nombres vacíos. Las credenciales QA solicitadas todavía no fueron recibidas y no existen valores reales en el repositorio.
+- Los errores públicos son genéricos y las categorías internas no incluyen datos externos sensibles.
+- La suite actual pasa 75/75 e incluye regresiones de ausencia de secretos/PII. El mecanismo de solicitud JWT compartida está implementado; no existe todavía una prueba aislada de concurrencia simultánea.
+- La integración de red real contra QA sigue pendiente. No confundir tests con mocks con validación del contrato externo.
+- Las medidas 300 g / 5 × 25 × 35 cm son temporales de QA y deben reemplazarse antes de producción.
 
 ## Riesgos detectados
 

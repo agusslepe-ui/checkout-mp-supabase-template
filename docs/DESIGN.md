@@ -105,9 +105,23 @@ La tabla `orders` usa `external_reference` como clave de correlación única. El
 
 El frontend no controla precio, moneda, total, nombre, talle separado, estado, `external_reference` ni identificadores de Mercado Pago. No existe PII en la URL. La prueba manual hasta Supabase/pending está verificada; la prueba real posterior a Etapa 5 hasta `paid` está pendiente.
 
-## Preparación logística
+## Cotización logística local — Etapa 6A
 
-La Etapa 5 solo prepara país, provincia, localidad, código postal, calle, número, unidad y referencia. No hay cotización automática, costo, Correo Argentino, Andreani, OCA, tracking, sucursal ni estados logísticos. Peso y dimensiones no están definidos. Una futura etapa separada deberá elegir proveedor/API, origen, credenciales, entorno, modalidades y cómo incorporar el envío al total autoritativo.
+La Etapa 5 prepara el destino y la Etapa 6A agrega cotización informativa mediante MiCorreo:
+
+```text
+Entrega → POST /cotizar-envio → shipping.js → micorreo.js → /token → /rates → opciones normalizadas
+```
+
+El request del navegador contiene solo `sku`, `quantity` y `postalCodeDestination`. `src/catalog.js` aporta medidas; configuración aporta `customerId` y CP de origen. `micorreo.js` mantiene JWT únicamente en memoria, comparte una obtención en curso, aplica expiración/timeout y renueva una sola vez ante 401.
+
+La respuesta pública expone `type`, `label` y `price`. Domicilio es informativo y sucursal aclara que su selección está pendiente. No existen `/agencies`, `/shipping/import`, tracking, etiquetas, creación de envío ni estados logísticos. La tarifa no se persiste ni forma parte del total.
+
+Las medidas 300 g / 5 × 25 × 35 cm son temporales de QA y deben reemplazarse por datos reales. La integración no fue validada contra MiCorreo QA porque las credenciales solicitadas todavía no fueron recibidas.
+
+## Evolución futura posible del modelo
+
+Puede estudiarse separar información general en `orders` y productos/variantes en `order_items` para soportar múltiples ítems. Es una propuesta pendiente: no existe tabla, migración ni implementación.
 
 ## Variantes y limitaciones comerciales actuales
 
@@ -179,4 +193,4 @@ Principios de diseño e implementación:
 
 Home, Catálogo y Contacto están implementados en HTML/CSS/JavaScript vanilla. El catálogo y los filtros se generan con JavaScript, la Remera LEMONT permite seleccionar talle e iniciar el checkout real y las demás tarjetas permanecen en `Próximamente`. Las imágenes externas provenientes de Stitch son temporales y deben sustituirse por assets propios optimizados en `public/assets/images/`.
 
-La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado. La próxima etapa sugerida es cotización de envío y todavía no está implementada.
+La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado. Etapa 6A requiere validación QA; mientras se esperan accesos puede planificarse, sin implementar, el modelo `orders`/`order_items`.

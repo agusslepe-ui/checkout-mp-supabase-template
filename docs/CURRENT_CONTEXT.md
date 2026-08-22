@@ -1,12 +1,24 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-08-22 (Etapa 5 cerrada: cliente y entrega persistidos; validación productiva posterior a Etapa 5 pendiente).
+> Resumen compacto para agentes. Última actualización: 2026-08-22 (Etapa 6A implementada y testeada localmente; validación contra MiCorreo QA pendiente).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
 ---
 
-## Estado de la fase actual: ETAPA 5 VALIDADA LOCALMENTE — CLIENTE Y ENTREGA
+## Estado de la fase actual: ETAPA 6A LOCAL — COTIZACIÓN INFORMATIVA MICORREO
+
+La Etapa 6A implementa `Entrega → Calcular envío → POST /cotizar-envio → validación backend → shipping.js → micorreo.js → JWT → POST /rates → normalización → opciones informativas`. El frontend envía únicamente `sku`, `quantity` y `postalCodeDestination`. El backend aporta autoritativamente `customerId`, CP de origen, peso y dimensiones; el navegador no controla precios de envío, `productType` ni total.
+
+Se agregaron `src/micorreo.js`, `src/shipping.js` y `public/js/envio.js`. `.env.example` declara sin valores `MICORREO_BASE_URL`, `MICORREO_USER`, `MICORREO_PASSWORD`, `MICORREO_CUSTOMER_ID` y `SHIPPING_ORIGIN_POSTAL_CODE`. No hay credenciales MiCorreo reales en el repositorio.
+
+El JWT se obtiene con Basic Auth, se conserva solo en memoria, se reutiliza con margen de expiración, comparte la solicitud en curso, se renueva una sola vez ante 401 y usa timeout. Ningún token, credencial, `customerId`, CP, domicilio, PII, request completo ni respuesta completa se registra en logs.
+
+Las medidas `300 g × 5 × 25 × 35 cm` están marcadas como **TEMPORALES / QA** y no representan el paquete real. Deben sustituirse antes de producción. La cotización no cambia `orders.amount`, Mercado Pago, Supabase, webhook, HMAC, DEC-019, T-015 ni `pending → paid`.
+
+Estado: **IMPLEMENTADA Y TESTEADA LOCALMENTE; PENDIENTE DE VALIDACIÓN CONTRA MICORREO QA**. La suite pasa **75/75 tests**, 1 suite y 0 fallos. No hubo llamadas reales a Correo Argentino. Ya se solicitó acceso y se esperan usuario, contraseña, `customerId` y cualquier requisito adicional de QA.
+
+### Antecedente: Etapa 5
 
 La Etapa 5 incorpora los datos del cliente y del domicilio antes de iniciar Mercado Pago. El flujo implementado es `Producto → selección de talle → Continuar → entrega.html → datos del cliente y domicilio → validación → POST /crear-preferencia → pedido pending → Checkout Pro → webhook → paid`.
 
@@ -14,7 +26,7 @@ La Etapa 5 incorpora los datos del cliente y del domicilio antes de iniciar Merc
 
 La migración `supabase/migrations/003_add_order_customer_delivery.sql` fue aplicada correctamente. Sus doce columnas de cliente y destino son nullable, los pedidos históricos no fueron alterados y los pedidos nuevos guardan producto, SKU, talle, cliente, domicilio, `shipping_country_code = AR` y estado `pending`. Se verificó manualmente `Producto → Entrega → Supabase` y la creación del pedido `pending`. La prueba productiva específica posterior a Etapa 5 —datos nuevos → pago real → webhook → `paid`— permanece pendiente.
 
-La suite actual pasa con **61/61 tests**, 1 suite y 0 fallos. Los tests nuevos de validación y persistencia coexisten con las regresiones de SKUs, variantes, precio, moneda, `pending`, HMAC, webhook, idempotencia, atomicidad, importes y concurrencia.
+Al cierre de Etapa 5 la suite pasaba **61/61 tests**, 1 suite y 0 fallos. Esa cifra queda como antecedente; el total vigente es 75/75.
 
 ### Antecedente: Etapa 3
 
@@ -61,7 +73,7 @@ Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supab
 
 | Tarea | Descripción |
 |---|---|
-| T-005 | Suite Jest; la suite actual pasa con 61 tests. Cubre flujos críticos, variantes y datos de cliente/entrega sin llamadas externas. |
+| T-005 | Suite Jest; la suite actual pasa con 75 tests. Cubre flujos críticos, variantes, cliente/entrega y cotización simulada sin llamadas externas. |
 | T-006 | `supabase/migrations/001_create_orders.sql` con DDL, restricciones, índices y RLS. Aplicada y verificada en Supabase el 2026-06-25. (DEC-012) |
 | T-007 | Comparación de importes normalizada a centavos (`Math.round`), validación de moneda contra `order.currency`, logs genéricos. (DEC-011) |
 | T-008 | Identificadores de pedido con `LEMONT-ORDER-${crypto.randomUUID()}` para unicidad bajo concurrencia. |
@@ -118,8 +130,8 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Migraciones SQL**: `001_create_orders.sql` aplicada y verificada; `002_add_order_product_variant.sql` aplicada y verificada con columnas nullable para SKU y talle.
 - **Datos de entrega**: `003_add_order_customer_delivery.sql` aplicada y verificada; agrega doce columnas nullable sin completar pedidos históricos.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
-- **Tests**: Jest. La suite actual pasa con **61 tests**, 1 suite y 0 fallos. Sin llamadas externas ni acceso a `.env`.
-- **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó únicamente dependencias transitivas compatibles. Estado verificado: **0 vulnerabilidades conocidas**; la suite actual pasa 61/61.
+- **Tests**: Jest. La suite actual pasa con **75 tests**, 1 suite y 0 fallos. Las integraciones externas están simuladas y no acceden a `.env`.
+- **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó únicamente dependencias transitivas compatibles. Estado verificado: **0 vulnerabilidades conocidas**; la suite actual pasa 75/75.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
 - **Deploy**: versión endurecida activa en EasyPanel desde el repositorio `checkout-mp-supabase-template`, rama `main`, dominio `checkout.lemont01.com`. El 2026-08-22 se verificó nuevamente `pending → paid` con Checkout Pro productivo y transferencia real de ARS 100. La captura sensible está retirada. La rotación final de credenciales sigue pendiente antes del lanzamiento público.
 
@@ -157,7 +169,9 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso
 
-La próxima etapa sugerida es **cotización de envío**, como bloque separado y todavía no implementado. Antes de programarla hay que decidir operador, API, credenciales, entorno de pruebas, origen, peso y dimensiones reales, cotización, domicilio/sucursal y composición autoritativa del total. No deben inventarse peso ni dimensiones.
+Mientras se esperan credenciales MiCorreo QA, la próxima etapa posible es estudiar la evolución `orders → order_items` para soportar múltiples productos o variantes por pedido. No está implementada ni autorizada todavía.
+
+Para validar Etapa 6A resta configurar localmente las cinco variables MiCorreo —con base QA `https://apitest.correoargentino.com.ar/micorreo/v1`— y verificar `CP destino → /cotizar-envio → /token → /rates → tarifa QA en LEMONT`. No registrar valores en documentación.
 
 También permanecen posibles, ninguno marcado como completado:
 

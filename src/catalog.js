@@ -1,3 +1,11 @@
+// TEMPORAL / QA: reemplazar por peso y dimensiones reales antes de producción.
+const REMERA_LEMONT_QA_SHIPPING = {
+  weightGrams: 300,
+  heightCm: 5,
+  widthCm: 25,
+  lengthCm: 35,
+};
+
 const CATALOG = {
   "LEM-REM-001-S": {
     sku: "LEM-REM-001-S",
@@ -8,6 +16,7 @@ const CATALOG = {
     unitPrice: 1000,
     currency: "ARS",
     maxQuantity: 1,
+    shipping: REMERA_LEMONT_QA_SHIPPING,
   },
   "LEM-REM-001-M": {
     sku: "LEM-REM-001-M",
@@ -18,6 +27,7 @@ const CATALOG = {
     unitPrice: 1000,
     currency: "ARS",
     maxQuantity: 1,
+    shipping: REMERA_LEMONT_QA_SHIPPING,
   },
   "LEM-REM-001-L": {
     sku: "LEM-REM-001-L",
@@ -28,6 +38,7 @@ const CATALOG = {
     unitPrice: 1000,
     currency: "ARS",
     maxQuantity: 1,
+    shipping: REMERA_LEMONT_QA_SHIPPING,
   },
   "LEM-REM-001-XL": {
     sku: "LEM-REM-001-XL",
@@ -38,6 +49,7 @@ const CATALOG = {
     unitPrice: 1000,
     currency: "ARS",
     maxQuantity: 1,
+    shipping: REMERA_LEMONT_QA_SHIPPING,
   },
 };
 

@@ -8,6 +8,11 @@ const { log } = require("./logger");
 const { createPendingOrder, markOrderAsPaid } = require("./orders");
 const { createPreference, getPayment } = require("./payments");
 const {
+  ShippingInputError,
+  ShippingUnavailableError,
+  getShippingQuotes,
+} = require("./shipping");
+const {
   getWebhookSignatureDiagnostics,
   validateWebhookSignature,
 } = require("./webhookSignature");
@@ -140,6 +145,39 @@ app.get("/failure", (req, res) => {
 
 app.get("/pending", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "pending.html"));
+});
+
+app.post("/cotizar-envio", async (req, res) => {
+  const logContext = {
+    request_id: crypto.randomUUID(),
+    route: "/cotizar-envio",
+    method: "POST",
+  };
+
+  try {
+    const options = await getShippingQuotes(req.body || {});
+    return res.json({ options });
+  } catch (error) {
+    if (error instanceof ShippingInputError) {
+      log("warn", "cotizacion de envio rechazada", {
+        ...logContext,
+        status_code: 400,
+        error_type: "shipping_validation_error",
+      });
+      return res.status(400).json({ error: "No pudimos calcular el envío" });
+    }
+
+    const errorType =
+      error instanceof ShippingUnavailableError
+        ? error.type
+        : "shipping_unavailable";
+    log("error", "cotizacion de envio no disponible", {
+      ...logContext,
+      status_code: 503,
+      error_type: errorType,
+    });
+    return res.status(503).json({ error: "No pudimos calcular el envío" });
+  }
 });
 
 app.post("/webhook", async (req, res) => {

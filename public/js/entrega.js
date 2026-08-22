@@ -1,4 +1,5 @@
 import { iniciarCheckout } from "./checkout.js";
+import { inicializarCotizacionEnvio } from "./envio.js";
 import { productos, formatearPrecio } from "./productos.js";
 
 const deliveryRoot = document.querySelector("[data-delivery-page]");
@@ -60,6 +61,14 @@ function renderDeliveryForm() {
             </div>
           </fieldset>
 
+          <section class="shipping-quote" aria-labelledby="shipping-title">
+            <h2 id="shipping-title">Cotización de envío</h2>
+            <p>Calculá opciones informativas con tu código postal. El envío todavía no se suma al pago.</p>
+            <button class="button button--secondary" type="button" data-shipping-button>Calcular envío</button>
+            <div class="shipping-options" data-shipping-options></div>
+            <p class="form-status" data-shipping-status aria-live="polite"></p>
+          </section>
+
           <button class="button button--accent button--full" type="submit" data-delivery-submit>Iniciar pago</button>
           <p class="form-status" data-delivery-status aria-live="polite"></p>
         </form>
@@ -85,6 +94,8 @@ function initializeForm() {
   const form = deliveryRoot.querySelector("[data-delivery-form]");
   const submitButton = form.querySelector("[data-delivery-submit]");
   const statusElement = form.querySelector("[data-delivery-status]");
+
+  inicializarCotizacionEnvio({ form, sku, quantity });
 
   form.addEventListener("input", (event) => {
     if (event.target.matches("input, select, textarea")) {

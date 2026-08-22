@@ -49,4 +49,9 @@ module.exports = {
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   baseUrl: process.env.BASE_URL,
+  micorreoBaseUrl: process.env.MICORREO_BASE_URL || "",
+  micorreoUser: process.env.MICORREO_USER || "",
+  micorreoPassword: process.env.MICORREO_PASSWORD || "",
+  micorreoCustomerId: process.env.MICORREO_CUSTOMER_ID || "",
+  shippingOriginPostalCode: process.env.SHIPPING_ORIGIN_POSTAL_CODE || "",
 };

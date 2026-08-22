@@ -1,8 +1,22 @@
 # Progreso
 
-Última revisión documental: 2026-08-22. Etapa 5 cerrada: cliente y entrega persistidos; prueba productiva posterior a Etapa 5 pendiente.
+Última revisión documental: 2026-08-22. Etapa 6A implementada y testeada localmente; validación real contra MiCorreo QA pendiente.
 
 ## Estado actual
+
+### Cierre documental de Etapa 6A — MiCorreo (2026-08-22)
+
+- Integración local implementada: `Entrega → Calcular envío → /cotizar-envio → shipping.js → micorreo.js → JWT → /rates → opciones normalizadas`.
+- El navegador envía solo `sku`, `quantity` y CP destino. Configuración, origen y medidas pertenecen al backend.
+- JWT solo en memoria, con reutilización, margen de expiración, solicitud compartida, renovación única ante 401 y timeout.
+- Respuesta pública limitada a opciones `home`/`agency`, etiqueta y precio. Sucursal es informativa; no existe selección real.
+- Medidas QA temporales: 300 g, 5 cm de alto, 25 cm de ancho y 35 cm de largo. Deben medirse y reemplazarse antes de producción.
+- Cotización estrictamente informativa: no modifica pedido, Mercado Pago, Supabase, webhook ni estados.
+- Suite: **75/75 tests**, 1 suite, 0 fallos. Los 61 tests anteriores continúan pasando. Se verifican modalidades, autoridad del payload, entradas inválidas, configuración ausente, ciclo JWT, errores externos, respuesta inválida, vacío y ausencia de secretos/PII. El mecanismo de compartir una solicitud JWT concurrente está implementado, pero no se documenta como test concurrente aislado.
+- `git diff --check` correcto, con advertencias informativas LF → CRLF.
+- No se llamó a MiCorreo. Estado: **implementada/testeada localmente; pendiente de validación QA**.
+- Acceso solicitado a Correo Argentino; pendientes usuario QA, contraseña QA, `customerId` y requisitos adicionales.
+- Próxima validación: configurar valores localmente y ejecutar `CP → /cotizar-envio → /token → /rates → tarifa QA`.
 
 ### Cierre de Etapa 5 — datos de cliente y entrega (2026-08-22)
 
@@ -43,7 +57,7 @@
 El proyecto tiene un flujo completo de pago implementado, endurecido y cubierto con tests. Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supabase y Mercado Pago productivo, se verificó el arranque local y se desplegó la versión endurecida en EasyPanel. Un pago real de ARS 100 confirmó de punta a punta `checkout → pending → pago aprobado → webhook → paid`; la transición se volvió a verificar después del despliegue. La próxima fase es el frontend de LEMONT.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
-- **Tests**: Jest instalado. Estado actual: 61/61 tests, 1 suite, 0 fallos. Las cifras anteriores permanecen en la bitácora como hitos históricos.
+- **Tests**: Jest instalado. Estado actual: 75/75 tests, 1 suite, 0 fallos. Las cifras anteriores permanecen en la bitácora como hitos históricos.
 - **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó solo dependencias transitivas compatibles. Verificación posterior: 0 vulnerabilidades conocidas y tests pasando.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.

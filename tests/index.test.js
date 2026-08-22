@@ -7,7 +7,20 @@ const requiredEnv = {
   SUPABASE_URL: "https://supabase.test",
   SUPABASE_SERVICE_ROLE_KEY: "configured",
   LOG_LEVEL: "info",
+  MICORREO_BASE_URL: "https://micorreo.test/v1",
+  MICORREO_USER: "qa-user",
+  MICORREO_PASSWORD: "qa-password",
+  MICORREO_CUSTOMER_ID: "qa-customer",
+  SHIPPING_ORIGIN_POSTAL_CODE: "1000",
 };
+
+function makeFetchResponse(status, body) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: jest.fn(async () => body),
+  };
+}
 
 function createResponse() {
   return {
@@ -170,7 +183,7 @@ function createQueryBuilder(supabaseMock) {
   };
 }
 
-function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
+function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl } = {}) {
   jest.resetModules();
 
   for (const name of [
@@ -182,6 +195,11 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
   }
 
   Object.assign(process.env, requiredEnv, env);
+  global.fetch = jest.fn(
+    fetchImpl || (async () => {
+      throw new Error("Unexpected external request in test");
+    })
+  );
 
   for (const [name, value] of Object.entries(env)) {
     if (value === undefined) {
@@ -274,6 +292,7 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {} } = {}) {
     preferenceCreate,
     supabaseMock,
     webhookSignatureValidate,
+    fetchMock: global.fetch,
   };
 }
 
@@ -778,6 +797,223 @@ describe("creación de preferencias", () => {
     expect(new Set(references).size).toBe(2);
     randomUUIDSpy.mockRestore();
     dateNowSpy.mockRestore();
+  });
+});
+
+describe("cotización de envío", () => {
+  let logSpy;
+  let warnSpy;
+  let errorSpy;
+
+  beforeEach(() => {
+    logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  test("normaliza domicilio y sucursal usando configuración y medidas autoritativas", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-qa", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(200, {
+        customerId: "private-customer",
+        rates: [
+          { deliveredType: "D", productType: "CP", productName: "Clásico", price: 498.06 },
+          { deliveredType: "S", productType: "CP", productName: "Sucursal", price: 390 },
+        ],
+      }));
+    const { routes, fetchMock } = loadApp({ fetchImpl });
+    const response = createResponse();
+
+    await routes.post["/cotizar-envio"]({
+      body: {
+        sku: "LEM-REM-001-M",
+        quantity: 1,
+        postalCodeDestination: "b1900abc",
+        customerId: "attacker",
+        postalCodeOrigin: "9999",
+        dimensions: { weight: 1 },
+        price: 1,
+      },
+    }, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      options: [
+        { type: "home", label: "Envío a domicilio", price: 498.06 },
+        { type: "agency", label: "Retiro en sucursal", price: 390 },
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://micorreo.test/v1/token");
+    const rateRequest = fetchMock.mock.calls[1];
+    expect(rateRequest[0]).toBe("https://micorreo.test/v1/rates");
+    expect(JSON.parse(rateRequest[1].body)).toEqual({
+      customerId: "qa-customer",
+      postalCodeOrigin: "1000",
+      postalCodeDestination: "B1900ABC",
+      dimensions: { weight: 300, height: 5, width: 25, length: 35 },
+    });
+    expect(JSON.stringify(response.body)).not.toContain("productType");
+    expect(JSON.stringify(response.body)).not.toContain("private-customer");
+  });
+
+  test.each([
+    ["SKU", { sku: "INVALID", quantity: 1, postalCodeDestination: "1000" }],
+    ["cantidad", { sku: "LEM-REM-001-S", quantity: 2, postalCodeDestination: "1000" }],
+    ["CP", { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "12" }],
+  ])("rechaza %s inválido antes de llamar a MiCorreo", async (caseName, body) => {
+    const { routes, fetchMock } = loadApp();
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({ body }, response);
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "No pudimos calcular el envío" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("mantiene operativo el backend y limita el fallo si falta configuración", async () => {
+    const { routes, fetchMock } = loadApp({ env: { MICORREO_PASSWORD: undefined } });
+    const response = createResponse();
+    expect(routes.post["/webhook"]).toEqual(expect.any(Function));
+    expect(routes.post["/crear-preferencia"]).toEqual(expect.any(Function));
+    await routes.post["/cotizar-envio"]({
+      body: { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "1000" },
+    }, response);
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "No pudimos calcular el envío" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("reutiliza el JWT vigente entre cotizaciones", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-reusable", expires_in: 3600 }))
+      .mockResolvedValue(makeFetchResponse(200, { rates: [] }));
+    const { routes, fetchMock } = loadApp({ fetchImpl });
+    const request = { body: { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "1000" } };
+    await routes.post["/cotizar-envio"](request, createResponse());
+    await routes.post["/cotizar-envio"](request, createResponse());
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith("/token"))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith("/rates"))).toHaveLength(2);
+  });
+
+  test("obtiene un JWT nuevo cuando el anterior expiró", async () => {
+    let now = 1700000000000;
+    const dateNowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-short", expires_in: 31 }))
+      .mockResolvedValueOnce(makeFetchResponse(200, { rates: [] }))
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-renewed", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(200, { rates: [] }));
+    const { routes, fetchMock } = loadApp({ fetchImpl });
+    const request = { body: { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "1000" } };
+    await routes.post["/cotizar-envio"](request, createResponse());
+    now += 2000;
+    await routes.post["/cotizar-envio"](request, createResponse());
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith("/token"))).toHaveLength(2);
+    dateNowSpy.mockRestore();
+  });
+
+  test("responde genéricamente si falla la obtención del token", async () => {
+    const { routes, fetchMock } = loadApp({
+      fetchImpl: async () => makeFetchResponse(403, { message: "private auth detail" }),
+    });
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({
+      body: { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "1000" },
+    }, response);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "No pudimos calcular el envío" });
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("private auth detail");
+  });
+
+  test("responde genéricamente ante un error de red", async () => {
+    const { routes } = loadApp({
+      fetchImpl: async () => {
+        throw new Error("private network detail");
+      },
+    });
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({
+      body: { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "1000" },
+    }, response);
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "No pudimos calcular el envío" });
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("private network detail");
+  });
+
+  test("renueva una sola vez el JWT ante 401", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-old", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(401, {}))
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-new", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(200, { rates: [] }));
+    const { routes, fetchMock } = loadApp({ fetchImpl });
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({
+      body: { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "1000" },
+    }, response);
+    expect(response).toEqual(expect.objectContaining({ statusCode: 200, body: { options: [] } }));
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith("/token"))).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith("/rates"))).toHaveLength(2);
+  });
+
+  test("no entra en bucle si el segundo intento también responde 401", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-old", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(401, {}))
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-new", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(401, {}));
+    const { routes, fetchMock } = loadApp({ fetchImpl });
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({
+      body: { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "1000" },
+    }, response);
+    expect(response.statusCode).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  test.each([429, 500])("responde genéricamente ante MiCorreo %s", async (status) => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-qa", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(status, { message: "private upstream detail" }));
+    const { routes } = loadApp({ fetchImpl });
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({
+      body: { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "1000" },
+    }, response);
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "No pudimos calcular el envío" });
+    expect(JSON.stringify(response.body)).not.toContain("private upstream detail");
+  });
+
+  test("rechaza una respuesta inválida y no expone secretos ni PII en logs", async () => {
+    const privateValues = ["qa-user", "qa-password", "qa-customer", "B1900ABC"];
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-private", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(200, { unexpected: true }));
+    const { routes } = loadApp({ fetchImpl });
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({
+      body: { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "B1900ABC" },
+    }, response);
+    expect(response.statusCode).toBe(503);
+    const output = `${JSON.stringify(response.body)} ${serializedLogOutput(logSpy, warnSpy, errorSpy)}`;
+    for (const privateValue of [...privateValues, "jwt-private"]) {
+      expect(output).not.toContain(privateValue);
+    }
   });
 });
 

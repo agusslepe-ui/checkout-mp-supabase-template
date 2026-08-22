@@ -1,5 +1,22 @@
 # Tareas
 
+## Estado al cierre de Etapa 6A — 2026-08-22
+
+**Estado:** implementada y testeada localmente; pendiente de validación contra MiCorreo QA.
+
+`POST /cotizar-envio` recibe solo `sku`, `quantity` y CP destino; el backend arma el request autoritativo, obtiene/reutiliza JWT y normaliza domicilio/sucursal. La cotización es informativa y no altera pagos ni pedidos. Suite: **75/75 tests**, 1 suite, 0 fallos.
+
+Pendiente de MiCorreo:
+
+- Recibir usuario QA, contraseña QA, `customerId` y requisitos adicionales.
+- Configurar localmente la base QA y las otras cuatro variables, sin versionar valores.
+- Verificar con red real `CP → /cotizar-envio → /token → /rates → tarifa QA`.
+- Reemplazar las medidas temporales 300 g / 5 × 25 × 35 cm por medidas reales antes de producción.
+
+### Posible próxima etapa — modelo `orders` / `order_items` (no implementada)
+
+Estudiar una evolución aditiva donde `orders` conserve datos generales y `order_items` represente múltiples productos/variantes. No crear tablas, migraciones ni cambios de checkout durante este cierre.
+
 ## Estado al cierre de Etapa 5 — 2026-08-22
 
 La Etapa 5 está implementada y verificada hasta la creación del pedido `pending`: Producto selecciona talle, Entrega recopila y valida cliente/domicilio, y `/crear-preferencia` recibe solo `sku`, `quantity`, `customer` y `delivery`. La migración 003 fue aplicada con columnas nullable y sin alterar pedidos históricos. Suite: **61/61 tests**, 1 suite, 0 fallos.
@@ -54,7 +71,7 @@ Estados posibles: `pendiente`, `en curso`, `bloqueada`, `completada`. El estado 
 
 ## Cierre de sesión — 2026-08-21
 
-**Estado general:** T-001 a T-015 completadas. Suite actual: 61/61 tests. `npm audit`: 0 vulnerabilidades conocidas después de actualizar dependencias transitivas compatibles mediante `npm audit fix`.
+**Estado general:** T-001 a T-015 completadas. Suite actual: 75/75 tests. `npm audit`: 0 vulnerabilidades conocidas después de actualizar dependencias transitivas compatibles mediante `npm audit fix`.
 
 - Captura sensible temporal retirada y cubierta por regresiones.
 - DEC-019 aceptada; T-015 implementada sin modificar HMAC, atomicidad ni idempotencia.
