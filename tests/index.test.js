@@ -491,7 +491,7 @@ describe("creación de preferencias", () => {
     expect(response.body).toEqual({ error: "Cantidad inválida" });
     expect(supabaseMock.insertOrder).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
-    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("30000");
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("1000");
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
       "LEM-REM-001-S"
     );
@@ -512,7 +512,7 @@ describe("creación de preferencias", () => {
         product_sku: "LEM-REM-001-S",
         product_size: "S",
         quantity: 1,
-        amount: 30000,
+        amount: 1000,
         currency: "ARS",
         status: "pending",
       })
@@ -521,7 +521,7 @@ describe("creación de preferencias", () => {
       {
         title: "Remera LEMONT - Talle S",
         quantity: 1,
-        unit_price: 30000,
+        unit_price: 1000,
         currency_id: "ARS",
       },
     ]);
@@ -545,14 +545,14 @@ describe("creación de preferencias", () => {
     );
 
     const insertedOrder = supabaseMock.insertOrder.mock.calls[0][0];
-    expect(insertedOrder.amount).toBe(30000);
+    expect(insertedOrder.amount).toBe(1000);
     expect(insertedOrder.currency).toBe("ARS");
     expect(insertedOrder.product_sku).toBe("LEM-REM-001-M");
     expect(insertedOrder.product_size).toBe("M");
     expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual(
       expect.objectContaining({
         quantity: 1,
-        unit_price: 30000,
+        unit_price: 1000,
         currency_id: "ARS",
       })
     );
@@ -579,7 +579,7 @@ describe("creación de preferencias", () => {
         product_sku: sku,
         product_size: size,
         quantity: 1,
-        amount: 30000,
+        amount: 1000,
         currency: "ARS",
         status: "pending",
       })
@@ -587,7 +587,7 @@ describe("creación de preferencias", () => {
     expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual({
       title: `Remera LEMONT - Talle ${size}`,
       quantity: 1,
-      unit_price: 30000,
+      unit_price: 1000,
       currency_id: "ARS",
     });
   });
