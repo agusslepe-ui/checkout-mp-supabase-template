@@ -1,12 +1,44 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-08-22 (Etapa 6A implementada y testeada localmente; validación contra MiCorreo QA pendiente).
+> Resumen compacto para agentes. Última actualización: 2026-08-22 (runtime integrado con `orders` + `order_items`; suite 79/79; MiCorreo pendiente de credenciales).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Claude documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
 ---
 
-## Estado de la fase actual: ETAPA 6A LOCAL — COTIZACIÓN INFORMATIVA MICORREO
+## Estado vigente
+
+### COMPLETADO
+
+- Etapa 5: formulario de cliente y entrega, validación frontend/backend y request `{ sku, quantity, customer, delivery }` sin PII en URL. La migración `003_add_order_customer_delivery.sql` fue aplicada; agregó doce columnas nullable a `orders` sin completar pedidos históricos.
+- Etapa 6A: cotización informativa `POST /cotizar-envio` mediante `src/shipping.js` y `src/micorreo.js`, JWT en memoria, timeout, renovación única ante 401 y frontend en `public/js/envio.js`. No suma envío al pedido ni a Mercado Pago.
+- Migración `004_create_order_items.sql` aplicada. Existe `public.order_items`, vinculada por FK a `orders.id` con `ON DELETE CASCADE`, y la RPC estricta `public.create_pending_order_with_items(..., p_items jsonb)`.
+- El runtime Node crea pedidos nuevos mediante la RPC. Node construye `p_items` desde `src/catalog.js`; PostgreSQL valida, calcula el total, genera `external_reference` y crea atómicamente `orders` + `order_items`.
+- Mercado Pago recibe exactamente el `external_reference` devuelto por la RPC. La RPC conserva temporalmente las columnas legacy de producto en `orders` usando el primer item.
+
+### VALIDADO
+
+- La migración 004 y la RPC fueron validadas manualmente en Supabase real: un pedido y su item, total, moneda, estado, columnas legacy, relación y `ON DELETE CASCADE`.
+- El runtime local actualizado crea la preferencia, `orders` y `order_items`, y redirige a Checkout Pro.
+- El webhook permanece sin cambios: HMAC, validación de importe/moneda, idempotencia y transición atómica `pending → paid` siguen vigentes.
+- Suite actual: **79/79 tests**, 1 suite, 0 fallos.
+- Incidente QA resuelto: pedidos nuevos aparecieron con `customer_*` y `shipping_*` en `NULL`. Se comprobó una sola RPC activa, firma/permisos correctos y definición/`INSERT` activos correctos. La causa fue una instancia antigua iniciada con `npm start`; tras reiniciar Node quedó cargado el runtime actualizado.
+
+### PENDIENTE
+
+- Correo Argentino: solicitud de credenciales enviada y todavía no recibida. No realizar llamadas reales hasta disponer de accesos. Las medidas `300 g / 5 × 25 × 35 cm` continúan marcadas como temporales de QA y deben reemplazarse antes de producción.
+- Rotar las credenciales privadas documentadas como expuestas antes del lanzamiento público.
+- El precio ARS 1.000 sigue siendo temporal de prueba; no es el precio comercial definitivo. No hay carrito, stock ni selección de cantidad.
+
+### PRÓXIMO PASO
+
+Cuando Correo Argentino entregue las credenciales, configurar localmente las variables MiCorreo sin documentar valores y validar de forma controlada `CP destino → /cotizar-envio → /token → /rates → opciones`. Hasta entonces no efectuar llamadas reales.
+
+**Regla operativa obligatoria:** después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.
+
+---
+
+## Antecedente: Etapa 6A local — cotización informativa MiCorreo
 
 La Etapa 6A implementa `Entrega → Calcular envío → POST /cotizar-envio → validación backend → shipping.js → micorreo.js → JWT → POST /rates → normalización → opciones informativas`. El frontend envía únicamente `sku`, `quantity` y `postalCodeDestination`. El backend aporta autoritativamente `customerId`, CP de origen, peso y dimensiones; el navegador no controla precios de envío, `productType` ni total.
 
@@ -16,7 +48,7 @@ El JWT se obtiene con Basic Auth, se conserva solo en memoria, se reutiliza con 
 
 Las medidas `300 g × 5 × 25 × 35 cm` están marcadas como **TEMPORALES / QA** y no representan el paquete real. Deben sustituirse antes de producción. La cotización no cambia `orders.amount`, Mercado Pago, Supabase, webhook, HMAC, DEC-019, T-015 ni `pending → paid`.
 
-Estado: **IMPLEMENTADA Y TESTEADA LOCALMENTE; PENDIENTE DE VALIDACIÓN CONTRA MICORREO QA**. La suite pasa **75/75 tests**, 1 suite y 0 fallos. No hubo llamadas reales a Correo Argentino. Ya se solicitó acceso y se esperan usuario, contraseña, `customerId` y cualquier requisito adicional de QA.
+Estado: **IMPLEMENTADA Y TESTEADA LOCALMENTE; PENDIENTE DE CREDENCIALES Y VALIDACIÓN CONTRA MICORREO QA**. Al cierre de esta etapa la suite pasaba 75/75; el total vigente es 79/79. No hubo llamadas reales a Correo Argentino. Ya se solicitó acceso y se esperan usuario, contraseña, `customerId` y cualquier requisito adicional de QA.
 
 ### Antecedente: Etapa 5
 
@@ -26,7 +58,7 @@ La Etapa 5 incorpora los datos del cliente y del domicilio antes de iniciar Merc
 
 La migración `supabase/migrations/003_add_order_customer_delivery.sql` fue aplicada correctamente. Sus doce columnas de cliente y destino son nullable, los pedidos históricos no fueron alterados y los pedidos nuevos guardan producto, SKU, talle, cliente, domicilio, `shipping_country_code = AR` y estado `pending`. Se verificó manualmente `Producto → Entrega → Supabase` y la creación del pedido `pending`. La prueba productiva específica posterior a Etapa 5 —datos nuevos → pago real → webhook → `paid`— permanece pendiente.
 
-Al cierre de Etapa 5 la suite pasaba **61/61 tests**, 1 suite y 0 fallos. Esa cifra queda como antecedente; el total vigente es 75/75.
+Al cierre de Etapa 5 la suite pasaba **61/61 tests**, 1 suite y 0 fallos. Esa cifra queda como antecedente; el total vigente es 79/79.
 
 ### Antecedente: Etapa 3
 
@@ -73,10 +105,10 @@ Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supab
 
 | Tarea | Descripción |
 |---|---|
-| T-005 | Suite Jest; la suite actual pasa con 75 tests. Cubre flujos críticos, variantes, cliente/entrega y cotización simulada sin llamadas externas. |
+| T-005 | Suite Jest; la suite actual pasa con 79 tests. Cubre flujos críticos, variantes, cliente/entrega, RPC y cotización simulada sin llamadas externas. |
 | T-006 | `supabase/migrations/001_create_orders.sql` con DDL, restricciones, índices y RLS. Aplicada y verificada en Supabase el 2026-06-25. (DEC-012) |
 | T-007 | Comparación de importes normalizada a centavos (`Math.round`), validación de moneda contra `order.currency`, logs genéricos. (DEC-011) |
-| T-008 | Identificadores de pedido con `LEMONT-ORDER-${crypto.randomUUID()}` para unicidad bajo concurrencia. |
+| T-008 | Antecedente: Node generaba identificadores con `crypto.randomUUID()`. Desde DEC-020, PostgreSQL genera el `external_reference` dentro de la RPC atómica. `crypto.randomUUID()` se conserva para `request_id`. |
 | T-009 | Backend separado en módulos `src/`: `app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js`, `webhookSignature.js`. |
 | T-010 | Logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos y `LOG_LEVEL=info`. (DEC-017) |
 
@@ -116,6 +148,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | DEC-017 | Helper `log(level, event, extra)` propio. Formato JSON. Niveles: `info`, `warn`, `error`. Campos fijos + `request_id` por correlación. Lista explícita de campos prohibidos. Sin librería externa. |
 | DEC-018 | **Resuelta.** Causa raíz del 401: `notification_url` sin `?source_news=webhooks` hacía que MP enviara IPN en lugar de Webhooks (firma diferente). Fix: agregar `?source_news=webhooks`. Flujo pending → paid verificado en producción real el 2026-06-26. |
 | DEC-019 | **Implementada por T-015.** Política HTTP de `POST /webhook`: 401 para firma ausente/inválida; 200 para éxito y resultados definitivos/idempotentes; 503 para fallos temporales o excepciones inesperadas. Conserva HMAC, transición atómica e idempotencia. |
+| DEC-020 | `orders` + `order_items` se crean atómicamente mediante RPC estricta; PostgreSQL genera `external_reference`, Node conserva autoridad comercial y Mercado Pago reutiliza exactamente esa referencia. |
 
 ---
 
@@ -124,14 +157,14 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Backend**: Node.js + CommonJS + Express 5. Módulos separados en `src/`.
 - **Pagos**: Mercado Pago Checkout Pro (SDK oficial). Webhook protegido con validación HMAC-SHA256 y confirmación real a la API.
 - **Validaciones**: importe normalizado a centavos, moneda validada, transición atómica e idempotente.
-- **Identificadores**: `LEMONT-ORDER-${crypto.randomUUID()}` — únicos bajo concurrencia.
+- **Identificadores**: PostgreSQL genera `LEMONT-ORDER-<UUID>` dentro de `create_pending_order_with_items`; Node reutiliza exactamente esa referencia en Mercado Pago.
 - **Logs**: JSON estructurado por helper propio `log()`, con `request_id`, niveles y lista explícita de campos prohibidos.
-- **Base de datos**: Supabase, tabla `orders`, acceso con `service_role` solo desde backend. RLS habilitada. Sin policies públicas para `anon` ni `authenticated`.
-- **Migraciones SQL**: `001_create_orders.sql` aplicada y verificada; `002_add_order_product_variant.sql` aplicada y verificada con columnas nullable para SKU y talle.
+- **Base de datos**: Supabase, tablas `orders` y `order_items`; creación atómica mediante RPC con `service_role` solo desde backend. RLS habilitada y sin ejecución pública de la RPC.
+- **Migraciones SQL**: 001–004 aplicadas. La 004 crea `order_items` y la RPC atómica; fue validada manualmente en Supabase real.
 - **Datos de entrega**: `003_add_order_customer_delivery.sql` aplicada y verificada; agrega doce columnas nullable sin completar pedidos históricos.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. El cliente no controla importe ni moneda.
-- **Tests**: Jest. La suite actual pasa con **75 tests**, 1 suite y 0 fallos. Las integraciones externas están simuladas y no acceden a `.env`.
-- **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó únicamente dependencias transitivas compatibles. Estado verificado: **0 vulnerabilidades conocidas**; la suite actual pasa 75/75.
+- **Tests**: Jest. La suite actual pasa con **79 tests**, 1 suite y 0 fallos. Las integraciones externas están simuladas y no acceden a `.env`.
+- **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó únicamente dependencias transitivas compatibles. Estado verificado: **0 vulnerabilidades conocidas**; la suite actual pasa 79/79.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
 - **Deploy**: versión endurecida activa en EasyPanel desde el repositorio `checkout-mp-supabase-template`, rama `main`, dominio `checkout.lemont01.com`. El 2026-08-22 se verificó nuevamente `pending → paid` con Checkout Pro productivo y transferencia real de ARS 100. La captura sensible está retirada. La rotación final de credenciales sigue pendiente antes del lanzamiento público.
 
@@ -149,10 +182,11 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | `src/payments.js` | Integración Mercado Pago: `createPreference`, `Payment.get`. |
 | `src/orders.js` | Operaciones Supabase: `createPendingOrder`, `markOrderAsPaid`. Validación importe/moneda. |
 | `src/webhookSignature.js` | Validación de firma HMAC-SHA256 de Mercado Pago. |
-| `tests/index.test.js` | Suite Jest con **61 tests**. Mocks de MP, Supabase, dotenv y Express. |
+| `tests/index.test.js` | Suite Jest con **79 tests**. Mocks de MP, Supabase, dotenv y Express. |
 | `supabase/migrations/001_create_orders.sql` | Migración SQL versionada: DDL, restricciones, índices y RLS. Aplicada el 2026-06-25. |
 | `supabase/migrations/002_add_order_product_variant.sql` | Agrega `product_sku` y `product_size` nullable. Aplicada y verificada sin alterar registros históricos. |
 | `supabase/migrations/003_add_order_customer_delivery.sql` | Agrega datos de cliente y destino como columnas nullable. Aplicada y verificada sin alterar registros históricos. |
+| `supabase/migrations/004_create_order_items.sql` | Crea `order_items` y la RPC atómica estricta. Aplicada y validada manualmente en Supabase real. |
 | `Dockerfile` | Build de staging con Node.js 22; instala con `npm ci`, expone `3003` y ejecuta `npm start`. |
 | `.dockerignore` | Excluye `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales del contexto Docker. |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). Incluye `LOG_LEVEL=info`. |
@@ -167,11 +201,9 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ---
 
-## Próximo paso
+## Próximo paso detallado
 
-Mientras se esperan credenciales MiCorreo QA, la próxima etapa posible es estudiar la evolución `orders → order_items` para soportar múltiples productos o variantes por pedido. No está implementada ni autorizada todavía.
-
-Para validar Etapa 6A resta configurar localmente las cinco variables MiCorreo —con base QA `https://apitest.correoargentino.com.ar/micorreo/v1`— y verificar `CP destino → /cotizar-envio → /token → /rates → tarifa QA en LEMONT`. No registrar valores en documentación.
+Esperar las credenciales solicitadas a Correo Argentino. Cuando estén disponibles, configurar localmente las cinco variables MiCorreo y verificar `CP destino → /cotizar-envio → /token → /rates → tarifa QA en LEMONT`, sin registrar valores. El modelo `orders` + `order_items` ya está implementado y no debe volver a tratarse como propuesta futura.
 
 También permanecen posibles, ninguno marcado como completado:
 

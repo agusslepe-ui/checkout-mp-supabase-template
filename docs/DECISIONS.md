@@ -26,14 +26,14 @@ Este registro distingue decisiones observadas en el código de decisiones todav�
 - Decisión: guardar la misma referencia en el pedido y la preferencia.
 - Motivo: relacionar el pago externo con el pedido interno sin depender solo del `payment_id`.
 - Alternativas: tabla de relaciones por ID de preferencia o pago.
-- Implementación: T-008 completada (2026-06-25). La referencia conserva el prefijo `LEMONT-ORDER-` y usa `crypto.randomUUID()` para evitar depender solo del tiempo.
+- Implementación: T-008 introdujo UUID en Node en 2026-06-25. DEC-020 lo reemplazó para pedidos: PostgreSQL genera la referencia con prefijo `LEMONT-ORDER-` dentro de la RPC y Node la reutiliza exactamente en Mercado Pago.
 
 ## D-004 Persistir un pedido antes del checkout
 
 - Estado: vigente.
 - Decisión: crear el pedido en estado `pending` antes de crear la preferencia.
 - Motivo: disponer de una entidad interna que pueda conciliarse posteriormente.
-- Implementación: T-002 completada (2026-06-24). Si la inserción en Supabase falla, el flujo se detiene y Mercado Pago no es llamado.
+- Implementación: T-002 completada (2026-06-24). Desde DEC-020, la persistencia usa una RPC atómica para `orders` + `order_items`. Si falla, el flujo se detiene y Mercado Pago no es llamado.
 
 ## D-005 Mantener producto y precio en backend
 
@@ -759,3 +759,44 @@ No se implementarán en esta etapa colas, workers ni persistencia adicional de w
 - `tests/index.test.js` cubre eventos definitivos, errores de Mercado Pago, errores de consulta/actualización de Supabase, excepciones inesperadas y ausencia de datos sensibles en respuestas 503.
 - La suite completa pasó con 50 tests.
 - No se agregaron colas, workers, persistencia, migraciones ni dependencias.
+
+---
+
+## DEC-020 — Creación atómica de pedidos e items mediante RPC
+
+**Estado:** aceptada, implementada y validada el 2026-08-22.
+
+### Contexto
+
+El modelo original guardaba un solo producto directamente en `orders`. La evolución necesita representar items separados sin romper el webhook ni completar artificialmente pedidos históricos. El runtime actual todavía compra una sola Remera LEMONT por pedido, pero el contrato debe admitir múltiples items en el futuro.
+
+### Decisión
+
+- `src/catalog.js` conserva toda autoridad comercial: SKU, nombre, talle, precio, moneda y cantidad máxima.
+- Node construye autoritativamente `p_items`; el navegador no puede enviar precio, moneda, nombre, total, estado ni `external_reference`.
+- `public.create_pending_order_with_items` recibe parámetros escalares de pedido/cliente/entrega y `p_items jsonb` estrictamente validado.
+- PostgreSQL calcula la suma de items, exige coincidencia con `p_expected_amount`, genera `external_reference` y crea `orders` + `order_items` en una sola transacción.
+- La RPC usa `SECURITY INVOKER`, `search_path = pg_catalog, public` y ejecución reservada a `service_role`; `public`, `anon` y `authenticated` no pueden ejecutarla.
+- `order_items.order_id` referencia `orders.id` con `ON DELETE CASCADE`.
+- Durante la transición, la RPC completa las columnas legacy de producto en `orders` desde el primer item. `orders.amount`, `orders.currency` y `orders.status` continúan disponibles para el webhook.
+- Mercado Pago recibe exactamente el `external_reference` devuelto por PostgreSQL. Node deja de generar UUID para pedidos, pero conserva `crypto.randomUUID()` para `request_id`.
+
+### Validación
+
+- Migración 004 aplicada y RPC probada manualmente en Supabase real.
+- Verificados pedido, item, total, moneda, estado, columnas legacy, `line_total`, relación y cascada.
+- Runtime local verificado creando pedido e item mediante RPC y una preferencia con la misma referencia.
+- Suite Jest: 79/79 tests.
+- Webhook, HMAC, comparación de importe/moneda, idempotencia y `pending → paid` no se modificaron.
+
+### Regla operativa derivada del incidente QA
+
+Después de modificar archivos backend/runtime en `src/`, se debe reiniciar el proceso Node antes de realizar pruebas manuales. Una instancia antigua iniciada con `npm start` provocó durante QA que pedidos nuevos siguieran el runtime legacy y mostraran `customer_*`/`shipping_*` en `NULL`; la definición activa de la RPC era correcta.
+
+### Fuera de alcance
+
+- Carrito y múltiples productos en la interfaz.
+- Stock y reservas.
+- Backfill de pedidos históricos.
+- Eliminación inmediata de columnas legacy.
+- Cambios al webhook o a Mercado Pago.

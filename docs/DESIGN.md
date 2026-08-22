@@ -8,7 +8,7 @@ La aplicación es un monolito pequeño de Node.js. Express sirve el frontend est
 Navegador
   |-- archivos estáticos ----------------------> Express
   |-- POST /crear-preferencia ----------------> Express
-  |                                               |--> Supabase: crear order pending
+  |                                               |--> Supabase RPC: crear order + items pending
   |                                               `--> Mercado Pago: crear preferencia
   `---------------- redirección a Checkout Pro ------> Mercado Pago
 
@@ -48,7 +48,7 @@ src/
   orders.js                   # createPendingOrder, markOrderAsPaid — Supabase
   webhookSignature.js         # Validación HMAC-SHA256 de x-signature — DEC-009
 tests/
-  index.test.js               # Suite Jest actual: 61 tests
+  index.test.js               # Suite Jest actual: 79 tests
 ```
 
 ## Flujo de creación de pago
@@ -59,9 +59,9 @@ tests/
 4. El frontend envía `POST /crear-preferencia` únicamente con `{ sku, quantity, customer, delivery }`.
 5. El servidor resuelve el producto y su talle mediante `getProduct(sku)` y valida los datos de entrada.
 6. El servidor valida que `quantity` sea un entero entre 1 y `product.maxQuantity`; los cuatro SKUs actuales tienen máximo 1.
-7. El servidor calcula `total = product.unitPrice * quantity` y genera `LEMONT-ORDER-${crypto.randomUUID()}`.
-8. `createPendingOrder` inserta producto, variante, valores autoritativos, cliente y destino con estado `pending`.
-9. El servidor crea la preferencia con título de variante, `unit_price`, cantidad y moneda autoritativos, además de `notification_url`, `back_urls` y `auto_return: "approved"`.
+7. El servidor calcula `total = product.unitPrice * quantity` y construye un array `p_items` autoritativo desde `src/catalog.js`.
+8. `createPendingOrder` llama `public.create_pending_order_with_items`. PostgreSQL valida, calcula el total, genera `external_reference` y crea atómicamente `orders` + `order_items` con estado `pending`.
+9. El servidor crea la preferencia con exactamente el `external_reference` devuelto por la RPC, título de variante, `unit_price`, cantidad y moneda autoritativos, además de `notification_url`, `back_urls` y `auto_return: "approved"`.
 10. Devuelve `preference_id`, `init_point` y `sandbox_init_point`; el frontend prioriza `init_point` y conserva `sandbox_init_point` como fallback.
 
 Si falla el alta del pedido en Supabase, la creación de preferencia se detiene y el cliente recibe un error genérico (T-002, completada).
@@ -92,7 +92,7 @@ Si falla el alta del pedido en Supabase, la creación de preferencia se detiene 
 
 ## Persistencia
 
-La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. `001_create_orders.sql` define la tabla, `002_add_order_product_variant.sql` agrega SKU/talle y `003_add_order_customer_delivery.sql` agrega cliente y destino. Las columnas aditivas son nullable y las migraciones fueron aplicadas sin completar datos históricos. Los pedidos nuevos guardan variante, cliente, dirección y país `AR`. La transición `pending → paid` es atómica e idempotente mediante `UPDATE WHERE status = 'pending'`; un webhook duplicado recibe cero filas afectadas y se trata como duplicado sin error (T-003, DEC-010).
+La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. `001_create_orders.sql` define la tabla, `002_add_order_product_variant.sql` agrega SKU/talle, `003_add_order_customer_delivery.sql` agrega cliente/destino y `004_create_order_items.sql` agrega `order_items` y la RPC de creación atómica. Las columnas aditivas de pedidos históricos son nullable y no fueron completadas. Los pedidos nuevos guardan cliente, destino y uno o más items; durante la transición, el primer item también completa las columnas legacy de producto en `orders`. La transición `pending → paid` permanece atómica e idempotente mediante `UPDATE WHERE status = 'pending'` (T-003, DEC-010).
 
 ## Flujo de compra con entrega
 
@@ -119,9 +119,13 @@ La respuesta pública expone `type`, `label` y `price`. Domicilio es informativo
 
 Las medidas 300 g / 5 × 25 × 35 cm son temporales de QA y deben reemplazarse por datos reales. La integración no fue validada contra MiCorreo QA porque las credenciales solicitadas todavía no fueron recibidas.
 
-## Evolución futura posible del modelo
+## Modelo `orders` + `order_items` implementado
 
-Puede estudiarse separar información general en `orders` y productos/variantes en `order_items` para soportar múltiples ítems. Es una propuesta pendiente: no existe tabla, migración ni implementación.
+`orders` conserva identidad, cliente, entrega, total, moneda, estado y correlación de pago. `order_items` conserva snapshots autoritativos de SKU, nombre, talle nullable, cantidad, precio unitario y `line_total` generado. La FK `order_items.order_id → orders.id` usa `ON DELETE CASCADE`.
+
+La RPC `create_pending_order_with_items` recibe datos escalares estrictos y `p_items jsonb` validado: array obligatorio, propiedades permitidas explícitas, tipos y rangos controlados, y rechazo de items vacíos o importes inconsistentes. La suma se calcula en PostgreSQL y debe coincidir con `p_expected_amount`. La compra actual envía un item; el contrato admite múltiples items para una evolución futura, sin que exista carrito todavía.
+
+La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `service_role`. Navegadores, `anon` y `authenticated` no pueden ejecutarla directamente.
 
 ## Variantes y limitaciones comerciales actuales
 
@@ -162,7 +166,7 @@ Puede estudiarse separar información general en `orders` y productos/variantes 
 - Transición `pending → paid` atómica e idempotente (T-003, DEC-010).
 - Validación de variables de entorno al iniciar (T-004).
 - Comparación monetaria normalizada a centavos; validación de moneda (T-007, DEC-011).
-- Identificadores de pedido con `crypto.randomUUID()` (T-008).
+- Identificadores de pedido generados por PostgreSQL dentro de la RPC; `crypto.randomUUID()` permanece para correlación segura de logs.
 - Separación de responsabilidades en módulos `src/` (T-009).
 - Logs estructurados JSON con `request_id` y lista de campos prohibidos (T-010, DEC-017).
 - Migración SQL versionada aplicada en Supabase con RLS habilitada (T-006, DEC-012).
@@ -193,4 +197,8 @@ Principios de diseño e implementación:
 
 Home, Catálogo y Contacto están implementados en HTML/CSS/JavaScript vanilla. El catálogo y los filtros se generan con JavaScript, la Remera LEMONT permite seleccionar talle e iniciar el checkout real y las demás tarjetas permanecen en `Próximamente`. Las imágenes externas provenientes de Stitch son temporales y deben sustituirse por assets propios optimizados en `public/assets/images/`.
 
-La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado. Etapa 6A requiere validación QA; mientras se esperan accesos puede planificarse, sin implementar, el modelo `orders`/`order_items`.
+La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado. Etapa 6A requiere credenciales y validación QA; el modelo `orders`/`order_items` ya está implementado y validado.
+
+## Regla operativa de recarga del runtime
+
+Node no recarga automáticamente los módulos CommonJS del proceso iniciado con `npm start`. Después de modificar archivos backend/runtime en `src/`, se debe reiniciar el proceso Node antes de cualquier prueba manual. El incidente QA de campos `customer_*` y `shipping_*` en `NULL` se debió a una instancia antigua que seguía ejecutando el mecanismo legacy; la función activa en PostgreSQL estaba correcta.

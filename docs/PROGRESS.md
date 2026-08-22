@@ -1,8 +1,39 @@
 # Progreso
 
-Última revisión documental: 2026-08-22. Etapa 6A implementada y testeada localmente; validación real contra MiCorreo QA pendiente.
+Última revisión documental: 2026-08-22. Runtime integrado con RPC atómica `orders` + `order_items`; 79/79 tests. MiCorreo pendiente de credenciales.
 
 ## Estado actual
+
+### Cierre de integración `orders` + `order_items` e incidente QA — 2026-08-22
+
+#### COMPLETADO
+
+- Migración 004 aplicada: `public.order_items`, FK a `orders.id`, `ON DELETE CASCADE`, constraints, RLS y permisos mínimos.
+- RPC `public.create_pending_order_with_items(..., p_items jsonb)` aplicada con validación estricta, cálculo del total y transacción única.
+- PostgreSQL genera `external_reference`; Node ya no genera el UUID de pedido y entrega a Mercado Pago exactamente la referencia devuelta.
+- Runtime migrado del `INSERT` directo en `orders` a `supabase.rpc(...).single()`. `src/catalog.js` conserva autoridad sobre SKU, nombre, talle, precio, moneda y cantidad máxima.
+- Compatibilidad temporal conservada: la RPC copia el primer item a las columnas legacy de producto en `orders`.
+
+#### VALIDADO
+
+- Prueba SQL manual real: creación de `orders` + `order_items`, importe ARS 1.000, estado `pending`, referencia PostgreSQL, columnas legacy, `line_total`, relación y borrado en cascada.
+- Prueba real desde runtime local: `/crear-preferencia`, pedido, item, preferencia y redirección a Mercado Pago.
+- Webhook, HMAC, validación de importe/moneda, idempotencia y `pending → paid` quedaron intactos.
+- Suite final: **79/79 tests**, 1 suite, 0 fallos.
+
+#### INCIDENTE QA RESUELTO
+
+- Síntoma: pedidos de prueba creados después de la integración mostraban `customer_*` y `shipping_*` en `NULL`.
+- Diagnóstico: se verificó una única RPC activa, firma y permisos correctos, definición activa coincidente e `INSERT INTO public.orders` incluyendo los parámetros de cliente y entrega.
+- Causa raíz: seguía ejecutándose una instancia antigua iniciada con `npm start`; Node estaba usando el runtime anterior.
+- Resolución: reiniciar el servidor cargó el runtime actualizado.
+- Regla operativa incorporada: **después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.**
+
+#### PENDIENTE / PRÓXIMO PASO
+
+- Correo Argentino: solicitud de credenciales enviada; todavía no recibidas. No realizar llamadas reales hasta recibirlas.
+- Cuando estén disponibles, configurar localmente MiCorreo y validar `/token` + `/rates` de forma controlada. No documentar valores.
+- Las medidas QA temporales y las credenciales privadas pendientes de rotación continúan como requisitos previos a producción pública.
 
 ### Cierre documental de Etapa 6A — MiCorreo (2026-08-22)
 
@@ -57,7 +88,7 @@
 El proyecto tiene un flujo completo de pago implementado, endurecido y cubierto con tests. Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supabase y Mercado Pago productivo, se verificó el arranque local y se desplegó la versión endurecida en EasyPanel. Un pago real de ARS 100 confirmó de punta a punta `checkout → pending → pago aprobado → webhook → paid`; la transición se volvió a verificar después del despliegue. La próxima fase es el frontend de LEMONT.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
-- **Tests**: Jest instalado. Estado actual: 75/75 tests, 1 suite, 0 fallos. Las cifras anteriores permanecen en la bitácora como hitos históricos.
+- **Tests**: Jest instalado. Estado actual: 79/79 tests, 1 suite, 0 fallos. Las cifras anteriores permanecen en la bitácora como hitos históricos.
 - **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó solo dependencias transitivas compatibles. Verificación posterior: 0 vulnerabilidades conocidas y tests pasando.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
@@ -86,7 +117,7 @@ Ver resumen compacto para agentes en `docs/CURRENT_CONTEXT.md`.
 
 **Implementado en sesión 2026-06-25:**
 - T-007: estrategia monetaria explícita con comparación normalizada a centavos, validación de moneda y logs genéricos del webhook de pago.
-- T-008: referencias de pedido generadas con `crypto.randomUUID()` y prefijo `LEMONT-ORDER-`.
+- T-008: antecedente de referencias UUID en Node; DEC-020 trasladó la generación del `external_reference` de pedido a PostgreSQL. Node conserva UUID para `request_id`.
 - T-009: backend separado en `src/app.js`, `config.js`, `logger.js`, `payments.js`, `orders.js` y `webhookSignature.js`.
 - T-010: logs estructurados JSON con `request_id`, niveles `info`/`warn`/`error`, whitelist de campos y ausencia de payloads sensibles.
 - T-011: `GET /webhook` disponible solo con `NODE_ENV !== "production"`; `POST /webhook` se conserva.

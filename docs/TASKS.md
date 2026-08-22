@@ -1,5 +1,35 @@
 # Tareas
 
+## Estado vigente — 2026-08-22
+
+### COMPLETADO Y VALIDADO
+
+- Datos de cliente/entrega y migración 003 aplicados. Las columnas nuevas de `orders` son nullable para preservar historia.
+- Etapa 6A implementada localmente con mocks, sin llamadas reales a Correo Argentino.
+- Migración 004 aplicada y validada manualmente: tabla `order_items`, relación con `orders`, cascada y RPC atómica.
+- Runtime Node integrado con `create_pending_order_with_items`; Mercado Pago usa el `external_reference` generado por PostgreSQL.
+- Columnas legacy conservadas temporalmente desde el primer item.
+- Webhook, HMAC, idempotencia y transición `pending → paid` sin cambios.
+- Incidente QA de columnas `customer_*`/`shipping_*` en `NULL` resuelto: se estaba ejecutando una instancia Node antigua. La RPC activa, firma, permisos e `INSERT` fueron verificados como correctos.
+- Suite actual: **79/79 tests**.
+
+### PENDIENTE
+
+- Recibir credenciales de Correo Argentino. La solicitud ya fue enviada.
+- No realizar llamadas reales a MiCorreo hasta recibirlas.
+- Reemplazar medidas QA por dimensiones/peso reales antes de producción.
+- Rotar credenciales privadas comprometidas y restaurar precio comercial antes del lanzamiento público.
+
+### PRÓXIMO PASO
+
+Al recibir credenciales MiCorreo: configurar variables localmente, reiniciar Node y validar de forma controlada `CP → /cotizar-envio → /token → /rates`. No implementar nuevas funciones logísticas durante esa validación.
+
+### Regla operativa
+
+Después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.
+
+---
+
 ## Estado al cierre de Etapa 6A — 2026-08-22
 
 **Estado:** implementada y testeada localmente; pendiente de validación contra MiCorreo QA.
@@ -13,9 +43,9 @@ Pendiente de MiCorreo:
 - Verificar con red real `CP → /cotizar-envio → /token → /rates → tarifa QA`.
 - Reemplazar las medidas temporales 300 g / 5 × 25 × 35 cm por medidas reales antes de producción.
 
-### Posible próxima etapa — modelo `orders` / `order_items` (no implementada)
+### Evolución posterior completada — modelo `orders` / `order_items`
 
-Estudiar una evolución aditiva donde `orders` conserve datos generales y `order_items` represente múltiples productos/variantes. No crear tablas, migraciones ni cambios de checkout durante este cierre.
+La evolución aditiva fue implementada después del cierre de Etapa 6A: `orders` conserva datos generales y compatibilidad legacy; `order_items` representa los productos/variantes. La compra actual crea un item, pero la RPC acepta un array validado para una futura ampliación.
 
 ## Estado al cierre de Etapa 5 — 2026-08-22
 
@@ -71,7 +101,7 @@ Estados posibles: `pendiente`, `en curso`, `bloqueada`, `completada`. El estado 
 
 ## Cierre de sesión — 2026-08-21
 
-**Estado general:** T-001 a T-015 completadas. Suite actual: 75/75 tests. `npm audit`: 0 vulnerabilidades conocidas después de actualizar dependencias transitivas compatibles mediante `npm audit fix`.
+**Estado general:** T-001 a T-015 completadas. Suite actual: 79/79 tests. `npm audit`: 0 vulnerabilidades conocidas después de actualizar dependencias transitivas compatibles mediante `npm audit fix`.
 
 - Captura sensible temporal retirada y cubierta por regresiones.
 - DEC-019 aceptada; T-015 implementada sin modificar HMAC, atomicidad ni idempotencia.
