@@ -140,7 +140,17 @@ Al cierre del 2026-08-21 se confirmó además que no se registran la firma compl
 - `npm audit` detectó 2 vulnerabilidades high.
 - `npm audit fix` actualizó únicamente dependencias transitivas compatibles, sin cambio manual de dependencias directas.
 - La auditoría posterior reportó 0 vulnerabilidades conocidas.
-- La suite continuó pasando después de la actualización y posteriormente quedó en 50/50 tras T-015.
+- La suite continuó pasando después de la actualización, quedó en 50/50 tras T-015 y en 55/55 después de incorporar variantes por talle.
+
+### Estado de seguridad al cierre de Etapa 3 (2026-08-22)
+
+- La autoridad de precio, moneda, nombre y cantidad máxima permanece en `src/catalog.js`; el cliente envía solo SKU y cantidad fija 1.
+- Los cuatro SKUs comerciales tienen `maxQuantity: 1`; el SKU temporal anterior se rechaza.
+- `product_sku` y `product_size` fueron agregados como columnas nullable, sin alterar pedidos históricos.
+- El precio ARS 1.000 es temporal para pruebas privadas/controladas y debe revisarse antes del lanzamiento comercial.
+- No hay stock real, reserva ni control de concurrencia de inventario. No interpretar los SKUs como disponibilidad; esta capacidad requiere una etapa separada.
+- La rotación del Access Token y Webhook Secret de Mercado Pago y de la credencial privada/service role de Supabase continúa pendiente y es obligatoria antes del lanzamiento público.
+- Las URLs de imágenes de Stitch son temporales; deben reemplazarse por assets propios optimizados antes del lanzamiento.
 
 ### Ausencia de controles operativos
 

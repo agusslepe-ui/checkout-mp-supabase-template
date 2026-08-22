@@ -1,8 +1,28 @@
 # Progreso
 
-Última revisión documental: 2026-08-22. Backend endurecido validado de punta a punta en producción; próxima etapa: frontend de LEMONT.
+Última revisión documental: 2026-08-22. Etapa 3 cerrada y validada: variantes por talle, persistencia y checkout productivo; próxima etapa por decidir.
 
 ## Estado actual
+
+### Cierre de Etapa 3 — variantes de Remera LEMONT (2026-08-22)
+
+- SKUs vigentes: `LEM-REM-001-S`, `LEM-REM-001-M`, `LEM-REM-001-L` y `LEM-REM-001-XL`. Cada SKU identifica un talle; `REMERA-LEMONT-001` fue retirado y se rechaza.
+- El frontend ofrece S/M/L/XL sin selección predeterminada. Comprar permanece deshabilitado hasta elegir una variante y el request contiene solo `{ sku, quantity: 1 }`.
+- Todos los SKUs tienen `maxQuantity: 1`. No hay selector de cantidad, inventario, reserva ni liberación de stock.
+- `002_add_order_product_variant.sql` fue aplicada correctamente: `orders.product_sku` y `orders.product_size` son nullable. Los registros históricos conservaron `NULL`; los pedidos nuevos guardan SKU y talle.
+- Se verificaron manualmente los cuatro talles y el flujo productivo completo desde la selección hasta `paid` mediante un pago real.
+- El precio actual es **ARS 1.000 temporal para pruebas productivas controladas**. No es precio comercial definitivo. La autoridad permanece en `src/catalog.js`; el frontend solo lo representa.
+- Suite automatizada: 1 suite, **55/55 tests**, 0 fallos. Cubre variantes, rechazo del SKU temporal, autoridad monetaria, HMAC, importe, moneda, idempotencia, atomicidad y concurrencia.
+- Antes de esta actualización documental, Git fue verificado en `main`, sincronizado con `origin/main`, con `working tree clean` y `git diff --check` correcto. Después del cierre quedan únicamente cambios Markdown sin commit.
+- Home, Catálogo y Contacto funcionan con HTML/CSS/JavaScript vanilla; catálogo y filtros se generan con JavaScript, y las tarjetas no comerciales permanecen en `Próximamente`.
+- Las imágenes de Stitch siguen siendo URLs temporales y deben reemplazarse por assets propios optimizados en `public/assets/images/`.
+- La próxima etapa concreta no fue decidida. Permanecen posibles: detalle de producto, imágenes reales, guía de talles, stock, panel, reportes, Contacto final y guía de estudio.
+
+### Pendientes que no cambian
+
+- Rotar antes del lanzamiento público el Access Token y Webhook Secret de Mercado Pago y la credencial privada/service role de Supabase.
+- Definir y restaurar el precio comercial definitivo antes del lanzamiento.
+- Diseñar el stock por SKU como etapa separada, incluyendo disponibilidad, reserva, concurrencia, liberación por abandono y confirmación después del pago.
 
 El proyecto tiene un flujo completo de pago implementado, endurecido y cubierto con tests. Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supabase y Mercado Pago productivo, se verificó el arranque local y se desplegó la versión endurecida en EasyPanel. Un pago real de ARS 100 confirmó de punta a punta `checkout → pending → pago aprobado → webhook → paid`; la transición se volvió a verificar después del despliegue. La próxima fase es el frontend de LEMONT.
 

@@ -53,14 +53,15 @@ tests/
 
 ## Flujo de creación de pago
 
-1. El botón del frontend envía `POST /crear-preferencia` con `{ sku, quantity }`.
-2. El servidor resuelve el producto mediante `getProduct(sku)`.
-3. El servidor valida que `quantity` sea un entero entre 1 y `product.maxQuantity`.
-4. El servidor calcula `total = product.unitPrice * quantity` y genera `LEMONT-ORDER-${crypto.randomUUID()}`.
-5. `createPendingOrder` inserta un registro en `orders` con nombre, cantidad, importe total y moneda del catálogo.
-6. El servidor crea la preferencia con `unit_price`, cantidad y moneda del catálogo, además de `notification_url`, `back_urls` y `auto_return: "approved"`.
-7. Devuelve `preference_id`, `init_point` y `sandbox_init_point`.
-8. El frontend utiliza `init_point` para el flujo productivo y redirige al comprador.
+1. El comprador selecciona S, M, L o XL. Sin variante, el botón Comprar permanece deshabilitado.
+2. El frontend envía `POST /crear-preferencia` únicamente con `{ sku, quantity: 1 }`.
+3. El servidor resuelve el producto y su talle mediante `getProduct(sku)`.
+4. El servidor valida que `quantity` sea un entero entre 1 y `product.maxQuantity`; los cuatro SKUs actuales tienen máximo 1.
+5. El servidor calcula `total = product.unitPrice * quantity` y genera `LEMONT-ORDER-${crypto.randomUUID()}`.
+6. `createPendingOrder` inserta nombre, SKU, talle, cantidad, importe total y moneda del catálogo.
+7. El servidor crea la preferencia con título de variante, `unit_price`, cantidad y moneda autoritativos, además de `notification_url`, `back_urls` y `auto_return: "approved"`.
+8. Devuelve `preference_id`, `init_point` y `sandbox_init_point`.
+9. El frontend prioriza `init_point`; `sandbox_init_point` queda como fallback.
 
 Si falla el alta del pedido en Supabase, la creación de preferencia se detiene y el cliente recibe un error genérico (T-002, completada).
 
@@ -90,7 +91,16 @@ Si falla el alta del pedido en Supabase, la creación de preferencia se detiene 
 
 ## Persistencia
 
-La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. La migración SQL está versionada en `supabase/migrations/001_create_orders.sql` con restricciones, índices y RLS habilitada (T-006, DEC-012). La transición `pending → paid` es atómica e idempotente mediante `UPDATE WHERE status = 'pending'`; un webhook duplicado recibe cero filas afectadas y se trata como duplicado sin error (T-003, DEC-010).
+La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. `001_create_orders.sql` define la tabla y `002_add_order_product_variant.sql` agrega `product_sku` y `product_size` como columnas nullable. La segunda migración fue aplicada sin completar datos históricos; los pedidos nuevos guardan la variante. La transición `pending → paid` es atómica e idempotente mediante `UPDATE WHERE status = 'pending'`; un webhook duplicado recibe cero filas afectadas y se trata como duplicado sin error (T-003, DEC-010).
+
+## Variantes y limitaciones comerciales actuales
+
+- Remera LEMONT: SKUs `LEM-REM-001-S`, `LEM-REM-001-M`, `LEM-REM-001-L` y `LEM-REM-001-XL`.
+- `REMERA-LEMONT-001` fue retirado y no se acepta.
+- Precio vigente: ARS 1.000 temporal para pruebas controladas; debe reemplazarse antes del lanzamiento comercial.
+- `src/catalog.js` es la única autoridad sobre precio, moneda, nombre y máximo.
+- No existe selector de cantidad ni stock real. La existencia de un SKU no representa disponibilidad.
+- El stock futuro requiere disponibilidad, reserva atómica, concurrencia, liberación por abandono y confirmación tras el pago.
 
 ## Servicios externos
 
@@ -131,7 +141,7 @@ La tabla `orders` usa `external_reference` como clave de correlación única. El
 - Deploy a staging documentado para EasyPanel/VPS con checklists y rollback (T-013, DEC-016).
 - Política resiliente 401/200/503 del webhook implementada y validada en producción (T-015, DEC-019).
 
-## Transición hacia el frontend de LEMONT
+## Frontend actual de LEMONT
 
 El backend de pagos actual fue validado de punta a punta en producción el 2026-08-22, incluyendo un pago real de ARS 100 y una nueva verificación `pending → paid` después del deploy de la versión endurecida. El frontend debe integrarse con este contrato sin modificar innecesariamente el motor de pagos.
 
@@ -151,4 +161,6 @@ Principios de diseño e implementación:
 - Evitar abstracciones o complejidad que no aporten valor al alcance inicial.
 - Preservar el contrato seguro `{ sku, quantity }` de `POST /crear-preferencia`; el frontend no controla precios, moneda ni confirmación de pago.
 
-La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado.
+Home, Catálogo y Contacto están implementados en HTML/CSS/JavaScript vanilla. El catálogo y los filtros se generan con JavaScript, la Remera LEMONT permite seleccionar talle e iniciar el checkout real y las demás tarjetas permanecen en `Próximamente`. Las imágenes externas provenientes de Stitch son temporales y deben sustituirse por assets propios optimizados en `public/assets/images/`.
+
+La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado. La próxima etapa concreta todavía no está definida.

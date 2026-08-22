@@ -1,5 +1,24 @@
 # Tareas
 
+## Cierre verificado de Etapa 3 — 2026-08-22
+
+La Etapa 3 quedó completada y verificada con variantes de la Remera LEMONT por talle: `LEM-REM-001-S`, `LEM-REM-001-M`, `LEM-REM-001-L` y `LEM-REM-001-XL`. El SKU temporal `REMERA-LEMONT-001` fue retirado. El selector no elige talle por defecto, Comprar permanece deshabilitado hasta elegirlo y el frontend envía solo `{ sku, quantity: 1 }`.
+
+La migración `002_add_order_product_variant.sql` fue aplicada: `product_sku` y `product_size` son nullable, los pedidos históricos permanecieron intactos y los nuevos persisten la variante. Los cuatro talles y el flujo productivo completo hasta `paid` fueron verificados. La suite quedó en 55/55 tests.
+
+El precio ARS 1.000 es temporal para pruebas productivas privadas y no constituye precio comercial definitivo. Todos los SKUs mantienen `maxQuantity: 1`.
+
+### Pendientes — no implementados
+
+- Definir el próximo bloque concreto.
+- Revisar y reemplazar el precio temporal antes del lanzamiento comercial.
+- Rotar las tres credenciales privadas antes del lanzamiento público.
+- Sustituir URLs de Stitch por imágenes propias optimizadas.
+- Implementar stock real por SKU como etapa independiente; no existe implementación parcial.
+- Evaluar página de detalle, guía de talles, panel administrativo, reportes, mejora final de Contacto y guía de estudio.
+
+---
+
 Estados posibles: `pendiente`, `en curso`, `bloqueada`, `completada`. El estado vigente de cada tarea se indica en su propia sección.
 
 ## Cierre de backend productivo — 2026-08-22
