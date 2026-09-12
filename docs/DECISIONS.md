@@ -800,3 +800,380 @@ Después de modificar archivos backend/runtime en `src/`, se debe reiniciar el p
 - Backfill de pedidos históricos.
 - Eliminación inmediata de columnas legacy.
 - Cambios al webhook o a Mercado Pago.
+
+---
+
+## DEC-021 — Carrito multítem y checkout autoritativo preparado para logística
+
+**Fecha:** 2026-09-11
+**Estado:** aceptada
+**Tarea desbloqueada:** T-016
+
+### Aceptación (2026-09-11)
+
+El usuario aceptó esta decisión con cuatro resoluciones explícitas:
+
+1. **`maxQuantity` por SKU:** para T-016 usar temporalmente `maxQuantity: 4` en `src/catalog.js`. Es un techo transitorio. **No sustituye un sistema real de stock.** Más adelante debe reemplazarse por validación de stock real del backend (disponibilidad, reserva, concurrencia, liberación y confirmación). Ese trabajo no forma parte de T-016.
+2. **Máximo de entradas (aclaración autorizada en la corrección del Paso 1):** máximo 50 entradas originales recibidas en `items`, validado antes de agrupar. Después se agrupan SKUs duplicados y se valida la cantidad acumulada contra `maxQuantity`. La RPC conserva su límite de 50 ítems.
+3. **Compatibilidad legacy:** aprobada. Conservar temporalmente `{ sku, quantity, customer, delivery }`. No aceptar requests que mezclen ese formato con `items[]`. Retirar el legacy cuando el carrito sea el único flujo activo.
+4. **Idempotencia durable:** fuera de T-016. Queda como DEC-022 (propuesta) y T-017 (bloqueada).
+
+### Contexto verificado (2026-09-11)
+
+Auditoría contra código, migraciones, tests y documentación. No se asume el análisis previo de Codex.
+
+Estado real actual:
+
+- El checkout vigente compra **un solo SKU** por request. El frontend envía `{ sku, quantity, customer, delivery }` con `quantity: 1`. `src/app.js` resuelve un producto con `getProduct(sku)` y construye un array de un ítem.
+- `src/catalog.js` es la única autoridad de precio, moneda, nombre, talle y `maxQuantity`. Los cuatro SKUs (`LEM-REM-001-S/M/L/XL`) tienen `unitPrice: 1000`, `currency: "ARS"` y `maxQuantity: 1`.
+- La migración `004_create_order_items.sql` ya creó `public.order_items` y la RPC `create_pending_order_with_items`. PostgreSQL valida `p_items`, calcula el total, exige coincidencia con `p_expected_amount`, genera `external_reference` y crea atómicamente `orders` + `order_items`.
+- La RPC **ya admite múltiples ítems** (1 a 50). El runtime actual solo envía uno. Mercado Pago recibe un array `items` de un elemento y un único `external_reference`.
+- El webhook compara `payment.transaction_amount` y `payment.currency_id` contra `orders.amount` y `orders.currency` persistidos (DEC-011). **No** vuelve a consultar el catálogo vigente.
+- No existe carrito, `localStorage` de compra, ni `POST /carrito/resumen`.
+- Etapa 6A cotiza envío de forma informativa para un solo SKU. Un fallo de cotización responde 503 genérico; **no** se asume envío gratis. Correo Argentino no se implementa en esta decisión.
+- No hace falta una migración nueva para el carrito básico.
+
+DEC-020 dejó el carrito explícitamente fuera de alcance. Esta decisión lo define antes de programar.
+
+### Decisión
+
+#### 1. Representación del carrito en el frontend
+
+El navegador guarda únicamente datos no autoritativos:
+
+```json
+{
+  "version": 1,
+  "items": [
+    {
+      "sku": "LEM-REM-001-S",
+      "quantity": 1
+    }
+  ]
+}
+```
+
+- El SKU identifica la variante.
+- `quantity` es un entero positivo.
+- Prohibido persistir en el carrito: precio, subtotal, total, moneda, nombre comercial, talle, estado, `external_reference`, domicilio o datos personales.
+- Cualquier otro campo se descarta al recuperar el carrito.
+- `localStorage` es manipulable y **nunca** es fuente de verdad.
+
+#### 2. Autoridad del backend
+
+El frontend no decide precio, subtotal, total, moneda, estado del pedido, nombre comercial definitivo ni datos autoritativos del producto.
+
+Antes de persistir o cobrar, el backend debe:
+
+1. Validar la estructura del request y el máximo de 50 entradas originales en `items` antes de agrupar.
+2. Rechazar el carrito completo si hay SKU inválido, cantidad inválida o estructura inválida.
+3. Agrupar SKUs duplicados sumando cantidades **antes** de validar máximos.
+4. Resolver cada SKU con `getProduct(sku)` en `src/catalog.js`.
+5. Validar que la cantidad agrupada sea un entero entre 1 y `product.maxQuantity`.
+6. Obtener precio unitario, nombre, talle y moneda del catálogo.
+7. Calcular cada línea y el subtotal con la estrategia monetaria de esta decisión.
+8. Construir `p_items` para la RPC y `items` de Mercado Pago desde **el mismo** cálculo.
+
+La misma representación autoritativa alimenta Supabase y Mercado Pago. El navegador no envía `price`, `amount`, `currency`, `unit_price`, `product_name`, `status` ni `external_reference` con efecto alguno.
+
+#### 3. Carrito inválido
+
+Si el carrito es inválido no se crea pedido, no se insertan `order_items` y no se crea preferencia de Mercado Pago.
+
+Son inválidos, entre otros:
+
+- cuerpo que no es un objeto;
+- `items` ausente, no array, vacío, o con más de 50 entradas originales recibidas, comprobadas **antes** de agrupar;
+- ítem que no es objeto, SKU no string canónico, SKU desconocido en el catálogo;
+- cantidad no entera, no numérica, negativa, cero, o mayor a `product.maxQuantity` tras agrupar;
+- mezcla del contrato legacy con el contrato `items` (ver punto 6).
+
+Respuesta pública genérica: HTTP 400 con `{ "error": "Carrito inválido" }` en el contrato nuevo. No enumerar SKUs válidos ni devolver el catálogo.
+
+El contrato legacy `{ sku, quantity, customer, delivery }` conserva sus mensajes actuales (`Producto no encontrado`, `Cantidad inválida`, `Revisá los datos del comprador y la entrega`) para no cambiar el comportamiento observable del flujo vigente.
+
+#### 4. Persistencia frontend
+
+- Clave de `localStorage` dedicada, por ejemplo `lemont.cart`.
+- Una línea por SKU.
+- Agregar un SKU existente incrementa `quantity`; si el resultado supera `maxQuantity` del catálogo **representado en el cliente de forma informativa**, no se persiste un valor inválido: se deja la cantidad previa o se rechaza la operación en UI. La autoridad sigue siendo el backend.
+- Se puede modificar cantidad y eliminar un SKU.
+- Al recuperar: si `version` no es 1, si la estructura es inválida o si un ítem no tiene `sku` string y `quantity` entero ≥ 1, se descarta el carrito corrupto y se parte de un carrito vacío. No se intenta “reparar” precios.
+- No guardar cliente ni domicilio en el carrito. Esos datos viven en el formulario de entrega y se envían solo en el checkout.
+
+El frontend puede mostrar un precio informativo desde `public/js/productos.js`, pero el resumen visible de checkout debe poder alinearse con `POST /carrito/resumen`.
+
+#### 5. Endpoint de resumen
+
+Se agrega:
+
+```text
+POST /carrito/resumen
+```
+
+Entrada:
+
+```json
+{
+  "items": [
+    { "sku": "LEM-REM-001-S", "quantity": 1 }
+  ]
+}
+```
+
+Salida, si el carrito es válido:
+
+```json
+{
+  "currency": "ARS",
+  "subtotal": 1000,
+  "items": [
+    {
+      "sku": "LEM-REM-001-S",
+      "productName": "Remera LEMONT",
+      "variant": "S",
+      "quantity": 1,
+      "unitPrice": 1000,
+      "lineSubtotal": 1000
+    }
+  ]
+}
+```
+
+Este endpoint:
+
+- valida y agrupa igual que el checkout;
+- **no** crea pedidos, `order_items` ni preferencias;
+- **no** modifica estados;
+- **no** requiere `customer` ni `delivery`;
+- **no** incluye costo de envío;
+- rechaza un carrito inválido con HTTP 400 genérico.
+
+No usar GET: el carrito no debe viajar en query string ni logs de URL.
+
+#### 6. Checkout multítem y compatibilidad legacy
+
+`POST /crear-preferencia` evoluciona para aceptar el contrato nuevo:
+
+```json
+{
+  "items": [
+    { "sku": "LEM-REM-001-S", "quantity": 1 }
+  ],
+  "customer": {},
+  "delivery": {}
+}
+```
+
+**Compatibilidad temporal con el contrato vigente real**, que no es `{ sku, quantity }` sino:
+
+```json
+{
+  "sku": "LEM-REM-001-S",
+  "quantity": 1,
+  "customer": {},
+  "delivery": {}
+}
+```
+
+Reglas:
+
+- Si existe `items` (array) y **no** existen `sku` ni `quantity` de producto en el nivel raíz → contrato nuevo.
+- Si existen `sku` y `quantity` de producto en el nivel raíz y **no** existe `items` → contrato legacy, equivalente a un único ítem. Sigue exigiendo `customer` y `delivery`.
+- Si el request mezcla ambos formatos → HTTP 400 `{ "error": "Carrito inválido" }`. No se persiste ni se cobra.
+- `{ sku, quantity }` **sin** `customer`/`delivery` permanece rechazado, como hoy.
+- Retiro del contrato legacy: cuando el único flujo de compra en `public/` use `items` y se haya verificado en el entorno desplegado. Queda como seguimiento documental; no se retira en el mismo cambio que introduce el carrito.
+
+`customer` y `delivery` siguen validándose con `parseCheckoutInput` antes de Supabase o Mercado Pago.
+
+#### 7. Base de datos
+
+El carrito básico **no requiere una migración nueva**.
+
+Ya existen:
+
+- `orders` (identidad, cliente, entrega, total, moneda, estado, correlación);
+- `order_items` (snapshot de SKU, nombre, talle nullable, cantidad, `unit_price`, `line_total` generado);
+- RPC `create_pending_order_with_items` con validación de 1 a 50 ítems, cálculo en `numeric` y transacción única.
+
+La RPC no consulta el catálogo: confía en `p_items` construido por Node. Node sigue siendo la autoridad comercial.
+
+No hay `UNIQUE (order_id, product_sku)`. Node **debe** agrupar SKUs duplicados. Un índice único no forma parte de T-016; sería endurecimiento futuro con migración propia.
+
+Las columnas legacy de producto en `orders` siguen completándose desde el **primer ítem** del array ya agrupado. El webhook continúa usando `orders.amount` y `orders.currency`.
+
+#### 8. Mercado Pago
+
+Una orden multítem produce:
+
+- una sola preferencia;
+- un `items` de Mercado Pago con **una entrada por línea autoritativa** (SKU agrupado);
+- un único `external_reference`, exactamente el devuelto por la RPC.
+
+`title`, `quantity`, `unit_price` y `currency_id` salen del mismo cálculo usado para `p_items`. No se reenvía el array crudo del navegador.
+
+#### 9. Webhook
+
+Se mantiene:
+
+```text
+pending → Mercado Pago → webhook → validación HMAC → Payment.get → paid
+```
+
+El webhook compara el pago contra el pedido **persistido**. No recalcula el precio con el catálogo actual para decidir si un pago histórico es correcto. DEC-009, DEC-010, DEC-011 y DEC-019 no se modifican.
+
+#### 10. Cálculo monetario (continúa DEC-011)
+
+DEC-011 permanece vigente: los importes circulan en pesos ARS; la comparación del webhook usa centavos enteros con `Math.round(Number(valor) * 100)`.
+
+Para el carrito, Node calcula en centavos enteros y vuelve a pesos con dos decimales:
+
+1. `unitPriceCents = Math.round(Number(product.unitPrice) * 100)`
+2. `lineSubtotalCents = unitPriceCents * quantity` (`quantity` ya es entero validado)
+3. `subtotalCents = suma de lineSubtotalCents`
+4. Pesos enviados a RPC/MP: `cents / 100`
+
+No se usa `decimal.js`. No se comparan floats con `===` para decidir un pago. PostgreSQL sigue recalculando la suma en `numeric` y debe coincidir con `p_expected_amount`.
+
+El webhook no cambia su función `importesCoinciden`.
+
+#### 11. Límites
+
+Límites aceptados el 2026-09-11:
+
+| Caso | Comportamiento |
+|---|---|
+| Carrito vacío | Rechazo total. La RPC ya exige al menos un ítem. |
+| Más de 50 entradas originales en `items` | Rechazo total antes de agrupar. Luego se agrupan duplicados y se valida la cantidad acumulada contra `maxQuantity`. |
+| SKUs duplicados | Se agrupan; no se persisten dos líneas del mismo SKU. |
+| Cantidad no entera, negativa, cero, no numérica | Rechazo total. |
+| SKU desconocido | Rechazo total. |
+| Cantidad mayor a `product.maxQuantity` | Rechazo total. |
+
+**`maxQuantity: 4` es temporal y rige solo para T-016.** T-016 debe actualizar los cuatro SKUs de `src/catalog.js` de `maxQuantity: 1` a `maxQuantity: 4`, con un comentario explícito de que el valor es transitorio y **no representa stock**. No reserva inventario, no evita sobreventa y no sustituye disponibilidad real. El reemplazo por stock de backend requiere una decisión y una tarea futuras, distintas de T-016 y de DEC-022.
+
+#### 12. Logística futura
+
+La arquitectura debe poder evolucionar a:
+
+```text
+carrito → dirección → cotización de envío → subtotal → costo de envío → total final → Mercado Pago
+```
+
+En T-016:
+
+- el total cobrado sigue siendo solo el subtotal de productos;
+- `POST /cotizar-envio` permanece como cotización informativa de un SKU con `quantity: 1` exclusivamente; el límite logístico es independiente de `maxQuantity: 4` y rechaza varias unidades antes de llamar a MiCorreo;
+- no se implementa Correo Argentino adicional;
+- no se suma el envío a `orders.amount` ni a Mercado Pago;
+- un fallo de cotización **no** se interpreta como envío gratis. El código actual ya responde 503 genérico.
+
+Una cotización multítem, la persistencia de la tarifa y su inclusión en el total requieren una decisión posterior. No se diseña “error de logística = $0”.
+
+#### 13. Idempotencia del botón de pago
+
+Deshabilitar el botón evita el doble clic visual. **No** garantiza idempotencia durable.
+
+Timeouts, reintentos del navegador y requests duplicados pueden crear múltiples pedidos `pending` y múltiples preferencias.
+
+Esto **no** se implementa en T-016. Queda como **DEC-022** (propuesta) y **T-017** (bloqueada hasta aceptar DEC-022). No adelantar colas ni claves de idempotencia en el carrito.
+
+#### 14. Seguridad
+
+Riesgos y controles de esta decisión:
+
+- Manipular `localStorage` o el body HTTP no cambia precios: el backend ignora importes del cliente.
+- SKUs desconocidos, cantidades manipuladas o estructura rota rechazan toda la compra.
+- El resumen y el checkout no registran PII, importes reales, `external_reference`, SKUs en errores públicos ni el body completo (DEC-017).
+- Al renderizar el carrito: usar `textContent` / DOM seguro. No interpolar SKUs ni nombres provenientes de `localStorage` con `innerHTML`.
+- `POST /carrito/resumen` no crea recursos; igual no debe devolver el catálogo completo ni mensajes que permitan enumerar SKUs.
+- Datos personales siguen viajando solo en el checkout, nunca en el carrito persistido.
+- Rate limiting sigue siendo un pendiente operativo transversal (`docs/SECURITY.md`); no se inventa en T-016.
+
+#### 15. Tests mínimos de T-016
+
+Cubrir, como mínimo:
+
+- carrito vacío;
+- un producto;
+- varios productos / varias variantes;
+- SKU repetido (agrupación e incremento);
+- reducción de cantidad y eliminación (frontend);
+- SKU inválido y cantidad inválida (rechazo total, sin RPC ni MP);
+- precio, `amount`, `currency` o `unit_price` enviados por el cliente (ignorados);
+- `localStorage` corrupto (se descarta);
+- `POST /carrito/resumen` no persiste;
+- pedido multítem con `order_items` y `p_expected_amount` igual a la suma autoritativa;
+- una sola preferencia de Mercado Pago con múltiples `items` y un `external_reference`;
+- request que mezcla `items` y `sku` raíz;
+- contrato legacy de un SKU sigue funcionando;
+- fallo de Supabase: no hay preferencia;
+- fallo de Mercado Pago: error genérico;
+- regresiones del webhook: HMAC, importe, moneda, duplicado, atómico, `pending → paid`.
+
+### Motivo
+
+El modelo de persistencia ya soporta múltiples ítems. Falta el contrato de carrito, la autoridad única de cálculo y un frontend que no pretenda ser fuente de precios. Definir esto antes de programar evita mezclar formatos, migraciones innecesarias y un recálculo peligroso en el webhook.
+
+### Alternativas consideradas
+
+- Nueva tabla `carts` en Supabase: innecesaria sin autenticación de comprador (DEC-014 pendiente). Descartada.
+- Confiar en precios del frontend y “verificarlos” después: contradice DEC-013. Descartada.
+- Recalcular el pago del webhook con el catálogo actual: rompería pedidos históricos si cambia el precio. Descartada.
+- Migración para UNIQUE de SKU o columnas de envío: no hace falta para el carrito básico. Descartada en esta etapa.
+- Retirar el contrato legacy en el mismo cambio: rompería `entrega.html` y `public/js/checkout.js` vigentes. Descartada.
+
+### Fuera de alcance de T-016
+
+- Correo Argentino / inclusión del envío en el total.
+- Stock real, reservas e inventario. `maxQuantity: 4` no los sustituye.
+- Nueva migración SQL.
+- Idempotencia durable del checkout (DEC-022 / T-017).
+- Autenticación de compradores.
+- Rotación de credenciales.
+- Retiro inmediato del contrato legacy y de las columnas legacy de `orders`.
+
+### Consecuencias
+
+- Relacionada con T-016, ahora desbloqueada.
+- T-016 debe poner `maxQuantity: 4` en el catálogo, documentarlo como temporal y ajustar las regresiones que hoy rechazan cantidad 2.
+- `docs/REQUIREMENTS.md`, `README.md` y `docs/SKILLS.md` siguen describiendo en parte el contrato viejo `{ sku, quantity }` / `REMERA-LEMONT-001`; actualizarlos forma parte del Paso 4 de T-016.
+- DEC-022 queda propuesta; no se implementa junto con el carrito.
+
+---
+
+## DEC-022 — Idempotencia durable del checkout
+
+**Fecha:** 2026-09-11
+**Estado:** propuesta — pendiente de aprobación del usuario
+**Tarea relacionada si se acepta:** T-017
+**No desbloquea código.** No forma parte de T-016.
+
+### Contexto
+
+T-016 solo mitiga el doble clic visual deshabilitando el botón. Eso no cubre timeouts, reintentos del navegador, requests duplicados ni respuestas ambiguas. Esos casos pueden crear varios pedidos `pending` y varias preferencias de Mercado Pago para un mismo intento lógico.
+
+DEC-021 dejó este problema fuera de alcance a propósito. El usuario pidió registrarlo como decisión y tarea independientes.
+
+### Decisión (alcance a definir al aceptar)
+
+Cuando se acepte, deberá cubrir como mínimo:
+
+- doble request sobre `POST /crear-preferencia`;
+- reintentos del cliente;
+- timeouts;
+- recuperación de resultados ambiguos (pedido creado / preferencia no creada, o a la inversa);
+- prevención de múltiples pedidos y múltiples preferencias para un mismo intento lógico.
+
+No se elige todavía el mecanismo (clave de idempotencia, deduplicación por fingerprint, reutilización de preferencia, etc.). Elegirlo es parte de aceptar esta decisión, no de T-016.
+
+### Fuera de alcance actual
+
+- Implementación.
+- Colas, workers o persistencia adicional de webhooks.
+- Cambios al carrito de T-016.
+
+### Consecuencias
+
+- T-017 permanece bloqueada hasta que el usuario acepte DEC-022 y elija el mecanismo.
+- Codex no debe adelantar idempotencia durable mientras implementa T-016.

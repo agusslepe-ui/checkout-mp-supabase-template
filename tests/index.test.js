@@ -513,7 +513,7 @@ describe("creación de preferencias", () => {
   test.each([
     ["cero", 0],
     ["negativa", -1],
-    ["mayor al maximo", 2],
+    ["mayor al maximo", 5],
     ["no entera", 1.5],
   ])("rechaza cantidad %s sin crear preferencia", async (caseName, quantity) => {
     const { routes, preferenceCreate, supabaseMock } = loadApp();
@@ -533,6 +533,32 @@ describe("creación de preferencias", () => {
       "LEM-REM-001-S"
     );
   });
+
+  test.each(["LEM-REM-001-S", "LEM-REM-001-M", "LEM-REM-001-L", "LEM-REM-001-XL"])(
+    "checkout legacy acepta cantidad 4 para %s", async (sku) => {
+      const { routes, supabaseMock, preferenceCreate } = loadApp();
+      supabaseMock.createPendingOrderRpc.mockResolvedValueOnce({ data: {
+        order_id: 1, external_reference: "LEMONT-ORDER-RPC-TEST",
+        amount: 4000, currency: "ARS", status: "pending",
+      }, error: null });
+      const response = createResponse();
+      await routes.post["/crear-preferencia"](
+        makePreferenceRequest({ ...validPreferenceBody, sku, quantity: 4 }), response
+      );
+      expect(response.statusCode).toBe(200);
+      const parameters = supabaseMock.createPendingOrderRpc.mock.calls[0][1];
+      expect(parameters.p_expected_amount).toBe(4000);
+      expect(parameters.p_items).toHaveLength(1);
+      expect(parameters.p_items[0]).toEqual(expect.objectContaining({
+        product_sku: sku, quantity: 4, unit_price: 1000,
+      }));
+      expect(preferenceCreate).toHaveBeenCalledTimes(1);
+      expect(preferenceCreate.mock.calls[0][0].body.items).toHaveLength(1);
+      expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual(
+        expect.objectContaining({ quantity: 4, unit_price: 1000, currency_id: "ARS" })
+      );
+    }
+  );
 
   test("calcula amount y persiste la variante desde catalogo", async () => {
     const { routes, supabaseMock, preferenceCreate } = loadApp();
@@ -819,6 +845,365 @@ describe("creación de preferencias", () => {
   });
 });
 
+describe("dominio del carrito", () => {
+  let summarizeCart;
+  let CartError;
+  let validateCartItemsSize;
+
+  beforeEach(() => {
+    jest.resetModules();
+    ({ summarizeCart, CartError, validateCartItemsSize } = require("../src/cart"));
+  });
+
+  test("rechaza un carrito vacío", () => {
+    expect(() => summarizeCart({ items: [] })).toThrow(CartError);
+  });
+
+  test.each([
+    ["body ausente", undefined],
+    ["body null", null],
+    ["body array", []],
+    ["body string", "cart"],
+    ["items ausente", {}],
+    ["items null", { items: null }],
+    ["items objeto", { items: {} }],
+    ["items string", { items: "items" }],
+    ["item null", { items: [null] }],
+    ["item array", { items: [[]] }],
+    ["item string", { items: ["SKU"] }],
+    ["item numero", { items: [1] }],
+    ["item vacio", { items: [{}] }],
+  ])("rechaza estructura: %s", (_label, input) => {
+    expect(() => summarizeCart(input)).toThrow(CartError);
+  });
+
+  test("calcula centavos desde el catalogo sin acumular floats", () => {
+    const catalog = require("../src/catalog");
+    const getProduct = jest.spyOn(catalog, "getProduct").mockImplementation((sku) => ({
+      sku, name: "Producto de prueba", size: "S", currency: "ARS",
+      unitPrice: sku === "TEST-A" ? 0.1 : 0.2, maxQuantity: 4,
+    }));
+    try {
+      jest.isolateModules(() => {
+        jest.doMock("../src/catalog", () => catalog);
+        const summary = require("../src/cart").summarizeCart({ items: [
+          { sku: "TEST-A", quantity: 3 }, { sku: "TEST-B", quantity: 1 },
+        ] });
+        expect(summary.items.map((item) => item.lineSubtotal)).toEqual([0.3, 0.2]);
+        expect(summary.subtotal).toBe(0.5);
+      });
+    } finally {
+      jest.dontMock("../src/catalog");
+      getProduct.mockRestore();
+    }
+  });
+
+  test("resuelve un ítem válido desde el catálogo", () => {
+    expect(
+      summarizeCart({
+        items: [{ sku: "LEM-REM-001-S", quantity: 1 }],
+      })
+    ).toEqual({
+      currency: "ARS",
+      subtotal: 1000,
+      items: [
+        {
+          sku: "LEM-REM-001-S",
+          productName: "Remera LEMONT",
+          variant: "S",
+          quantity: 1,
+          unitPrice: 1000,
+          lineSubtotal: 1000,
+        },
+      ],
+    });
+  });
+
+  test("calcula varias líneas y el subtotal", () => {
+    expect(
+      summarizeCart({
+        items: [
+          { sku: "LEM-REM-001-S", quantity: 1 },
+          { sku: "LEM-REM-001-M", quantity: 2 },
+        ],
+      })
+    ).toEqual({
+      currency: "ARS",
+      subtotal: 3000,
+      items: [
+        {
+          sku: "LEM-REM-001-S",
+          productName: "Remera LEMONT",
+          variant: "S",
+          quantity: 1,
+          unitPrice: 1000,
+          lineSubtotal: 1000,
+        },
+        {
+          sku: "LEM-REM-001-M",
+          productName: "Remera LEMONT",
+          variant: "M",
+          quantity: 2,
+          unitPrice: 1000,
+          lineSubtotal: 2000,
+        },
+      ],
+    });
+  });
+
+  test("agrupa SKUs duplicados antes de validar el máximo", () => {
+    expect(
+      summarizeCart({
+        items: [
+          { sku: "LEM-REM-001-M", quantity: 2 },
+          { sku: "LEM-REM-001-M", quantity: 2 },
+        ],
+      })
+    ).toEqual({
+      currency: "ARS",
+      subtotal: 4000,
+      items: [
+        {
+          sku: "LEM-REM-001-M",
+          productName: "Remera LEMONT",
+          variant: "M",
+          quantity: 4,
+          unitPrice: 1000,
+          lineSubtotal: 4000,
+        },
+      ],
+    });
+  });
+
+  test("acepta cantidad 4", () => {
+    expect(
+      summarizeCart({
+        items: [{ sku: "LEM-REM-001-L", quantity: 4 }],
+      }).items[0].quantity
+    ).toBe(4);
+  });
+
+  test("rechaza cantidad 5", () => {
+    expect(() =>
+      summarizeCart({
+        items: [{ sku: "LEM-REM-001-L", quantity: 5 }],
+      })
+    ).toThrow(CartError);
+  });
+
+  test("rechaza duplicados que superan el máximo después de agrupar", () => {
+    expect(() =>
+      summarizeCart({
+        items: [
+          { sku: "LEM-REM-001-M", quantity: 2 },
+          { sku: "LEM-REM-001-M", quantity: 3 },
+        ],
+      })
+    ).toThrow(CartError);
+  });
+
+  test("rechaza un SKU desconocido", () => {
+    expect(() =>
+      summarizeCart({
+        items: [{ sku: "SKU-INEXISTENTE", quantity: 1 }],
+      })
+    ).toThrow(CartError);
+  });
+
+  test.each([
+    ["cero", 0],
+    ["negativa", -1],
+    ["decimal", 1.5],
+    ["entero inseguro", Number.MAX_SAFE_INTEGER + 1],
+    ["infinito", Infinity],
+    ["NaN", NaN],
+    ["string", "1"],
+    ["null", null],
+  ])("rechaza cantidad %s", (_label, quantity) => {
+    expect(() =>
+      summarizeCart({
+        items: [{ sku: "LEM-REM-001-S", quantity }],
+      })
+    ).toThrow(CartError);
+  });
+
+  test("acepta 50 y rechaza 51 en la validacion de tamaño aislada", () => {
+    expect(() => validateCartItemsSize(new Array(50))).not.toThrow();
+    expect(() => validateCartItemsSize(new Array(51))).toThrow(CartError);
+  });
+
+  test("rechaza 51 entradas antes de leer SKUs o cantidades", () => {
+    const readSku = jest.fn(() => { throw new Error("no debe agrupar"); });
+    const item = { get sku() { return readSku(); }, quantity: 1 };
+    expect(() => summarizeCart({ items: Array(51).fill(item) })).toThrow(CartError);
+    expect(readSku).not.toHaveBeenCalled();
+  });
+
+  test("rechaza desbordamiento al sumar duplicados", () => {
+    expect(() => summarizeCart({ items: [
+      { sku: "LEM-REM-001-S", quantity: Number.MAX_SAFE_INTEGER },
+      { sku: "LEM-REM-001-S", quantity: 1 },
+    ] })).toThrow(CartError);
+  });
+
+  test("ignora price, amount y currency enviados por el cliente", () => {
+    expect(
+      summarizeCart({
+        items: [
+          {
+            sku: "LEM-REM-001-S",
+            quantity: 1,
+            price: 1,
+            amount: 1,
+            currency: "USD",
+            unit_price: 1,
+            title: "Producto manipulado",
+          },
+        ],
+      })
+    ).toEqual({
+      currency: "ARS",
+      subtotal: 1000,
+      items: [
+        {
+          sku: "LEM-REM-001-S",
+          productName: "Remera LEMONT",
+          variant: "S",
+          quantity: 1,
+          unitPrice: 1000,
+          lineSubtotal: 1000,
+        },
+      ],
+    });
+  });
+});
+
+describe("resumen de carrito", () => {
+  let logSpy;
+  let warnSpy;
+  let errorSpy;
+
+  beforeEach(() => {
+    logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  test("devuelve el resumen autoritativo de un carrito válido", async () => {
+    const { routes, preferenceCreate, supabaseMock } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/carrito/resumen"](
+      { body: { items: [{ sku: "LEM-REM-001-S", quantity: 2 }] } },
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      currency: "ARS",
+      subtotal: 2000,
+      items: [
+        {
+          sku: "LEM-REM-001-S",
+          productName: "Remera LEMONT",
+          variant: "S",
+          quantity: 2,
+          unitPrice: 1000,
+          lineSubtotal: 2000,
+        },
+      ],
+    });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
+  test("calcula el subtotal de varios productos", async () => {
+    const { routes, preferenceCreate, supabaseMock } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/carrito/resumen"](
+      {
+        body: {
+          items: [
+            { sku: "LEM-REM-001-S", quantity: 1 },
+            { sku: "LEM-REM-001-XL", quantity: 3 },
+          ],
+        },
+      },
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.subtotal).toBe(4000);
+    expect(response.body.items).toHaveLength(2);
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
+  test("agrupa duplicados en el resumen", async () => {
+    const { routes } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/carrito/resumen"](
+      {
+        body: {
+          items: [
+            { sku: "LEM-REM-001-M", quantity: 1 },
+            { sku: "LEM-REM-001-M", quantity: 2 },
+          ],
+        },
+      },
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.items).toEqual([
+      {
+        sku: "LEM-REM-001-M",
+        productName: "Remera LEMONT",
+        variant: "M",
+        quantity: 3,
+        unitPrice: 1000,
+        lineSubtotal: 3000,
+      },
+    ]);
+  });
+
+  test.each([
+    ["vacío", { items: [] }],
+    ["items ausente", {}],
+    ["items no array", { items: {} }],
+    ["item no objeto", { items: [null] }],
+    ["cantidad no segura", { items: [{ sku: "LEM-REM-001-S", quantity: Number.MAX_SAFE_INTEGER + 1 }] }],
+    ["SKU inválido", { items: [{ sku: "SKU-INEXISTENTE", quantity: 1 }] }],
+    ["cantidad inválida", { items: [{ sku: "LEM-REM-001-S", quantity: 0 }] }],
+  ])("responde Carrito inválido ante un carrito %s", async (_label, body) => {
+    const { routes, preferenceCreate, supabaseMock, paymentGet, fetchMock } = loadApp();
+    const response = createResponse();
+
+    await routes.post["/carrito/resumen"]({ body }, response);
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "Carrito inválido" });
+    expect(paymentGet).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(supabaseMock.findOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain(
+      "LEM-REM-001-S"
+    );
+    expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("1000");
+  });
+});
+
 describe("cotización de envío", () => {
   let logSpy;
   let warnSpy;
@@ -885,7 +1270,9 @@ describe("cotización de envío", () => {
 
   test.each([
     ["SKU", { sku: "INVALID", quantity: 1, postalCodeDestination: "1000" }],
-    ["cantidad", { sku: "LEM-REM-001-S", quantity: 2, postalCodeDestination: "1000" }],
+    ["cantidad 2", { sku: "LEM-REM-001-S", quantity: 2, postalCodeDestination: "1000" }],
+    ["cantidad 4", { sku: "LEM-REM-001-S", quantity: 4, postalCodeDestination: "1000" }],
+    ["cantidad", { sku: "LEM-REM-001-S", quantity: 5, postalCodeDestination: "1000" }],
     ["CP", { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "12" }],
   ])("rechaza %s inválido antes de llamar a MiCorreo", async (caseName, body) => {
     const { routes, fetchMock } = loadApp();

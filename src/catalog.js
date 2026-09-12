@@ -6,6 +6,11 @@ const REMERA_LEMONT_QA_SHIPPING = {
   lengthCm: 35,
 };
 
+// TEMPORAL / TRANSITORIO (T-016 / DEC-021): techo de compra por SKU.
+// No representa stock, disponibilidad ni reserva. Debe reemplazarse por
+// validación de inventario real del backend.
+const TEMPORARY_MAX_QUANTITY = 4;
+
 const CATALOG = {
   "LEM-REM-001-S": {
     sku: "LEM-REM-001-S",
@@ -15,7 +20,7 @@ const CATALOG = {
     checkoutTitle: "Remera LEMONT - Talle S",
     unitPrice: 1000,
     currency: "ARS",
-    maxQuantity: 1,
+    maxQuantity: TEMPORARY_MAX_QUANTITY,
     shipping: REMERA_LEMONT_QA_SHIPPING,
   },
   "LEM-REM-001-M": {
@@ -26,7 +31,7 @@ const CATALOG = {
     checkoutTitle: "Remera LEMONT - Talle M",
     unitPrice: 1000,
     currency: "ARS",
-    maxQuantity: 1,
+    maxQuantity: TEMPORARY_MAX_QUANTITY,
     shipping: REMERA_LEMONT_QA_SHIPPING,
   },
   "LEM-REM-001-L": {
@@ -37,7 +42,7 @@ const CATALOG = {
     checkoutTitle: "Remera LEMONT - Talle L",
     unitPrice: 1000,
     currency: "ARS",
-    maxQuantity: 1,
+    maxQuantity: TEMPORARY_MAX_QUANTITY,
     shipping: REMERA_LEMONT_QA_SHIPPING,
   },
   "LEM-REM-001-XL": {
@@ -48,7 +53,7 @@ const CATALOG = {
     checkoutTitle: "Remera LEMONT - Talle XL",
     unitPrice: 1000,
     currency: "ARS",
-    maxQuantity: 1,
+    maxQuantity: TEMPORARY_MAX_QUANTITY,
     shipping: REMERA_LEMONT_QA_SHIPPING,
   },
 };

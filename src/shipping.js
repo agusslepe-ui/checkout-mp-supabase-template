@@ -26,7 +26,8 @@ class ShippingUnavailableError extends Error {
 async function getShippingQuotes({ sku, quantity, postalCodeDestination }) {
   const product = getProduct(sku);
   if (!product) throw new ShippingInputError();
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > product.maxQuantity) {
+  // La cotizacion actual solo conoce las medidas de una unidad.
+  if (quantity !== 1) {
     throw new ShippingInputError();
   }
 

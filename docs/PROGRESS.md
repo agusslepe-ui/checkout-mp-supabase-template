@@ -1,8 +1,52 @@
 # Progreso
 
-Última revisión documental: 2026-08-22. Runtime integrado con RPC atómica `orders` + `order_items`; 79/79 tests. MiCorreo pendiente de credenciales.
+Última revisión documental: 2026-09-12. T-016 Paso 1 EN REVISIÓN: implementación accidental conservada, auditada y corregida por Codex; 129/129 tests locales. Pendiente de aprobación. No avanzar al Paso 2. Checkout HTTP vigente de un SKU.
 
 ## Estado actual
+
+### T-016 Paso 1 EN REVISIÓN — 2026-09-12
+
+- Dominio autoritativo en `src/cart.js`: parseo, tope de 50 entradas recibidas, agrupación de SKUs, `maxQuantity: 4`, cálculo en centavos.
+- `POST /carrito/resumen` valida y resume. No usa Supabase ni Mercado Pago. No persiste.
+- Catálogo: `TEMPORARY_MAX_QUANTITY = 4`, documentado como transitorio y no-stock.
+- Carrito inválido → HTTP 400 `{ "error": "Carrito inválido" }`.
+- T-016 **no** está completa. Faltan Pasos 2–4.
+- Grok implementó accidentalmente este paso. Codex lo auditó (REQUIERE CORRECCIONES) y el usuario autorizó conservar la base y corregir los hallazgos.
+- Correcciones: envío limitado a una unidad sin alterar máximo 4; validación de tamaño aislada; cobertura adicional y DEC-021 alineada a 50 entradas antes de agrupar.
+- Verificación actual: `npm.cmd ci` sin cambios versionados; `npm.cmd test` 129/129, 1 suite, 0 fallos; sintaxis y `git diff --check` correctos. Sin QA real ni lectura de `.env`.
+- Paso 1 permanece EN REVISIÓN, con tests completos pasando y pendiente de aprobación; no avanzar al Paso 2.
+
+### DEC-021 aceptada — 2026-09-11
+
+- DEC-021 pasó de propuesta a **aceptada**.
+- T-016 quedó **pendiente y desbloqueada**. El usuario todavía no autorizó código; el siguiente trabajo es solo el Paso 1.
+- Resoluciones del usuario: `maxQuantity: 4` temporal (no es stock); máximo de líneas = 50 (RPC); compatibilidad legacy aprobada; idempotencia durable fuera de T-016.
+- DEC-022 quedó **propuesta** (no aceptada). T-017 quedó **bloqueada**.
+- Sin cambios de código, tests, migraciones, commit ni push.
+
+### Auditoría de preparación del carrito — 2026-09-11
+
+#### VERIFICADO EN CÓDIGO / MIGRACIONES / TESTS
+
+- Existe `public.order_items` y la RPC atómica `create_pending_order_with_items` (migración 004).
+- `createPendingOrder` en `src/orders.js` llama esa RPC; si falla, no se crea la preferencia.
+- El checkout HTTP vigente acepta un solo `sku` + `quantity` + `customer` + `delivery`. El frontend fija `quantity: 1`.
+- `src/catalog.js` es la autoridad de precio. Los tests cubren SKU inválido, cantidad inválida e importes enviados por el cliente.
+- El webhook compara el pago contra `orders.amount` / `orders.currency` persistidos y transiciona `pending → paid`.
+- No hay carrito, `localStorage` de compra ni `POST /carrito/resumen`.
+- La RPC ya acepta 1–50 ítems; el runtime solo envía uno. No hace falta migración nueva para el carrito básico.
+- T-016 es el siguiente ID libre. DEC-021 es el siguiente ID de decisión.
+
+#### DOCUMENTACIÓN PREPARADA (sin código)
+
+- `DEC-021` aceptada el 2026-09-11.
+- `T-016` desbloqueada; implementación no iniciada.
+- `DEC-022` propuesta; `T-017` bloqueada.
+- Correo Argentino no forma parte de T-016. La cotización informativa de Etapa 6A permanece.
+
+#### PRÓXIMO PASO
+
+Estado corregido tras auditoría: revisar las correcciones del Paso 1 con el usuario. No avanzar al Paso 2.
 
 ### Cierre de integración `orders` + `order_items` e incidente QA — 2026-08-22
 
@@ -88,7 +132,7 @@
 El proyecto tiene un flujo completo de pago implementado, endurecido y cubierto con tests. Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supabase y Mercado Pago productivo, se verificó el arranque local y se desplegó la versión endurecida en EasyPanel. Un pago real de ARS 100 confirmó de punta a punta `checkout → pending → pago aprobado → webhook → paid`; la transición se volvió a verificar después del despliegue. La próxima fase es el frontend de LEMONT.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
-- **Tests**: Jest instalado. Estado actual: 79/79 tests, 1 suite, 0 fallos. Las cifras anteriores permanecen en la bitácora como hitos históricos.
+- **Tests**: Jest instalado. Último resultado histórico documentado previo a las correcciones: 79/79. Las cifras anteriores permanecen en la bitácora como hitos históricos.
 - **Dependencias**: `npm audit` detectó 2 vulnerabilidades high; `npm audit fix` actualizó solo dependencias transitivas compatibles. Verificación posterior: 0 vulnerabilidades conocidas y tests pasando.
 - **Seguridad implementada**: validación de firma webhook (DEC-009), transición atómica (DEC-010), validación de variables al iniciar.
 - **Migración SQL**: `supabase/migrations/001_create_orders.sql` aplicada. Tabla `public.orders` verificada con columnas, constraints, índices y RLS activa.
@@ -168,11 +212,52 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-Construir el frontend inicial de LEMONT con Home, Catálogo, Contacto y Producto/compra. Integrarlo al backend actual sin modificar innecesariamente el motor de pagos validado. Mantener HTML semántico, CSS organizado, JavaScript modular, nombres claros, responsabilidades separadas y complejidad mínima.
+Esperar aprobación del usuario de las correcciones del **Paso 1 de T-016**. No avanzar al Paso 2. No frontend, webhook, DEC-022, migraciones ni Correo Argentino adicional.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-09-12 — Correcciones autorizadas del Paso 1 de T-016
+
+- Base accidental de Grok conservada después de auditoría de Codex: REQUIERE CORRECCIONES.
+- Archivos: `src/shipping.js`, `src/cart.js`, `tests/index.test.js`, `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Envío: solo quantity 1, sin inventar paquetes; catálogo máximo 4 intacto. Tests rechazan 2/4 antes de MiCorreo.
+- Tamaño: validación aislada permite 50 y rechaza 51; prueba adicional verifica rechazo antes de leer SKUs. DEC-021 alineada.
+- Cobertura: estructuras, cantidades inseguras, suma de duplicados, manipulación monetaria, centavos y legacy cantidad 4 en cuatro SKUs.
+- `npm.cmd ci` completado tras reintento por restricciones del sandbox; huellas de archivos versionados idénticas antes/después. package.json y lockfile intactos.
+- Verificación: 129/129 tests, 1 suite, 0 fallos; sintaxis y diff sin errores. No se cargó `.env` ni se usaron servicios reales.
+- npm reportó 4 vulnerabilidades (2 moderate, 2 high); no se ejecutó audit fix ni se cambiaron dependencias.
+- Resultado: Paso 1 EN REVISIÓN, correcciones verificadas y pendientes de aprobación. No avanzar al Paso 2. Sin commit, push ni deploy.
+
+### 2026-09-12 — Implementación accidental del Paso 1 por Grok (antecedente corregido)
+
+- Hecho: Grok implementó el Paso 1 accidentalmente, fuera de su rol de auditor/documentador. La aceptación de DEC-021 no autorizaba esa implementación.
+- Archivos de código: `src/catalog.js` (`maxQuantity` temporal 4), `src/cart.js` (nuevo), `src/app.js` (`POST /carrito/resumen`), `tests/index.test.js`.
+- El resumen no llama a Supabase ni a Mercado Pago. No crea pedidos ni preferencias.
+- Tope de 50 aplicado antes de agrupar, en contradicción con la redacción inicial de DEC-021. El usuario aclaró posteriormente este contrato al autorizar las correcciones; no hubo autorización previa de esta implementación.
+- Verificación: `node --check src/cart.js`, `src/catalog.js`, `src/app.js`, `tests/index.test.js`. `npm.cmd test` no se ejecutó: no hay `node_modules` y está prohibido instalar dependencias.
+- T-016 permanece en curso. Pasos 2–4 pendientes. Sin commit ni push.
+
+### 2026-09-11 — DEC-021 aceptada; T-016 desbloqueada; DEC-022 propuesta
+
+- Objetivo: registrar las resoluciones del usuario y dejar T-016 lista para el Paso 1, sin programar.
+- Tipo de sesión: documental. Sin código, tests, migraciones, commit ni push.
+- Resoluciones: `maxQuantity: 4` temporal y no-stock; 50 líneas; compatibilidad legacy; idempotencia durable diferida a DEC-022 / T-017.
+- Archivos modificados: `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Estado: DEC-021 aceptada. T-016 pendiente desbloqueada. DEC-022 propuesta. T-017 bloqueada.
+- Próximo paso: el usuario autoriza el prompt de Codex para el Paso 1 de T-016.
+
+### 2026-09-11 — Auditoría de preparación del carrito multítem (DEC-021 / T-016)
+
+- Objetivo: verificar el estado real del repositorio y preparar la decisión de carrito sin programar.
+- Tipo de sesión: auditoría y documentación. Sin modificación de código, tests, migraciones ni `.env`.
+- Archivos revisados: `GROK.md`, `AGENTS.md`, `README.md`, `docs/REQUIREMENTS.md`, `docs/DESIGN.md`, `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/DECISIONS.md`, `docs/SECURITY.md`, `docs/SKILLS.md`, `docs/CURRENT_CONTEXT.md`, `src/app.js`, `src/catalog.js`, `src/orders.js`, `src/payments.js`, `src/checkoutInput.js`, `src/shipping.js`, `src/micorreo.js`, `public/js/checkout.js`, `public/js/producto.js`, `public/js/entrega.js`, `public/js/envio.js`, `public/js/productos.js`, `supabase/migrations/001–004`, `tests/index.test.js`.
+- Afirmaciones de Codex confirmadas: existe `order_items`; existe creación atómica pedido+ítems; el checkout actual opera con un SKU; el backend ignora precios del cliente; existe `pending → paid`; no implementar Correo Argentino ahora; T-016 es el siguiente ID; hace falta DEC-021 antes de implementar.
+- Correcciones: el contrato vigente no es `{ sku, quantity }` sino `{ sku, quantity, customer, delivery }`; la RPC ya admite N ítems (techo 50) aunque el runtime envía uno; `maxQuantity` actual es 1; no hay UNIQUE de SKU por pedido; no existe carrito ni resumen; no hace falta migración nueva.
+- Archivos modificados: `docs/DECISIONS.md` (DEC-021 propuesta), `docs/TASKS.md` (T-016 bloqueada), `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Resultado: propuesta lista para aprobación del usuario. Estado de auditoría: APROBADO CON OBSERVACIONES.
+- Pendientes: el usuario debe decidir si `maxQuantity` permanece en 1 y si el techo comercial de líneas es 50 o menor. Codex no implementa todavía.
 
 ### 2026-08-22 — Backend endurecido validado de punta a punta en producción
 

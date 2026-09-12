@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const path = require("path");
 const express = require("express");
+const { CartError, summarizeCart } = require("./cart");
 const { getProduct } = require("./catalog");
 const { CheckoutInputError, parseCheckoutInput } = require("./checkoutInput");
 const { baseUrl, mercadoPagoAccessToken } = require("./config");
@@ -145,6 +146,32 @@ app.get("/failure", (req, res) => {
 
 app.get("/pending", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "pending.html"));
+});
+
+app.post("/carrito/resumen", (req, res) => {
+  const logContext = {
+    request_id: crypto.randomUUID(),
+    route: "/carrito/resumen",
+    method: "POST",
+  };
+
+  try {
+    const summary = summarizeCart(req.body || {});
+    log("info", "resumen de carrito calculado", {
+      ...logContext,
+      status_code: 200,
+    });
+    return res.json(summary);
+  } catch (error) {
+    if (!(error instanceof CartError)) throw error;
+
+    log("warn", "carrito invalido", {
+      ...logContext,
+      status_code: 400,
+      error_type: "cart_validation_error",
+    });
+    return res.status(400).json({ error: "Carrito inválido" });
+  }
 });
 
 app.post("/cotizar-envio", async (req, res) => {
