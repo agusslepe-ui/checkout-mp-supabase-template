@@ -1,6 +1,6 @@
 # Tareas
 
-## Estado vigente — 2026-09-12
+## Estado vigente — 2026-09-13
 
 ### COMPLETADO Y VALIDADO
 
@@ -15,11 +15,12 @@
 - Auditoría 2026-09-11: el checkout HTTP era de un solo SKU; desde el Paso 2 acepta múltiples ítems usando la RPC existente.
 - **T-016 Paso 1 COMPLETADO:** dominio autoritativo del carrito (`src/cart.js`) y `POST /carrito/resumen`. Implementado, corregido, auditado, aprobado y enviado a `main`. El endpoint no persiste y no llama a Supabase, Mercado Pago ni logística. T-016 no está completa.
 - **T-016 Paso 2 COMPLETADO:** checkout multítem autoritativo. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES, solo documentales) y aprobado por el usuario el 2026-09-12. Contrato `{ items, customer, delivery }`, compatibilidad legacy, rechazo de mezcla, una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un `external_reference`. Suite **158/158**. T-016 no está completa.
+- **T-016 Paso 3 COMPLETADO:** carrito frontend + `localStorage`. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES; la observación era QA visual/manual), validado en navegador y aprobado por el usuario el 2026-09-13. D1-A y D2-A. Sin cambios de backend, webhook ni migraciones. Suite **158/158**. T-016 no está completa.
 
 ### PENDIENTE
 
-- **T-016** en curso. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Pasos 3 y 4 PENDIENTES.
-- No implementar todavía el Paso 3.
+- **T-016** en curso. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 COMPLETADO. Paso 4 PENDIENTE.
+- No implementar todavía el Paso 4.
 - **DEC-022** propuesta; **T-017** bloqueada. Idempotencia durable fuera de T-016.
 - Recibir credenciales de Correo Argentino. La solicitud ya fue enviada. No bloquea T-016.
 - No realizar llamadas reales a MiCorreo hasta recibirlas.
@@ -31,7 +32,7 @@
 
 ### PRÓXIMO PASO
 
-**T-016 Paso 3 — carrito frontend + localStorage.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Pasos 3 y 4 PENDIENTES.
+**T-016 Paso 4 — cierre de regresiones y documentación final.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Paso 4 PENDIENTE.
 
 ### Regla operativa
 
@@ -1030,7 +1031,7 @@ Evitar que `POST /webhook` confirme con HTTP 200 fallos temporales que impidiero
 
 ### T-016 — Implementar carrito multítem con checkout autoritativo
 
-**Estado:** en curso — Paso 1 COMPLETADO; Paso 2 COMPLETADO; Paso 3 PENDIENTE; Paso 4 PENDIENTE
+**Estado:** en curso — Paso 1 COMPLETADO; Paso 2 COMPLETADO; Paso 3 COMPLETADO; Paso 4 PENDIENTE
 **Prioridad:** P2
 **Decisión:** DEC-021 aceptada (2026-09-11)
 
@@ -1102,17 +1103,23 @@ Hechos verificados:
 
 #### Paso 3 — Carrito frontend y localStorage
 
-**Estado:** PENDIENTE
+**Estado:** COMPLETADO (2026-09-13)
 
-1. Persistir `{ version: 1, items: [{ sku, quantity }] }` en `localStorage`.
-2. Una línea por SKU; agregar incrementa cantidad; modificar y eliminar.
-3. Al recuperar, validar; datos corruptos → carrito vacío.
-4. No guardar domicilio ni PII en el carrito.
-5. Renderizar con DOM seguro (`textContent`), nunca `innerHTML` con datos de `localStorage`.
-6. El resumen visible debe poder usar `POST /carrito/resumen`; el checkout envía `items` + `customer` + `delivery`.
-7. Respetar `maxQuantity: 4` del catálogo (temporal, no es stock): el backend rechaza el exceso; la UI no debe prometer lo contrario ni mostrar disponibilidad real.
-8. Bloquear el botón de pago durante el request (mitigación visual; no es idempotencia durable — ver DEC-022 / T-017).
-9. Conservar el flujo legacy de un SKU funcionando hasta que el carrito sea el camino de compra.
+Implementado por Codex, auditado por Grok (APROBADO CON OBSERVACIONES; la observación pendiente era la validación visual/manual), QA visual/manual correcto y aprobado por el usuario el 2026-09-13. El estado COMPLETADO rige desde esa aprobación.
+
+Decisiones aplicadas: **D1-A** (Agregar al carrito + Comprar ahora) y **D2-A** (no auto-vaciar).
+
+Hechos verificados:
+
+1. Existe `public/carrito.html` con `public/js/cartStore.js` y `public/js/carrito.js`.
+2. `localStorage` clave `lemont.cart` persiste únicamente `{ version: 1, items: [{ sku, quantity }] }`. Sin precio, total, moneda, nombre, talle, stock, status, `external_reference` ni PII.
+3. Contador global en el header: suma de quantities, visible en desktop y móvil, enlace a `carrito.html`.
+4. Producto: CTA principal **Agregar al carrito** (no navega, feedback, permite seguir comprando) y CTA secundario **Comprar ahora** (camino legacy, no agrega al carrito). Ambos requieren talle.
+5. Carrito: agregar, varios talles, incrementar, reducir (quantity 1 elimina), eliminar, vaciar. Resumen comercial vía `POST /carrito/resumen`.
+6. Continuar compra → `entrega.html` sin `id`/`sku`/`quantity` en la URL. Checkout del carrito envía `{ items, customer, delivery }`.
+7. Cotización informativa solo si hay exactamente 1 SKU y `quantity === 1`. El envío no se suma al pago.
+8. El carrito no se auto-vacía al crear preferencia, al redirigir a Mercado Pago ni al visitar `/success`, `/failure` o `/pending`. Solo se vacía a mano.
+9. Sin cambios de backend, webhook, HMAC, migraciones, dependencias ni `.env`. Suite **158/158**. `git diff --check` pasó.
 
 #### Paso 4 — Tests, regresiones y documentación
 

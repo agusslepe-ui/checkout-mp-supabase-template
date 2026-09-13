@@ -1,6 +1,17 @@
 # Progreso
 
-Última revisión documental: 2026-09-12. T-016 EN PROGRESO. Paso 1 COMPLETADO y en `main`. Paso 2 COMPLETADO (auditado y aprobado). Paso 3 PENDIENTE. Paso 4 PENDIENTE. Checkout HTTP multítem y legacy. Tests: 158/158.
+Última revisión documental: 2026-09-13. T-016 EN PROGRESO. Pasos 1–3 COMPLETADOS. Paso 4 PENDIENTE. Carrito frontend + checkout HTTP multítem y legacy. Tests: 158/158.
+
+## T-016 Paso 3 — COMPLETADO — 2026-09-13
+
+Cierre formal tras auditoría (APROBADO CON OBSERVACIONES: QA visual/manual pendiente), QA visual/manual correcto y aprobación del usuario. El Paso 3 no estaba completado antes de esa aprobación.
+
+- Objetivo: carrito frontend + `localStorage`, usando el checkout multítem ya existente.
+- Decisiones: **D1-A** (Agregar al carrito + Comprar ahora); **D2-A** (no auto-vaciar).
+- Implementado: `public/carrito.html`, `public/js/cartStore.js`, `public/js/carrito.js`; persistencia `lemont.cart` solo SKU + quantity; contador global por unidades; agregar / varios talles / incrementar / reducir / eliminar / vaciar; resumen vía `POST /carrito/resumen`; checkout `{ items, customer, delivery }`; camino legacy “Comprar ahora”; cotización informativa solo 1 SKU × quantity 1; el carrito no se auto-vacía.
+- Archivos de código (sin commit de este cierre documental): `public/carrito.html`, `public/js/cartStore.js`, `public/js/carrito.js`, `public/js/app.js`, `public/js/producto.js`, `public/js/entrega.js`, `public/js/checkout.js`, `public/css/components.css`.
+- Sin cambios de backend, webhook, HMAC, migraciones, dependencias ni `.env`. Suite **158/158**.
+- DEC-021 ACCEPTED. T-016 EN PROGRESO. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 COMPLETADO. Paso 4 PENDIENTE.
 
 ## T-016 Paso 2 — COMPLETADO — 2026-09-12
 
@@ -19,13 +30,13 @@ Cierre formal tras auditoría (APROBADO CON OBSERVACIONES, solo documentales) y 
 - **T-016** permanece **en curso**.
 - Paso 1 COMPLETADO (en `main`).
 - Paso 2 COMPLETADO (auditado y aprobado el 2026-09-12).
-- Paso 3 PENDIENTE — carrito frontend + `localStorage`. Todavía no implementarlo.
-- Paso 4 PENDIENTE.
+- Paso 3 COMPLETADO (auditado, QA visual/manual correcto y aprobado el 2026-09-13). D1-A y D2-A.
+- Paso 4 PENDIENTE — cierre de regresiones y documentación final. Todavía no implementarlo.
 - DEC-021 permanece **aceptada**. DEC-022 / T-017 permanecen fuera de T-016.
 
 ### T-016 Paso 1 COMPLETADO — 2026-09-12 (histórico de ese cierre)
 
-En el cierre del Paso 1, los Pasos 2–4 estaban pendientes. Eso ya no es el estado vigente: el Paso 2 quedó COMPLETADO el 2026-09-12; los Pasos 3 y 4 siguen PENDIENTES.
+En el cierre del Paso 1, los Pasos 2–4 estaban pendientes. Eso ya no es el estado vigente: los Pasos 1–3 están COMPLETADOS; el Paso 4 sigue PENDIENTE.
 
 - Dominio autoritativo en `src/cart.js`: parseo, tope de 50 entradas originales antes de agrupar, agrupación de SKUs duplicados, validación de cantidad acumulada contra `maxQuantity: 4`, cálculo en centavos.
 - `POST /carrito/resumen` valida y resume. No persiste. No llama a Supabase, Mercado Pago ni logística.
@@ -233,11 +244,24 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**T-016 Paso 3 — carrito frontend + localStorage.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Pasos 3 y 4 PENDIENTES.
+**T-016 Paso 4 — cierre de regresiones y documentación final.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Paso 4 PENDIENTE.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-09-13 — Cierre formal del Paso 3 de T-016
+
+- Objetivo: registrar la aprobación del usuario y el cierre real del Paso 3 tras auditoría y QA visual/manual.
+- Tipo de sesión: documental. Sin código, tests, migraciones, dependencias, commit ni push.
+- Auditoría técnica: APROBADO CON OBSERVACIONES. La observación pendiente era la validación visual/manual en navegador.
+- QA visual/manual: realizado y correcto. Paso 3 aprobado.
+- Decisiones: D1-A (Agregar al carrito + Comprar ahora); D2-A (no auto-vaciar).
+- Estado: DEC-021 ACCEPTED. T-016 EN PROGRESO. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 COMPLETADO. Paso 4 PENDIENTE.
+- Hechos verificados: carrito frontend; `localStorage` solo SKU + quantity; `carrito.html`; contador por unidades; agregar / talles / incrementar / reducir / eliminar / vaciar; `POST /carrito/resumen`; checkout `items[]`; “Comprar ahora” legacy; cotización informativa solo 1×1; sin auto-vaciar; sin backend, webhook ni migraciones.
+- Tests: último resultado comprobado **158/158**.
+- Archivos modificados en este cierre documental: `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Próximo paso registrado: **T-016 Paso 4 — cierre de regresiones y documentación final.** Todavía no implementarlo.
 
 ### 2026-09-12 — Cierre formal del Paso 2 de T-016
 

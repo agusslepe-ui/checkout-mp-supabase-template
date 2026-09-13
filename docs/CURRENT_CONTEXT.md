@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-09-12 (T-016 EN PROGRESO; Paso 1 COMPLETADO y en `main`; Paso 2 COMPLETADO tras auditoría y aprobación; Paso 3 PENDIENTE; Paso 4 PENDIENTE; tests 158/158).
+> Resumen compacto para agentes. Última actualización: 2026-09-13 (T-016 EN PROGRESO; Pasos 1–3 COMPLETADOS; Paso 4 PENDIENTE; tests 158/158).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -17,6 +17,7 @@
 - Mercado Pago recibe exactamente el `external_reference` devuelto por la RPC. La RPC conserva temporalmente las columnas legacy de producto en `orders` usando el primer item.
 - **T-016 Paso 1 COMPLETADO:** dominio autoritativo en `src/cart.js` y `POST /carrito/resumen`. Implementado, corregido, auditado, aprobado y enviado a `main`. Máximo 4 temporal (no es stock). El endpoint no persiste ni cobra.
 - **T-016 Paso 2 COMPLETADO:** checkout HTTP multítem con compatibilidad legacy y rechazo explícito de mezcla. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES, solo documentales) y aprobado por el usuario el 2026-09-12. Una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un `external_reference`. Cálculo autoritativo en backend; envío no incluido; webhook intacto; sin migraciones. Suite **158/158**.
+- **T-016 Paso 3 COMPLETADO:** carrito frontend + `localStorage` (`lemont.cart`, solo SKU + quantity). Página `carrito.html`, contador por unidades, D1-A (Agregar al carrito + Comprar ahora), D2-A (no auto-vaciar), resumen vía `POST /carrito/resumen`, checkout `items[]`. Cotización informativa solo 1 SKU × quantity 1. Auditado (APROBADO CON OBSERVACIONES: QA visual pendiente), QA visual/manual correcto, aprobado el 2026-09-13. Sin backend, webhook ni migraciones. Suite **158/158**.
 
 ### VALIDADO
 
@@ -28,8 +29,8 @@
 
 ### PENDIENTE
 
-- **T-016** está **en curso**. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 PENDIENTE. Paso 4 PENDIENTE. Checkout HTTP acepta `{ items, customer, delivery }` y el contrato legacy.
-- No implementar todavía el Paso 3 (carrito frontend + `localStorage`).
+- **T-016** está **en curso**. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 COMPLETADO. Paso 4 PENDIENTE. Checkout HTTP acepta `{ items, customer, delivery }` y el contrato legacy. El frontend ya tiene carrito.
+- No implementar todavía el Paso 4 (regresiones y documentación final).
 - **DEC-022** está propuesta (no aceptada). **T-017** está bloqueada. Idempotencia durable fuera de T-016.
 - `maxQuantity: 4` está aplicado en `src/catalog.js` como techo **temporal**. **No sustituye stock real.** El stock real será una evolución futura.
 - Cotización de envío sigue limitada a `quantity: 1` hasta implementar logística multítem correctamente.
@@ -40,7 +41,7 @@
 
 ### PRÓXIMO PASO
 
-**T-016 Paso 3 — carrito frontend + localStorage.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Pasos 3 y 4 PENDIENTES.
+**T-016 Paso 4 — cierre de regresiones y documentación final.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Paso 4 PENDIENTE.
 
 **Regla operativa obligatoria:** después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.
 
@@ -135,7 +136,7 @@ Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supab
 
 No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `POST /webhook` responde 503 ante fallos temporales o inesperados y conserva 200 para resultados exitosos, definitivos o idempotentes.
 
-**T-016** está en curso. Paso 1 COMPLETADO y enviado a `main`. Paso 2 COMPLETADO (auditado y aprobado el 2026-09-12). Paso 3 PENDIENTE. Paso 4 PENDIENTE. No está completa.
+**T-016** está en curso. Pasos 1–3 COMPLETADOS. Paso 4 PENDIENTE. No está completa.
 
 **T-017** está bloqueada por DEC-022 (propuesta): idempotencia durable del checkout. No mezclarla con T-016.
 
@@ -177,7 +178,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Migraciones SQL**: 001–004 aplicadas. La 004 crea `order_items` y la RPC atómica; fue validada manualmente en Supabase real.
 - **Datos de entrega**: `003_add_order_customer_delivery.sql` aplicada y verificada; agrega doce columnas nullable sin completar pedidos históricos.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. `maxQuantity: 4` es temporal y no es stock. El cliente no controla importe ni moneda.
-- **Carrito:** Paso 1 COMPLETADO — `src/cart.js` resume y valida `items`; `POST /carrito/resumen` no persiste, no cobra y no llama a Supabase, Mercado Pago ni logística. Paso 2 COMPLETADO — el checkout HTTP acepta `{ items, customer, delivery }` y conserva el contrato legacy; rechaza la mezcla. Paso 3 (frontend/`localStorage`) PENDIENTE.
+- **Carrito:** Paso 1 COMPLETADO — `src/cart.js` y `POST /carrito/resumen`. Paso 2 COMPLETADO — checkout `{ items, customer, delivery }` y legacy. Paso 3 COMPLETADO — `public/carrito.html`, `cartStore` (`lemont.cart`, solo SKU + quantity), contador por unidades, D1-A, D2-A. El frontend no es autoridad de precios.
 - **Tests locales**: último resultado comprobado **158/158**, 1 suite, 0 fallos. Sintaxis y `git diff --check` verificados; sin `.env` ni servicios reales.
 - **Envío**: únicamente `quantity: 1` hasta implementar logística multítem correctamente; 2/4 rechazadas antes de MiCorreo. El máximo comercial del catálogo sigue en 4 y no es stock.
 - **Límite del carrito**: 50 entradas originales antes de agrupar; SKUs duplicados se agrupan; después se valida la cantidad acumulada por SKU contra `maxQuantity`.
@@ -194,6 +195,9 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | `index.js` | Entrypoint mínimo: carga config, importa app, arranca servidor. |
 | `src/app.js` | Express, middlewares, rutas y handlers. Incluye `POST /carrito/resumen`. `GET /webhook` condicionado por `NODE_ENV`. |
 | `src/cart.js` | Dominio autoritativo del carrito: parseo, agrupación, validación y cálculo en centavos. |
+| `public/carrito.html` | Página del carrito. Resume con `POST /carrito/resumen`. |
+| `public/js/cartStore.js` | Persistencia no autoritativa `lemont.cart` (`sku` + `quantity`). |
+| `public/js/carrito.js` | UI del carrito: DOM seguro, mutaciones y resumen backend. |
 | `src/catalog.js` | Catálogo versionado del servidor y `getProduct(sku)`. `maxQuantity: 4` temporal. |
 | `src/config.js` | Validación y export de variables de entorno. |
 | `src/logger.js` | Helper `log()` de DEC-017. |
@@ -221,12 +225,12 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. **T-016 Paso 3 — carrito frontend + localStorage.** Todavía NO implementarlo.
+1. **T-016 Paso 4 — cierre de regresiones y documentación final.** Todavía NO implementarlo.
 2. No implementar todavía DEC-022, webhook, migraciones, Correo Argentino ni `npm audit fix`.
 3. En paralelo, no bloqueante: cuando Correo Argentino entregue credenciales, validar MiCorreo QA. Eso no forma parte de T-016.
 4. DEC-022 / T-017 no se implementan hasta que el usuario acepte esa decisión. El stock real tampoco forma parte de T-016.
 
-El modelo `orders` + `order_items` ya está implementado y no debe volver a tratarse como propuesta futura. El carrito de interfaz, en cambio, todavía no existe.
+El modelo `orders` + `order_items` ya está implementado y no debe volver a tratarse como propuesta futura. El carrito de interfaz del Paso 3 ya existe.
 
 También permanecen posibles, ninguno marcado como completado:
 

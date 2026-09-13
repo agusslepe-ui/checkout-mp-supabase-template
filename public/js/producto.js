@@ -1,3 +1,4 @@
+import { cartStore } from "./cartStore.js";
 import { productos, formatearPrecio } from "./productos.js";
 
 const detailRoot = document.querySelector("[data-product-detail]");
@@ -63,7 +64,9 @@ function renderProduct(product) {
               ${sizeOptions}
             </select>
           </label>
-          <button class="product-card__buy" type="button" data-delivery-button disabled>Continuar</button>
+          <button class="product-card__buy" type="button" data-cart-add disabled>Agregar al carrito</button>
+          <button class="button button--secondary" type="button" data-delivery-button disabled>Comprar ahora</button>
+          <p class="product-card__status" data-cart-feedback aria-live="polite"></p>
         </div>
 
         <details class="product-detail__details">
@@ -86,8 +89,18 @@ function initializeDeliveryNavigation(product) {
   const sizeSelect = detailRoot.querySelector("[data-delivery-size]");
   const continueButton = detailRoot.querySelector("[data-delivery-button]");
 
+  const addButton = detailRoot.querySelector("[data-cart-add]");
+  const feedback = detailRoot.querySelector("[data-cart-feedback]");
   sizeSelect.addEventListener("change", () => {
-    continueButton.disabled = !sizeSelect.value;
+    const valid = product.variantes.some(({ sku }) => sku === sizeSelect.value);
+    continueButton.disabled = !valid;
+    addButton.disabled = !valid;
+    feedback.textContent = "";
+  });
+  addButton.addEventListener("click", () => {
+    if (!product.variantes.some(({ sku }) => sku === sizeSelect.value)) return;
+    const result = cartStore.add(sizeSelect.value);
+    feedback.textContent = result.ok ? "Agregado al carrito. Podés seguir comprando." : result.message;
   });
 
   continueButton.addEventListener("click", () => {
