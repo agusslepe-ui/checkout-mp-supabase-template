@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-09-12 (Paso 1 EN REVISIÓN: base accidental auditada y corregida; tests locales 129/129; pendiente de aprobación; no avanzar al Paso 2).
+> Resumen compacto para agentes. Última actualización: 2026-09-12 (T-016 EN PROGRESO; Paso 1 COMPLETADO y en `main`; Paso 2 COMPLETADO tras auditoría y aprobación; Paso 3 PENDIENTE; Paso 4 PENDIENTE; tests 158/158).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -15,28 +15,32 @@
 - Migración `004_create_order_items.sql` aplicada. Existe `public.order_items`, vinculada por FK a `orders.id` con `ON DELETE CASCADE`, y la RPC estricta `public.create_pending_order_with_items(..., p_items jsonb)`.
 - El runtime Node crea pedidos nuevos mediante la RPC. Node construye `p_items` desde `src/catalog.js`; PostgreSQL valida, calcula el total, genera `external_reference` y crea atómicamente `orders` + `order_items`.
 - Mercado Pago recibe exactamente el `external_reference` devuelto por la RPC. La RPC conserva temporalmente las columnas legacy de producto en `orders` usando el primer item.
-- Base de T-016 Paso 1: Grok implementó accidentalmente `src/cart.js` y `/carrito/resumen`. Codex auditó (REQUIERE CORRECCIONES); el usuario conservó la base y autorizó correcciones. Máximo 4 temporal, checkout HTTP de un SKU.
+- **T-016 Paso 1 COMPLETADO:** dominio autoritativo en `src/cart.js` y `POST /carrito/resumen`. Implementado, corregido, auditado, aprobado y enviado a `main`. Máximo 4 temporal (no es stock). El endpoint no persiste ni cobra.
+- **T-016 Paso 2 COMPLETADO:** checkout HTTP multítem con compatibilidad legacy y rechazo explícito de mezcla. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES, solo documentales) y aprobado por el usuario el 2026-09-12. Una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un `external_reference`. Cálculo autoritativo en backend; envío no incluido; webhook intacto; sin migraciones. Suite **158/158**.
 
 ### VALIDADO
 
 - La migración 004 y la RPC fueron validadas manualmente en Supabase real: un pedido y su item, total, moneda, estado, columnas legacy, relación y `ON DELETE CASCADE`.
 - El runtime local actualizado crea la preferencia, `orders` y `order_items`, y redirige a Checkout Pro.
 - El webhook permanece sin cambios: HMAC, validación de importe/moneda, idempotencia y transición atómica `pending → paid` siguen vigentes.
-- Último resultado histórico documentado: **79/79** (anterior a estas correcciones).
+- Último resultado comprobado de tests: **158/158**. El resultado histórico previo a T-016 Paso 1 permanece documentado como 79/79.
 - Incidente QA resuelto: pedidos nuevos aparecieron con `customer_*` y `shipping_*` en `NULL`. Se comprobó una sola RPC activa, firma/permisos correctos y definición/`INSERT` activos correctos. La causa fue una instancia antigua iniciada con `npm start`; tras reiniciar Node quedó cargado el runtime actualizado.
 
 ### PENDIENTE
 
-- **T-016** está **en curso**. Paso 1 EN REVISIÓN: correcciones verificadas con 129/129 tests, pendiente de aprobación. No avanzar al Paso 2. Checkout HTTP `{ sku, quantity, customer, delivery }`.
+- **T-016** está **en curso**. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 PENDIENTE. Paso 4 PENDIENTE. Checkout HTTP acepta `{ items, customer, delivery }` y el contrato legacy.
+- No implementar todavía el Paso 3 (carrito frontend + `localStorage`).
 - **DEC-022** está propuesta (no aceptada). **T-017** está bloqueada. Idempotencia durable fuera de T-016.
-- `maxQuantity: 4` está aplicado en `src/catalog.js` como techo **temporal**. **No sustituye stock real.**
+- `maxQuantity: 4` está aplicado en `src/catalog.js` como techo **temporal**. **No sustituye stock real.** El stock real será una evolución futura.
+- Cotización de envío sigue limitada a `quantity: 1` hasta implementar logística multítem correctamente.
+- Vulnerabilidades npm (2 moderate + 2 high) informadas durante `npm ci`. No se ejecutó `npm audit fix`. Auditarlas en una tarea separada; no forman parte de T-016 Paso 1.
 - Correo Argentino: solicitud de credenciales enviada y todavía no recibida. No realizar llamadas reales hasta disponer de accesos. Las medidas `300 g / 5 × 25 × 35 cm` continúan marcadas como temporales de QA y deben reemplazarse antes de producción. Esta espera **no** bloquea T-016.
 - Rotar las credenciales privadas documentadas como expuestas antes del lanzamiento público.
 - El precio ARS 1.000 sigue siendo temporal de prueba; no es el precio comercial definitivo.
 
 ### PRÓXIMO PASO
 
-Esperar aprobación de las correcciones del Paso 1. No avanzar al Paso 2, frontend, webhook, migraciones, DEC-022 ni Correo Argentino adicional. Sin commit ni push.
+**T-016 Paso 3 — carrito frontend + localStorage.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Pasos 3 y 4 PENDIENTES.
 
 **Regla operativa obligatoria:** después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.
 
@@ -131,7 +135,7 @@ Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supab
 
 No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `POST /webhook` responde 503 ante fallos temporales o inesperados y conserva 200 para resultados exitosos, definitivos o idempotentes.
 
-**T-016** está en curso. Paso 1 EN REVISIÓN: correcciones verificadas (129/129) y pendientes de aprobación. Pasos 2–4 pendientes. No está completa.
+**T-016** está en curso. Paso 1 COMPLETADO y enviado a `main`. Paso 2 COMPLETADO (auditado y aprobado el 2026-09-12). Paso 3 PENDIENTE. Paso 4 PENDIENTE. No está completa.
 
 **T-017** está bloqueada por DEC-022 (propuesta): idempotencia durable del checkout. No mezclarla con T-016.
 
@@ -173,11 +177,11 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Migraciones SQL**: 001–004 aplicadas. La 004 crea `order_items` y la RPC atómica; fue validada manualmente en Supabase real.
 - **Datos de entrega**: `003_add_order_customer_delivery.sql` aplicada y verificada; agrega doce columnas nullable sin completar pedidos históricos.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. `maxQuantity: 4` es temporal y no es stock. El cliente no controla importe ni moneda.
-- **Carrito (Paso 1)**: `src/cart.js` resume y valida `items`. `POST /carrito/resumen` no persiste ni cobra. El checkout HTTP todavía no acepta `items[]`.
-- **Tests locales**: `npm.cmd ci` autorizado sin cambios versionados; `npm.cmd test`: 129/129, 1 suite, 0 fallos. Sintaxis y diff verificados; sin `.env` ni servicios reales.
-- **Envío**: únicamente quantity 1; 2/4 rechazadas antes de MiCorreo. El máximo comercial del catálogo sigue en 4.
-- **Límite del carrito**: 50 entradas originales antes de agrupar; después se valida la cantidad acumulada por SKU.
-- **Dependencias**: npm ci actual reportó 4 vulnerabilidades (2 moderate, 2 high). No se ejecutó audit fix ni se modificaron paquetes; remediación fuera del alcance autorizado.
+- **Carrito:** Paso 1 COMPLETADO — `src/cart.js` resume y valida `items`; `POST /carrito/resumen` no persiste, no cobra y no llama a Supabase, Mercado Pago ni logística. Paso 2 COMPLETADO — el checkout HTTP acepta `{ items, customer, delivery }` y conserva el contrato legacy; rechaza la mezcla. Paso 3 (frontend/`localStorage`) PENDIENTE.
+- **Tests locales**: último resultado comprobado **158/158**, 1 suite, 0 fallos. Sintaxis y `git diff --check` verificados; sin `.env` ni servicios reales.
+- **Envío**: únicamente `quantity: 1` hasta implementar logística multítem correctamente; 2/4 rechazadas antes de MiCorreo. El máximo comercial del catálogo sigue en 4 y no es stock.
+- **Límite del carrito**: 50 entradas originales antes de agrupar; SKUs duplicados se agrupan; después se valida la cantidad acumulada por SKU contra `maxQuantity`.
+- **Dependencias**: npm ci reportó 4 vulnerabilidades (2 moderate, 2 high). No se ejecutó `npm audit fix` ni se modificaron paquetes. Remediación pendiente en una tarea separada; no forma parte de T-016 Paso 1.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
 - **Deploy**: versión endurecida activa en EasyPanel desde el repositorio `checkout-mp-supabase-template`, rama `main`, dominio `checkout.lemont01.com`. El 2026-08-22 se verificó nuevamente `pending → paid` con Checkout Pro productivo y transferencia real de ARS 100. La captura sensible está retirada. La rotación final de credenciales sigue pendiente antes del lanzamiento público.
 
@@ -217,10 +221,10 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. Usuario: revisar y aprobar las correcciones del **Paso 1 de T-016**. No avanzar al Paso 2.
-2. No implementar todavía frontend/localStorage, DEC-022, webhook, migraciones ni Correo Argentino.
+1. **T-016 Paso 3 — carrito frontend + localStorage.** Todavía NO implementarlo.
+2. No implementar todavía DEC-022, webhook, migraciones, Correo Argentino ni `npm audit fix`.
 3. En paralelo, no bloqueante: cuando Correo Argentino entregue credenciales, validar MiCorreo QA. Eso no forma parte de T-016.
-4. DEC-022 / T-017 no se implementan hasta que el usuario acepte esa decisión.
+4. DEC-022 / T-017 no se implementan hasta que el usuario acepte esa decisión. El stock real tampoco forma parte de T-016.
 
 El modelo `orders` + `order_items` ya está implementado y no debe volver a tratarse como propuesta futura. El carrito de interfaz, en cambio, todavía no existe.
 

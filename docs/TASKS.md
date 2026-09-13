@@ -11,23 +11,27 @@
 - Columnas legacy conservadas temporalmente desde el primer item.
 - Webhook, HMAC, idempotencia y transición `pending → paid` sin cambios.
 - Incidente QA de columnas `customer_*`/`shipping_*` en `NULL` resuelto: se estaba ejecutando una instancia Node antigua. La RPC activa, firma, permisos e `INSERT` fueron verificados como correctos.
-- Último resultado histórico documentado: **79/79**.
-- Auditoría 2026-09-11: el checkout vigente sigue siendo de un solo SKU; la RPC ya admite múltiples ítems.
-- **T-016 Paso 1 EN REVISIÓN:** Grok lo implementó accidentalmente; Codex detectó correcciones necesarias y el usuario conservó la base. Correcciones verificadas localmente: 129/129 tests. Pendiente de aprobación; T-016 no está completa.
+- Último resultado comprobado de tests: **158/158**.
+- Auditoría 2026-09-11: el checkout HTTP era de un solo SKU; desde el Paso 2 acepta múltiples ítems usando la RPC existente.
+- **T-016 Paso 1 COMPLETADO:** dominio autoritativo del carrito (`src/cart.js`) y `POST /carrito/resumen`. Implementado, corregido, auditado, aprobado y enviado a `main`. El endpoint no persiste y no llama a Supabase, Mercado Pago ni logística. T-016 no está completa.
+- **T-016 Paso 2 COMPLETADO:** checkout multítem autoritativo. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES, solo documentales) y aprobado por el usuario el 2026-09-12. Contrato `{ items, customer, delivery }`, compatibilidad legacy, rechazo de mezcla, una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un `external_reference`. Suite **158/158**. T-016 no está completa.
 
 ### PENDIENTE
 
-- **T-016** en curso. Paso 1 EN REVISIÓN, con correcciones y tests completos pasando. Pasos 2–4 pendientes. No avanzar al Paso 2.
+- **T-016** en curso. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Pasos 3 y 4 PENDIENTES.
+- No implementar todavía el Paso 3.
 - **DEC-022** propuesta; **T-017** bloqueada. Idempotencia durable fuera de T-016.
 - Recibir credenciales de Correo Argentino. La solicitud ya fue enviada. No bloquea T-016.
 - No realizar llamadas reales a MiCorreo hasta recibirlas.
 - Reemplazar medidas QA por dimensiones/peso reales antes de producción.
 - Rotar credenciales privadas comprometidas y restaurar precio comercial antes del lanzamiento público.
-- `maxQuantity: 4` es transitorio y no sustituye stock real.
+- `maxQuantity: 4` es transitorio y no sustituye stock real. El stock real será una evolución futura.
+- Cotización de envío sigue limitada a `quantity: 1` hasta implementar logística multítem correctamente.
+- Vulnerabilidades npm (2 moderate + 2 high) informadas durante `npm ci` de T-016 Paso 1. No se ejecutó `npm audit fix`. Auditarlas en una tarea separada; no forman parte de T-016.
 
 ### PRÓXIMO PASO
 
-Esperar aprobación del usuario de las correcciones del **Paso 1 de T-016**. No avanzar al Paso 2 ni implementar frontend, webhook, DEC-022, Correo Argentino, migraciones, commit o push.
+**T-016 Paso 3 — carrito frontend + localStorage.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Pasos 3 y 4 PENDIENTES.
 
 ### Regla operativa
 
@@ -1026,7 +1030,7 @@ Evitar que `POST /webhook` confirme con HTTP 200 fallos temporales que impidiero
 
 ### T-016 — Implementar carrito multítem con checkout autoritativo
 
-**Estado:** en curso — Paso 1 EN REVISIÓN (correcciones verificadas; pendiente de aprobación); Pasos 2–4 pendientes
+**Estado:** en curso — Paso 1 COMPLETADO; Paso 2 COMPLETADO; Paso 3 PENDIENTE; Paso 4 PENDIENTE
 **Prioridad:** P2
 **Decisión:** DEC-021 aceptada (2026-09-11)
 
@@ -1040,10 +1044,10 @@ El backlog usa identificadores `T-XXX`, no `T-016A`. Esta tarea se divide en cua
 
 #### Archivos probablemente involucrados
 
-- `src/cart.js` — nuevo módulo de parseo, agrupación, validación y cálculo autoritativo
-- `src/app.js` — `POST /carrito/resumen` y evolución de `POST /crear-preferencia`
-- `src/catalog.js` — actualizar `maxQuantity` de 1 a 4 en los cuatro SKUs, con comentario de que es temporal y no es stock; no cambiar precios ni moneda
-- `public/js/` — carrito, producto, entrega, checkout; posible página de carrito
+- `src/cart.js` — dominio de parseo, agrupación, validación y cálculo autoritativo (existe desde el Paso 1)
+- `src/app.js` — `POST /carrito/resumen` existe; el Paso 2 evoluciona `POST /crear-preferencia`
+- `src/catalog.js` — `maxQuantity: 4` temporal ya aplicado en el Paso 1; no cambiar precios ni moneda
+- `public/js/` — carrito, producto, entrega, checkout; posible página de carrito (Paso 3)
 - `tests/index.test.js`
 - Documentación: `docs/DESIGN.md`, `docs/REQUIREMENTS.md`, `README.md`, `docs/SKILLS.md`, `docs/SECURITY.md`, `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`
 
@@ -1055,34 +1059,50 @@ El backlog usa identificadores `T-XXX`, no `T-016A`. Esta tarea se divide en cua
 - `package.json`, dependencias, `.env`
 - Stock real, reservas, autenticación, rotación de credenciales
 - DEC-022 / T-017 (idempotencia durable)
-- Commit, push o deploy
+- Commit, push o deploy de los pasos restantes (el Paso 1 ya está en `main`)
 
 #### Paso 1 — Dominio y resumen backend
 
-**Estado:** EN REVISIÓN (2026-09-12). Implementación accidental de Grok, auditada por Codex con resultado REQUIERE CORRECCIONES y conservada como base por el usuario. Las correcciones ya pasan la suite completa; falta aprobación. No avanzar al Paso 2.
+**Estado:** COMPLETADO (2026-09-12)
 
-1. `src/catalog.js` usa `TEMPORARY_MAX_QUANTITY = 4` en los cuatro SKUs, con comentario de que es temporal y no es stock.
-2. `src/cart.js` parsea `items`, rechaza más de 50 **entradas recibidas antes de agrupar**, agrupa SKUs, valida `maxQuantity`, calcula en centavos y arma el resumen autoritativo.
-3. `POST /carrito/resumen` usa ese dominio. No llama a Supabase ni a Mercado Pago. No crea pedidos ni preferencias.
-4. Carrito inválido → HTTP 400 `{ "error": "Carrito inválido" }`.
-5. Tests de tamaño aislado (50/51), estructuras, cantidades inseguras, duplicados 4/5, manipulación de importes, centavos y checkout legacy cantidad 4. El exceso legacy permanece en 5; envío rechaza 2 y 4 sin llamar a MiCorreo y mantiene cantidad 1.
-6. `npm.cmd ci` autorizado instaló el lockfile sin cambiar archivos versionados. `npm.cmd test`: 129/129 tests, 1 suite, 0 fallos. Sin servicios reales ni lectura de `.env`. Sintaxis y `git diff --check` verificados.
-7. La cotización usa únicamente medidas de una unidad; el catálogo conserva máximo 4. npm reportó 4 vulnerabilidades (2 moderate, 2 high); su remediación no está autorizada en esta tarea.
+Implementado, corregido, auditado, aprobado y enviado a `main`. En el cierre del Paso 1 no se implementaba todavía el Paso 2, Correo Argentino, idempotencia durable, cambios al webhook ni migraciones nuevas. El Paso 2 quedó COMPLETADO después, el 2026-09-12.
+
+Hechos verificados:
+
+1. `src/catalog.js` usa `TEMPORARY_MAX_QUANTITY = 4` en los cuatro SKUs. Es un techo temporal. **No representa stock real.** El stock real será una evolución futura.
+2. Existe el dominio autoritativo del carrito en `src/cart.js`.
+3. Existe `POST /carrito/resumen`. No persiste datos. No llama a Supabase, Mercado Pago ni logística. No crea pedidos ni preferencias.
+4. Se validan como máximo 50 entradas originales antes de agrupar. Los SKUs duplicados se agrupan. Después de agrupar se valida la cantidad acumulada contra `maxQuantity`.
+5. Los precios, moneda e importes enviados por el navegador no son autoritativos. El backend calcula utilizando su catálogo.
+6. `/cotizar-envio` continúa limitado a `quantity: 1`. La cotización de envío sigue en una sola unidad hasta implementar logística multítem correctamente.
+7. Carrito inválido → HTTP 400 `{ "error": "Carrito inválido" }`.
+8. Suite completa: **129/129** tests pasando. `git diff --check` pasó.
+9. El código del Paso 1 ya fue commiteado y enviado a `main` en GitHub.
+10. DEC-022 / T-017 de idempotencia durable permanecen fuera de T-016.
+11. Las vulnerabilidades npm (2 moderate + 2 high) informadas durante `npm ci` no se remedian aquí. No se ejecutó `npm audit fix`. Deben auditarse en una tarea separada; no forman parte de T-016 Paso 1.
 
 #### Paso 2 — Checkout multítem y Mercado Pago
 
-Hacer este paso **antes** del frontend para que la UI nueva tenga API real.
+**Estado:** COMPLETADO (2026-09-12)
 
-1. `POST /crear-preferencia` acepta `{ items, customer, delivery }`.
-2. Conservar compatibilidad con `{ sku, quantity, customer, delivery }` mapeado a un ítem.
-3. Rechazar requests que mezclen ambos formatos.
-4. El contrato legacy sin `customer`/`delivery` sigue rechazándose.
-5. Validar cliente/entrega con `parseCheckoutInput` como hoy.
-6. Construir `p_items` y `preference.items` desde el mismo cálculo. Una preferencia, N ítems MP, un `external_reference` de la RPC.
-7. Si la RPC falla, no crear preferencia. Si Mercado Pago falla, error genérico.
-8. Tests: un ítem, varios ítems, duplicados, mezcla de formatos, legacy vigente, manipulación de precio, fallo Supabase, fallo MP. No cambiar tests del webhook salvo regresiones que deban seguir pasando.
+Implementado por Codex, auditado por Grok (APROBADO CON OBSERVACIONES; las observaciones eran únicamente documentales) y aprobado por el usuario el 2026-09-12. El estado COMPLETADO rige desde esa aprobación, no desde la implementación local.
+
+Hechos verificados:
+
+1. `POST /crear-preferencia` acepta el contrato multítem `{ items, customer, delivery }`.
+2. Conserva compatibilidad legacy con `{ sku, quantity, customer, delivery }` mapeado a un ítem.
+3. Rechaza requests que mezclen ambos formatos con HTTP 400 `{ "error": "Carrito inválido" }`.
+4. El contrato legacy sin `customer`/`delivery` sigue rechazándose con los mensajes previos.
+5. Cliente y entrega se validan con `parseCheckoutInput` antes de Supabase o Mercado Pago.
+6. `p_items` y `preference.items` salen del mismo cálculo autoritativo en `src/cart.js`. Una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un único `external_reference` exactamente el devuelto por la RPC.
+7. El backend calcula precios, cantidades agrupadas y total en centavos desde el catálogo. El navegador no es fuente de importes. El envío no se incluye en el total.
+8. Si la RPC falla, no se crea preferencia. Si Mercado Pago falla, error genérico.
+9. Webhook, HMAC, `markOrderAsPaid` e `importesCoinciden` intactos. Sin migraciones nuevas. Sin frontend/`localStorage`. Sin DEC-022/T-017. Sin stock real.
+10. Suite completa: **158/158** tests pasando (29 nuevos del Paso 2). `git diff --check` pasó. Sin lectura de `.env` ni llamadas reales.
 
 #### Paso 3 — Carrito frontend y localStorage
+
+**Estado:** PENDIENTE
 
 1. Persistir `{ version: 1, items: [{ sku, quantity }] }` en `localStorage`.
 2. Una línea por SKU; agregar incrementa cantidad; modificar y eliminar.
@@ -1095,6 +1115,8 @@ Hacer este paso **antes** del frontend para que la UI nueva tenga API real.
 9. Conservar el flujo legacy de un SKU funcionando hasta que el carrito sea el camino de compra.
 
 #### Paso 4 — Tests, regresiones y documentación
+
+**Estado:** PENDIENTE
 
 1. Completar la lista de tests de DEC-021 §15 si algo quedó pendiente.
 2. Verificar regresiones: HMAC, importe, moneda, duplicado, atómico, `pending → paid`, cotización de envío informativa, PII ausente en logs.

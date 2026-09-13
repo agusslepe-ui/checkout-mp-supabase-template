@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const path = require("path");
 const express = require("express");
-const { CartError, summarizeCart } = require("./cart");
+const { CartError, summarizeCart, resolveCheckoutCart } = require("./cart");
 const { getProduct } = require("./catalog");
 const { CheckoutInputError, parseCheckoutInput } = require("./checkoutInput");
 const { baseUrl, mercadoPagoAccessToken } = require("./config");
@@ -363,28 +363,43 @@ app.post("/crear-preferencia", async (req, res) => {
     });
   }
 
-  const { sku, quantity } = req.body || {};
-  const product = getProduct(sku);
+  const body = req.body || {};
+  const hasItems = Object.prototype.hasOwnProperty.call(body, "items");
+  const hasSku = Object.prototype.hasOwnProperty.call(body, "sku");
+  const hasQuantity = Object.prototype.hasOwnProperty.call(body, "quantity");
+  const { sku, quantity } = body;
+  let cart;
 
-  if (!product) {
-    return res.status(400).json({
-      error: "Producto no encontrado",
-    });
-  }
-
-  if (
-    !Number.isInteger(quantity) ||
-    quantity < 1 ||
-    quantity > product.maxQuantity
-  ) {
-    return res.status(400).json({
-      error: "Cantidad inválida",
-    });
+  if (hasItems) {
+    try {
+      if (hasSku || hasQuantity) throw new CartError();
+      cart = resolveCheckoutCart(body);
+    } catch (error) {
+      if (!(error instanceof CartError)) throw error;
+      log("warn", "carrito invalido", {
+        ...logContext,
+        status_code: 400,
+        error_type: "cart_validation_error",
+      });
+      return res.status(400).json({ error: "Carrito inválido" });
+    }
+  } else {
+    const product = getProduct(sku);
+    if (!product) {
+      return res.status(400).json({ error: "Producto no encontrado" });
+    }
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      quantity > product.maxQuantity
+    ) {
+      return res.status(400).json({ error: "Cantidad inválida" });
+    }
   }
 
   let checkoutInput;
   try {
-    checkoutInput = parseCheckoutInput(req.body);
+    checkoutInput = parseCheckoutInput(body);
   } catch (error) {
     if (!(error instanceof CheckoutInputError)) throw error;
 
@@ -399,30 +414,18 @@ app.post("/crear-preferencia", async (req, res) => {
   }
 
   try {
-    const total = product.unitPrice * quantity;
-    const preferenceItem = {
-      title: product.checkoutTitle,
-      quantity,
-      unit_price: product.unitPrice,
-      currency_id: product.currency,
-    };
-    const orderItems = [
-      {
-        product_sku: product.sku,
-        product_name: product.name,
-        product_size: product.size,
-        quantity,
-        unit_price: product.unitPrice,
-      },
-    ];
+    if (!hasItems) {
+      cart = resolveCheckoutCart({ items: [{ sku, quantity }] });
+    }
+    const { expectedAmount, currency, subtotalCents, orderItems, preferenceItems } = cart;
 
     log("info", "inicio de creacion de preferencia", logContext);
 
     let createdOrder;
     try {
       createdOrder = await createPendingOrder({
-        expectedAmount: total,
-        currency: product.currency,
+        expectedAmount,
+        currency,
         customer: {
           firstName: checkoutInput.customer_first_name,
           lastName: checkoutInput.customer_last_name,
@@ -443,8 +446,8 @@ app.post("/crear-preferencia", async (req, res) => {
 
       if (
         Math.round(Number(createdOrder.amount) * 100) !==
-          Math.round(total * 100) ||
-        createdOrder.currency !== product.currency ||
+          subtotalCents ||
+        createdOrder.currency !== currency ||
         createdOrder.status !== "pending"
       ) {
         throw new Error("incompatible pending order RPC response");
@@ -462,7 +465,7 @@ app.post("/crear-preferencia", async (req, res) => {
     }
 
     const result = await createPreference({
-      items: [preferenceItem],
+      items: preferenceItems,
       external_reference: createdOrder.external_reference,
       notification_url: `${baseUrl}/webhook?source_news=webhooks`,
       back_urls: {

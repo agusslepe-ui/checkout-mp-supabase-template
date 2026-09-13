@@ -9,7 +9,7 @@ class CartError extends Error {
   }
 }
 
-function summarizeCart(input) {
+function resolveCart(input) {
   if (!isPlainObject(input)) {
     throw new CartError();
   }
@@ -44,7 +44,7 @@ function summarizeCart(input) {
     groupedQuantities.set(sku, groupedQuantity);
   }
 
-  const summarizedItems = [];
+  const lines = [];
   let subtotalCents = 0;
   let currency = null;
 
@@ -78,20 +78,47 @@ function summarizeCart(input) {
       throw new CartError();
     }
 
-    summarizedItems.push({
+    lines.push({ product, quantity, unitPriceCents, lineSubtotalCents });
+  }
+
+  return { currency, subtotalCents, lines };
+}
+
+function summarizeCart(input) {
+  const { currency, subtotalCents, lines } = resolveCart(input);
+  return {
+    currency,
+    subtotal: subtotalCents / 100,
+    items: lines.map(({ product, quantity, unitPriceCents, lineSubtotalCents }) => ({
       sku: product.sku,
       productName: product.name,
       variant: product.size,
       quantity,
       unitPrice: unitPriceCents / 100,
       lineSubtotal: lineSubtotalCents / 100,
-    });
-  }
+    })),
+  };
+}
 
+function resolveCheckoutCart(input) {
+  const { currency, subtotalCents, lines } = resolveCart(input);
   return {
     currency,
-    subtotal: subtotalCents / 100,
-    items: summarizedItems,
+    subtotalCents,
+    expectedAmount: subtotalCents / 100,
+    orderItems: lines.map(({ product, quantity, unitPriceCents }) => ({
+      product_sku: product.sku,
+      product_name: product.name,
+      product_size: product.size,
+      quantity,
+      unit_price: unitPriceCents / 100,
+    })),
+    preferenceItems: lines.map(({ product, quantity, unitPriceCents }) => ({
+      title: product.checkoutTitle,
+      quantity,
+      unit_price: unitPriceCents / 100,
+      currency_id: product.currency,
+    })),
   };
 }
 
@@ -113,5 +140,6 @@ module.exports = {
   CartError,
   MAX_CART_ITEMS,
   summarizeCart,
+  resolveCheckoutCart,
   validateCartItemsSize,
 };

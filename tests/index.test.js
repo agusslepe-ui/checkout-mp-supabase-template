@@ -845,6 +845,189 @@ describe("creación de preferencias", () => {
   });
 });
 
+describe("checkout multítem", () => {
+  let spies;
+  const items = [{ sku: "LEM-REM-001-S", quantity: 1 }];
+  const bodyFor = (overrides = {}) => ({
+    customer: validPreferenceBody.customer,
+    delivery: validPreferenceBody.delivery,
+    items,
+    ...overrides,
+  });
+  const rpcData = (overrides = {}) => ({
+    order_id: 81,
+    external_reference: "LEMONT-ORDER-MULTI-TEST",
+    amount: 1000,
+    currency: "ARS",
+    status: "pending",
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    spies = ["log", "warn", "error"].map((method) =>
+      jest.spyOn(console, method).mockImplementation(() => {})
+    );
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  function expectPrivate(response) {
+    const output = JSON.stringify(response.body) + serializedLogOutput(...spies);
+    for (const value of [
+      "Ana María", "O'Connor", "ANA.CLIENTE@EXAMPLE.TEST", "ana.cliente@example.test",
+      "+54 11 2345-6789", "541123456789", "La Plata", "B1900ABC", "Calle 12",
+      "Portón negro", "LEM-REM-001", "LEMONT-ORDER-MULTI-TEST",
+      '"amount"', '"unit_price"', '"items"', '"customer"',
+    ]) expect(output).not.toContain(value);
+    const entries = parseLogEntries(...spies);
+    for (const entry of entries) {
+      expect(Object.keys(entry)).not.toEqual(expect.arrayContaining(["amount"]));
+      expect(entry).not.toHaveProperty("external_reference");
+      expect(entry).not.toHaveProperty("body");
+    }
+  }
+
+  test.each([
+    ["un ítem", items, [["S", 1]], 1000],
+    ["varios SKUs", [items[0], { sku: "LEM-REM-001-XL", quantity: 3 }], [["S", 1], ["XL", 3]], 4000],
+    ["duplicados", [{ sku: "LEM-REM-001-M", quantity: 1 }, { sku: "LEM-REM-001-M", quantity: 2 }], [["M", 3]], 3000],
+  ])("crea una orden y una preferencia: %s", async (label, cartItems, lines, amount) => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp();
+    supabaseMock.createPendingOrderRpc.mockResolvedValueOnce({ data: rpcData({ amount }), error: null });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest(bodyFor({ items: cartItems })), response);
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      preference_id: "preference-test",
+      init_point: "https://checkout.example/init",
+      sandbox_init_point: "https://checkout.example/sandbox",
+    });
+    expect(supabaseMock.createPendingOrderRpc).toHaveBeenCalledTimes(1);
+    expect(preferenceCreate).toHaveBeenCalledTimes(1);
+    const [name, parameters] = supabaseMock.createPendingOrderRpc.mock.calls[0];
+    expect(name).toBe("create_pending_order_with_items");
+    expect(parameters.p_expected_amount).toBe(amount);
+    expect(parameters.p_currency).toBe("ARS");
+    expect(parameters.p_items).toEqual(lines.map(([size, quantity]) => ({
+      product_sku: "LEM-REM-001-" + size, product_name: "Remera LEMONT",
+      product_size: size, quantity, unit_price: 1000,
+    })));
+    expect(preferenceCreate.mock.calls[0][0].body).toEqual({
+      items: lines.map(([size, quantity]) => ({
+        title: "Remera LEMONT - Talle " + size, quantity, unit_price: 1000, currency_id: "ARS",
+      })),
+      external_reference: rpcData().external_reference,
+      notification_url: "https://example.test/webhook?source_news=webhooks",
+      back_urls: { success: "https://example.test/success", failure: "https://example.test/failure", pending: "https://example.test/pending" },
+      auto_return: "approved",
+    });
+    expect(supabaseMock.createPendingOrderRpc.mock.invocationCallOrder[0]).toBeLessThan(preferenceCreate.mock.invocationCallOrder[0]);
+    expectPrivate(response);
+  });
+
+  test("ignora campos comerciales manipulados en raíz y líneas", async () => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp();
+    const tampered = { amount: 1, total: 1, currency: "USD", currency_id: "USD", unit_price: 1, price: 1,
+      product_name: "Falso", status: "paid", external_reference: "CLIENT-REFERENCE", shipping: 999 };
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest(bodyFor({ ...tampered, items: [{ ...items[0], ...tampered }] })), response);
+    expect(response.statusCode).toBe(200);
+    const parameters = supabaseMock.createPendingOrderRpc.mock.calls[0][1];
+    expect(parameters.p_expected_amount).toBe(1000);
+    expect(parameters.p_currency).toBe("ARS");
+    expect(parameters.p_items).toEqual([{ product_sku: "LEM-REM-001-S", product_name: "Remera LEMONT", product_size: "S", quantity: 1, unit_price: 1000 }]);
+    expect(parameters).not.toHaveProperty("p_status");
+    expect(parameters).not.toHaveProperty("p_external_reference");
+    expect(preferenceCreate.mock.calls[0][0].body.items).toEqual([{ title: "Remera LEMONT - Talle S", quantity: 1, unit_price: 1000, currency_id: "ARS" }]);
+    expect(preferenceCreate.mock.calls[0][0].body.external_reference).toBe("LEMONT-ORDER-RPC-TEST");
+    expectPrivate(response);
+  });
+
+  test.each([
+    ["items + sku", { sku: "LEM-REM-001-S" }],
+    ["items + quantity", { quantity: 1 }],
+    ["items + ambos", { sku: "LEM-REM-001-S", quantity: 1 }],
+    ["sku presente undefined", { sku: undefined }],
+    ["quantity presente null", { quantity: null }],
+    ["vacío", { items: [] }],
+    ["51 entradas", { items: Array(51).fill(items[0]) }],
+    ["desconocido", { items: [{ sku: "DESCONOCIDO", quantity: 1 }] }],
+    ["cero", { items: [{ sku: "LEM-REM-001-S", quantity: 0 }] }],
+    ["cinco", { items: [{ sku: "LEM-REM-001-S", quantity: 5 }] }],
+    ["duplicados excedidos", { items: [items[0], { sku: "LEM-REM-001-S", quantity: 4 }] }],
+    ["null", { items: null }],
+    ["undefined", { items: undefined }],
+  ])("rechaza carrito %s antes de leer comprador", async (label, overrides) => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp();
+    const body = bodyFor(overrides);
+    Object.defineProperty(body, "customer", { get() { throw new Error("No debe leer customer"); } });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest(body), response);
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "Carrito inválido" });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expectPrivate(response);
+  });
+
+  test.each([
+    { customer: undefined }, { delivery: undefined },
+    { customer: { ...validPreferenceBody.customer, email: "inválido" } },
+    { delivery: { ...validPreferenceBody.delivery, postalCode: "X" } },
+  ])("valida comprador y entrega antes de persistir: %j", async (overrides) => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp();
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest(bodyFor(overrides)), response);
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "Revisá los datos del comprador y la entrega" });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expectPrivate(response);
+  });
+
+  test.each([{ amount: 1000 }, { currency: "USD" }, { status: "paid" }])(
+    "RPC inconsistente bloquea MP: %j", async (override) => {
+      const { routes, supabaseMock, preferenceCreate } = loadApp();
+      supabaseMock.createPendingOrderRpc.mockResolvedValueOnce({ data: rpcData({ amount: 4000, ...override }), error: null });
+      const response = createResponse();
+      await routes.post["/crear-preferencia"](makePreferenceRequest(bodyFor({ items: [items[0], { sku: "LEM-REM-001-XL", quantity: 3 }] })), response);
+      expect(response.statusCode).toBe(500);
+      expect(response.body).toEqual({ error: "No se pudo iniciar el pago" });
+      expect(supabaseMock.createPendingOrderRpc).toHaveBeenCalledTimes(1);
+      expect(preferenceCreate).not.toHaveBeenCalled();
+      expectPrivate(response);
+    }
+  );
+
+  test.each(["RPC", "MP"])("falla %s con respuesta y logs genéricos", async (stage) => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp();
+    const error = new Error(JSON.stringify(bodyFor()) + " LEMONT-ORDER-MULTI-TEST 1000");
+    if (stage === "RPC") supabaseMock.createPendingOrderRpc.mockRejectedValueOnce(error);
+    else preferenceCreate.mockRejectedValueOnce(error);
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest(bodyFor()), response);
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({ error: stage === "RPC" ? "No se pudo iniciar el pago" : "No se pudo crear la preferencia" });
+    expect(supabaseMock.createPendingOrderRpc).toHaveBeenCalledTimes(1);
+    expect(preferenceCreate).toHaveBeenCalledTimes(stage === "RPC" ? 0 : 1);
+    expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
+    expectPrivate(response);
+  });
+
+  test.each([
+    [{}, "Producto no encontrado"],
+    [{ quantity: 1 }, "Producto no encontrado"],
+    [{ sku: "LEM-REM-001-S" }, "Cantidad inválida"],
+  ])("conserva legacy incompleto %j", async (body, message) => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp();
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest(body), response);
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: message });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+});
+
 describe("dominio del carrito", () => {
   let summarizeCart;
   let CartError;

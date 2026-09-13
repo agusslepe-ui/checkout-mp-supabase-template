@@ -1,20 +1,41 @@
 # Progreso
 
-Última revisión documental: 2026-09-12. T-016 Paso 1 EN REVISIÓN: implementación accidental conservada, auditada y corregida por Codex; 129/129 tests locales. Pendiente de aprobación. No avanzar al Paso 2. Checkout HTTP vigente de un SKU.
+Última revisión documental: 2026-09-12. T-016 EN PROGRESO. Paso 1 COMPLETADO y en `main`. Paso 2 COMPLETADO (auditado y aprobado). Paso 3 PENDIENTE. Paso 4 PENDIENTE. Checkout HTTP multítem y legacy. Tests: 158/158.
+
+## T-016 Paso 2 — COMPLETADO — 2026-09-12
+
+Cierre formal tras auditoría (APROBADO CON OBSERVACIONES, solo documentales) y aprobación del usuario. El Paso 2 no estaba completado antes de esa aprobación.
+
+- Objetivo: checkout multítem + Mercado Pago, conservando el contrato legacy y rechazando mezcla de contratos.
+- Implementado: contrato `{ items, customer, delivery }`; compatibilidad `{ sku, quantity, customer, delivery }`; rechazo de mezcla; una orden `pending`; N `order_items`; una preferencia de Mercado Pago; N ítems de Mercado Pago; un único `external_reference` exactamente el de la RPC; cálculo autoritativo desde el backend; envío no incluido en el total.
+- Archivos de código (sin commit todavía): `src/app.js`, `src/cart.js`, `tests/index.test.js`.
+- Resolver interno compartido en `src/cart.js`: agrupa y valida; calcula en centavos; genera `p_items` y `preference.items` desde la misma representación.
+- 29 tests nuevos. Suite completa: **158/158**, 1 suite, 0 fallos.
+- Webhook intacto. Sin migraciones. Sin frontend/`localStorage`. Sin Correo Argentino adicional. Sin DEC-022/T-017. Sin stock real. Sin lectura de `.env`, llamadas reales, commit, push ni deploy.
+- DEC-021 ACCEPTED. T-016 EN PROGRESO. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 PENDIENTE. Paso 4 PENDIENTE.
 
 ## Estado actual
 
-### T-016 Paso 1 EN REVISIÓN — 2026-09-12
+- **T-016** permanece **en curso**.
+- Paso 1 COMPLETADO (en `main`).
+- Paso 2 COMPLETADO (auditado y aprobado el 2026-09-12).
+- Paso 3 PENDIENTE — carrito frontend + `localStorage`. Todavía no implementarlo.
+- Paso 4 PENDIENTE.
+- DEC-021 permanece **aceptada**. DEC-022 / T-017 permanecen fuera de T-016.
 
-- Dominio autoritativo en `src/cart.js`: parseo, tope de 50 entradas recibidas, agrupación de SKUs, `maxQuantity: 4`, cálculo en centavos.
-- `POST /carrito/resumen` valida y resume. No usa Supabase ni Mercado Pago. No persiste.
-- Catálogo: `TEMPORARY_MAX_QUANTITY = 4`, documentado como transitorio y no-stock.
+### T-016 Paso 1 COMPLETADO — 2026-09-12 (histórico de ese cierre)
+
+En el cierre del Paso 1, los Pasos 2–4 estaban pendientes. Eso ya no es el estado vigente: el Paso 2 quedó COMPLETADO el 2026-09-12; los Pasos 3 y 4 siguen PENDIENTES.
+
+- Dominio autoritativo en `src/cart.js`: parseo, tope de 50 entradas originales antes de agrupar, agrupación de SKUs duplicados, validación de cantidad acumulada contra `maxQuantity: 4`, cálculo en centavos.
+- `POST /carrito/resumen` valida y resume. No persiste. No llama a Supabase, Mercado Pago ni logística.
+- Catálogo: `TEMPORARY_MAX_QUANTITY = 4`. Es un techo **temporal**. **No representa stock real.** El stock real será una evolución futura.
+- Precios, moneda e importes enviados por el navegador no son autoritativos. El backend calcula utilizando su catálogo.
+- `/cotizar-envio` continúa limitado a `quantity: 1` hasta implementar logística multítem correctamente.
 - Carrito inválido → HTTP 400 `{ "error": "Carrito inválido" }`.
-- T-016 **no** está completa. Faltan Pasos 2–4.
-- Grok implementó accidentalmente este paso. Codex lo auditó (REQUIERE CORRECCIONES) y el usuario autorizó conservar la base y corregir los hallazgos.
-- Correcciones: envío limitado a una unidad sin alterar máximo 4; validación de tamaño aislada; cobertura adicional y DEC-021 alineada a 50 entradas antes de agrupar.
-- Verificación actual: `npm.cmd ci` sin cambios versionados; `npm.cmd test` 129/129, 1 suite, 0 fallos; sintaxis y `git diff --check` correctos. Sin QA real ni lectura de `.env`.
-- Paso 1 permanece EN REVISIÓN, con tests completos pasando y pendiente de aprobación; no avanzar al Paso 2.
+- Verificación de ese cierre: suite completa **129/129**, 1 suite, 0 fallos; `git diff --check` correcto. Sin QA real ni lectura de `.env`.
+- El código del Paso 1 ya fue commiteado y enviado a `main`. En ese cierre todavía no se implementaba el Paso 2, Correo Argentino, idempotencia durable, cambios al webhook ni migraciones nuevas.
+- npm informó 4 vulnerabilidades (2 moderate, 2 high) durante `npm ci`. No se ejecutó `npm audit fix`. Queda como deuda/riesgo pendiente de una tarea separada; **no** forma parte de T-016.
 
 ### DEC-021 aceptada — 2026-09-11
 
@@ -212,11 +233,36 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-Esperar aprobación del usuario de las correcciones del **Paso 1 de T-016**. No avanzar al Paso 2. No frontend, webhook, DEC-022, migraciones ni Correo Argentino adicional.
+**T-016 Paso 3 — carrito frontend + localStorage.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Pasos 3 y 4 PENDIENTES.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-09-12 — Cierre formal del Paso 2 de T-016
+
+- Objetivo: registrar la aprobación del usuario y el cierre real del Paso 2 tras la auditoría final.
+- Tipo de sesión: documental. Sin código, tests, migraciones, dependencias, commit ni push.
+- Auditoría: APROBADO CON OBSERVACIONES. Las observaciones eran únicamente documentales (COMPLETADO prematuro y dos inconsistencias de redacción).
+- Estado: DEC-021 ACCEPTED. T-016 EN PROGRESO. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 PENDIENTE. Paso 4 PENDIENTE.
+- Hechos verificados del Paso 2: contrato multítem `{ items, customer, delivery }`; compatibilidad legacy `{ sku, quantity, customer, delivery }`; rechazo de mezcla; una orden `pending`; N `order_items`; una preferencia de Mercado Pago; N ítems de Mercado Pago; un único `external_reference`; cálculo autoritativo desde el backend; envío no incluido; webhook intacto; sin migraciones.
+- Tests: último resultado comprobado **158/158**.
+- Fuera de T-016: DEC-022 / T-017 (idempotencia durable); Correo Argentino; stock real.
+- Archivos modificados en este cierre documental: `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`.
+- Próximo paso registrado: **T-016 Paso 3 — carrito frontend + localStorage.** Todavía no implementarlo.
+
+### 2026-09-12 — Cierre formal del Paso 1 de T-016
+
+- Objetivo: registrar el cierre real del Paso 1 tras implementación, corrección, auditoría y aprobación.
+- Tipo de sesión: documental. Sin código, tests, migraciones, dependencias, commit ni push.
+- Estado: T-016 EN PROGRESO. Paso 1 COMPLETADO. Pasos 2–4 pendientes.
+- Hechos verificados: `maxQuantity: 4` temporal (no es stock); `/cotizar-envio` limitado a `quantity: 1`; dominio autoritativo del carrito; `POST /carrito/resumen` no persiste ni llama a Supabase, Mercado Pago o logística; 50 entradas originales antes de agrupar; SKUs duplicados agrupados; cantidad acumulada validada contra `maxQuantity`; precios del navegador no autoritativos; backend calcula desde su catálogo.
+- Tests: último resultado comprobado **129/129**. `git diff --check` pasó.
+- El código del Paso 1 ya estaba commiteado y enviado a `main`. No se implementó el Paso 2.
+- Fuera de T-016: DEC-022 / T-017 (idempotencia durable); Correo Argentino; webhook; migraciones nuevas; stock real.
+- Deuda registrada: 2 vulnerabilidades npm moderate y 2 high informadas durante `npm ci`. No se ejecutó `npm audit fix`. Auditar en una tarea separada.
+- Archivos modificados: `docs/TASKS.md`, `docs/PROGRESS.md`, `docs/CURRENT_CONTEXT.md`. DEC-021 permanece aceptada; `docs/DECISIONS.md` no requirió corrección.
+- Próximo paso registrado: **T-016 — Paso 2: checkout multítem + Mercado Pago.** Todavía no implementarlo.
 
 ### 2026-09-12 — Correcciones autorizadas del Paso 1 de T-016
 
