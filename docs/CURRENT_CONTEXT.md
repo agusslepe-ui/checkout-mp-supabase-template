@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-09-13 (T-016 EN PROGRESO; Pasos 1–3 COMPLETADOS; Paso 4 PENDIENTE; tests 158/158).
+> Resumen compacto para agentes. Última actualización: 2026-09-13 (T-016 COMPLETADA; Pasos 1–4 COMPLETADOS; DEC-021 implementada; tests 158/158).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -19,6 +19,8 @@
 - **T-016 Paso 2 COMPLETADO:** checkout HTTP multítem con compatibilidad legacy y rechazo explícito de mezcla. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES, solo documentales) y aprobado por el usuario el 2026-09-12. Una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un `external_reference`. Cálculo autoritativo en backend; envío no incluido; webhook intacto; sin migraciones. Suite **158/158**.
 - **T-016 Paso 3 COMPLETADO:** carrito frontend + `localStorage` (`lemont.cart`, solo SKU + quantity). Página `carrito.html`, contador por unidades, D1-A (Agregar al carrito + Comprar ahora), D2-A (no auto-vaciar), resumen vía `POST /carrito/resumen`, checkout `items[]`. Cotización informativa solo 1 SKU × quantity 1. Auditado (APROBADO CON OBSERVACIONES: QA visual pendiente), QA visual/manual correcto, aprobado el 2026-09-13. Sin backend, webhook ni migraciones. Suite **158/158**.
 
+- **T-016 Paso 4 COMPLETADO:** regresiones 158/158 y documentación alineada con main (2026-09-13). T-016 COMPLETADA; DEC-021 implementada. QA frontend manual, sin tests DOM nuevos.
+
 ### VALIDADO
 
 - La migración 004 y la RPC fueron validadas manualmente en Supabase real: un pedido y su item, total, moneda, estado, columnas legacy, relación y `ON DELETE CASCADE`.
@@ -29,8 +31,6 @@
 
 ### PENDIENTE
 
-- **T-016** está **en curso**. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 COMPLETADO. Paso 4 PENDIENTE. Checkout HTTP acepta `{ items, customer, delivery }` y el contrato legacy. El frontend ya tiene carrito.
-- No implementar todavía el Paso 4 (regresiones y documentación final).
 - **DEC-022** está propuesta (no aceptada). **T-017** está bloqueada. Idempotencia durable fuera de T-016.
 - `maxQuantity: 4` está aplicado en `src/catalog.js` como techo **temporal**. **No sustituye stock real.** El stock real será una evolución futura.
 - Cotización de envío sigue limitada a `quantity: 1` hasta implementar logística multítem correctamente.
@@ -41,7 +41,7 @@
 
 ### PRÓXIMO PASO
 
-**T-016 Paso 4 — cierre de regresiones y documentación final.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Paso 4 PENDIENTE.
+T-016 está COMPLETADA. El próximo trabajo requiere definición y autorización separadas; EasyPanel/credenciales, DEC-022/T-017, stock, Correo Argentino y deuda npm quedan fuera de este cierre.
 
 **Regla operativa obligatoria:** después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.
 
@@ -75,7 +75,7 @@ La Etapa 3 incorporó la Remera LEMONT con variantes inequívocas por talle: `LE
 
 La migración `supabase/migrations/002_add_order_product_variant.sql` fue aplicada y verificada. Agregó `product_sku text` y `product_size text` como columnas nullable, sin completar ni alterar pedidos históricos. Los pedidos nuevos persisten SKU y talle. Se verificaron manualmente las cuatro variantes y un flujo productivo completo `selección de talle → SKU → pending → Checkout Pro → pago real → webhook → paid`.
 
-El precio vigente de la Remera LEMONT es **temporalmente ARS 1.000** para pruebas productivas privadas/controladas. No es el precio comercial definitivo y debe revisarse antes del lanzamiento. `src/catalog.js` sigue siendo la autoridad sobre precio, moneda, nombre y cantidad máxima; todos los SKUs mantienen `maxQuantity: 1`. No existe selector de cantidad, control de inventario ni reserva de stock.
+El precio vigente de la Remera LEMONT es **temporalmente ARS 1.000** para pruebas productivas privadas/controladas. No es el precio comercial definitivo y debe revisarse antes del lanzamiento. `src/catalog.js` sigue siendo la autoridad sobre precio, moneda, nombre y cantidad máxima; en ese cierre todos los SKUs mantenían `maxQuantity: 1`; el vigente es 4 temporal, sin stock real. No existe selector de cantidad, control de inventario ni reserva de stock.
 
 Al cierre de la Etapa 3 la suite pasaba con **55/55 tests**. Esa cifra se conserva como antecedente histórico; el estado actual está indicado arriba.
 
@@ -136,7 +136,7 @@ Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supab
 
 No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `POST /webhook` responde 503 ante fallos temporales o inesperados y conserva 200 para resultados exitosos, definitivos o idempotentes.
 
-**T-016** está en curso. Pasos 1–3 COMPLETADOS. Paso 4 PENDIENTE. No está completa.
+**T-016 COMPLETADA**, Pasos 1–4 COMPLETADOS. No quedan pasos de T-016 pendientes.
 
 **T-017** está bloqueada por DEC-022 (propuesta): idempotencia durable del checkout. No mezclarla con T-016.
 
@@ -156,13 +156,13 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | DEC-010 | Transición `pending → paid` con `UPDATE WHERE status = 'pending'`. Cero filas afectadas = duplicado idempotente. Sin dependencias adicionales. |
 | DEC-011 | Comparar importes como enteros en centavos: `Math.round(a * 100) === Math.round(b * 100)`. Validar `currency_id` contra `order.currency`. Logs solo genéricos. Sin dependencias nuevas. |
 | DEC-012 | SQL manual versionado en `supabase/migrations/`. Sin Supabase CLI. El usuario aplica el archivo manualmente. |
-| DEC-013 | Catálogo como módulo `src/catalog.js`. Frontend envía solo `{ sku, quantity }`. Backend resuelve precio, moneda y valida cantidad. Sin dependencias nuevas ni tabla Supabase adicional. |
+| DEC-013 | Catálogo como módulo `src/catalog.js`. Catálogo autoritativo. Desde T-016 se envía `{ items, customer, delivery }` o legacy `{ sku, quantity, customer, delivery }`. Backend resuelve precio, moneda y valida cantidad. Sin dependencias nuevas ni tabla Supabase adicional. |
 | DEC-016 | Staging en EasyPanel/VPS. URL HTTPS de EasyPanel. `NODE_ENV=production`. MP sandbox. Supabase actual. Variables solo en EasyPanel. Rollback en 4 niveles. Producción real con checklist obligatoria. |
 | DEC-017 | Helper `log(level, event, extra)` propio. Formato JSON. Niveles: `info`, `warn`, `error`. Campos fijos + `request_id` por correlación. Lista explícita de campos prohibidos. Sin librería externa. |
 | DEC-018 | **Resuelta.** Causa raíz del 401: `notification_url` sin `?source_news=webhooks` hacía que MP enviara IPN en lugar de Webhooks (firma diferente). Fix: agregar `?source_news=webhooks`. Flujo pending → paid verificado en producción real el 2026-06-26. |
 | DEC-019 | **Implementada por T-015.** Política HTTP de `POST /webhook`: 401 para firma ausente/inválida; 200 para éxito y resultados definitivos/idempotentes; 503 para fallos temporales o excepciones inesperadas. Conserva HMAC, transición atómica e idempotencia. |
 | DEC-020 | `orders` + `order_items` se crean atómicamente mediante RPC estricta; PostgreSQL genera `external_reference`, Node conserva autoridad comercial y Mercado Pago reutiliza exactamente esa referencia. |
-| DEC-021 | **Aceptada (2026-09-11).** Carrito no autoritativo `{ version, items: [{ sku, quantity }] }`; backend agrupa, precifica y alimenta RPC + Mercado Pago; `POST /carrito/resumen`; compatibilidad temporal con `{ sku, quantity, customer, delivery }`; 50 entradas originales antes de agrupar; `maxQuantity: 4` temporal (no es stock); sin migración nueva; webhook sin recálculo de catálogo; Correo Argentino fuera de alcance. |
+| DEC-021 | **Aceptada e implementada por T-016 Pasos 1–4 (cierre 2026-09-13).** Carrito no autoritativo `{ version, items: [{ sku, quantity }] }`; backend agrupa, precifica y alimenta RPC + Mercado Pago; `POST /carrito/resumen`; compatibilidad temporal con `{ sku, quantity, customer, delivery }`; 50 entradas originales antes de agrupar; `maxQuantity: 4` temporal (no es stock); sin migración nueva; webhook sin recálculo de catálogo; Correo Argentino fuera de alcance. |
 | DEC-022 | **Propuesta (2026-09-11), no aceptada.** Idempotencia durable del checkout: doble request, reintentos, timeouts, resultados ambiguos y un solo pedido/preferencia por intento lógico. Bloquea T-017. No forma parte de T-016. |
 
 ---
@@ -225,7 +225,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. **T-016 Paso 4 — cierre de regresiones y documentación final.** Todavía NO implementarlo.
+1. T-016 está COMPLETADA. El próximo trabajo requiere definición y autorización separadas; EasyPanel/credenciales, DEC-022/T-017, stock, Correo Argentino y deuda npm quedan fuera de este cierre.
 2. No implementar todavía DEC-022, webhook, migraciones, Correo Argentino ni `npm audit fix`.
 3. En paralelo, no bloqueante: cuando Correo Argentino entregue credenciales, validar MiCorreo QA. Eso no forma parte de T-016.
 4. DEC-022 / T-017 no se implementan hasta que el usuario acepte esa decisión. El stock real tampoco forma parte de T-016.
@@ -234,7 +234,7 @@ El modelo `orders` + `order_items` ya está implementado y no debe volver a trat
 
 También permanecen posibles, ninguno marcado como completado:
 
-- Página de detalle del producto.
+- Mejoras de la página de detalle del producto ya existente.
 - Imágenes reales y optimizadas de LEMONT.
 - Guía de talles.
 - Stock real por SKU.

@@ -34,8 +34,17 @@ Usar el origen HTTPS como `BASE_URL`, sin agregar `/webhook`, y reiniciar el ser
 Usar únicamente credenciales de prueba:
 
 ```powershell
-curl.exe -X POST http://localhost:3003/crear-preferencia -H "Content-Type: application/json" -d "{\"sku\":\"REMERA-LEMONT-001\",\"quantity\":1}"
+$checkoutBody = @'
+{
+  "items": [{ "sku": "LEM-REM-001-S", "quantity": 1 }],
+  "customer": { "firstName": "Ana", "lastName": "Perez", "email": "ana.cliente@example.test", "phone": "541123456789" },
+  "delivery": { "province": "AR-B", "locality": "La Plata", "postalCode": "B1900ABC", "street": "Calle 12", "streetNumber": "345", "apartment": "", "notes": "" }
+}
+'@
+$checkoutBody | curl.exe -X POST http://localhost:3003/crear-preferencia -H "Content-Type: application/json" --data-binary '@-'
 ```
+
+El ejemplo contiene datos ficticios. Sin `customer`/`delivery` válidos no se persiste, tampoco en legacy.
 
 Verificar que la respuesta contenga un identificador y una URL de checkout, y que Supabase tenga un pedido `pending` con la misma referencia. No publicar la respuesta completa si contiene identificadores operativos.
 
@@ -57,7 +66,7 @@ http://localhost:3003/failure
 http://localhost:3003/pending
 ```
 
-Estas páginas solo representan el retorno del navegador; no confirman el estado autoritativo del pedido.
+Estas páginas solo representan el retorno del navegador; no confirman el estado autoritativo del pedido ni vacían el carrito (D2-A).
 
 ## Probar funcionalidades de forma segura
 
@@ -69,7 +78,7 @@ Estas páginas solo representan el retorno del navegador; no confirman el estado
 - Revisar que los logs no muestren secretos ni cuerpos sensibles completos.
 - Registrar en `docs/PROGRESS.md` qué se probó y qué no.
 
-Existe una suite Jest ejecutable con `npm.cmd test`. Aun así, no afirmar que el flujo funciona en un entorno real solo por revisión estática o por tests con dobles: staging requiere ejecutar la checklist operativa completa.
+Existe una suite Jest ejecutable con `npm.cmd test`: **158/158**, 1 suite, verificada el 2026-09-13. El carrito frontend se valida a mano; no se agregan tests DOM, jsdom ni Playwright. Aun así, no afirmar que el flujo funciona en un entorno real solo por revisión estática o por tests con dobles: staging requiere ejecutar la checklist operativa completa.
 
 ## Deploy a staging (EasyPanel)
 
@@ -116,7 +125,7 @@ Ejecutar en orden y registrar el resultado. Staging usa EasyPanel/VPS existente,
 1. Variables cargadas en EasyPanel según la tabla anterior, solo por panel y sin valores en archivos versionados.
 2. Servicio arranca sin errores de variables faltantes.
 3. Abrir la URL HTTPS pública de EasyPanel y confirmar que el frontend carga.
-4. `POST /crear-preferencia` con `{ "sku": "REMERA-LEMONT-001", "quantity": 1 }` responde con `preference_id` y URL de checkout.
+4. `POST /crear-preferencia` con el contrato nuevo del ejemplo anterior (`items` con `LEM-REM-001-S`, `customer` y `delivery` ficticios válidos) responde con `preference_id` y URL de checkout.
 5. Supabase muestra un pedido `pending` con referencia `LEMONT-ORDER-...`.
 6. La redirección al checkout sandbox de Mercado Pago funciona.
 7. Completar el pago en sandbox con credenciales de prueba.

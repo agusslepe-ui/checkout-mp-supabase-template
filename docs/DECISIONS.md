@@ -806,7 +806,7 @@ Después de modificar archivos backend/runtime en `src/`, se debe reiniciar el p
 ## DEC-021 — Carrito multítem y checkout autoritativo preparado para logística
 
 **Fecha:** 2026-09-11
-**Estado:** aceptada
+**Estado:** aceptada e implementada por T-016 Pasos 1–4 (cierre 2026-09-13)
 **Tarea desbloqueada:** T-016
 
 ### Aceptación (2026-09-11)
@@ -818,7 +818,14 @@ El usuario aceptó esta decisión con cuatro resoluciones explícitas:
 3. **Compatibilidad legacy:** aprobada. Conservar temporalmente `{ sku, quantity, customer, delivery }`. No aceptar requests que mezclen ese formato con `items[]`. Retirar el legacy cuando el carrito sea el único flujo activo.
 4. **Idempotencia durable:** fuera de T-016. Queda como DEC-022 (propuesta) y T-017 (bloqueada).
 
+### Resoluciones de interfaz aprobadas e implementadas
+
+- **D1-A:** Agregar al carrito (principal, sin navegar) y Comprar ahora (secundario, legacy sin agregar); ambos requieren talle.
+- **D2-A:** el carrito solo se vacía a mano; crear preferencia, redirigir o visitar retornos no lo vacía. `/success` no confirma el pago.
+
 ### Contexto verificado (2026-09-11)
+
+Esta sección es la foto previa a la implementación; se conserva como antecedente histórico.
 
 Auditoría contra código, migraciones, tests y documentación. No se asume el análisis previo de Codex.
 

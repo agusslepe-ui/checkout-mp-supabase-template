@@ -13,14 +13,14 @@
 - Incidente QA de columnas `customer_*`/`shipping_*` en `NULL` resuelto: se estaba ejecutando una instancia Node antigua. La RPC activa, firma, permisos e `INSERT` fueron verificados como correctos.
 - Último resultado comprobado de tests: **158/158**.
 - Auditoría 2026-09-11: el checkout HTTP era de un solo SKU; desde el Paso 2 acepta múltiples ítems usando la RPC existente.
-- **T-016 Paso 1 COMPLETADO:** dominio autoritativo del carrito (`src/cart.js`) y `POST /carrito/resumen`. Implementado, corregido, auditado, aprobado y enviado a `main`. El endpoint no persiste y no llama a Supabase, Mercado Pago ni logística. T-016 no está completa.
-- **T-016 Paso 2 COMPLETADO:** checkout multítem autoritativo. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES, solo documentales) y aprobado por el usuario el 2026-09-12. Contrato `{ items, customer, delivery }`, compatibilidad legacy, rechazo de mezcla, una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un `external_reference`. Suite **158/158**. T-016 no está completa.
-- **T-016 Paso 3 COMPLETADO:** carrito frontend + `localStorage`. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES; la observación era QA visual/manual), validado en navegador y aprobado por el usuario el 2026-09-13. D1-A y D2-A. Sin cambios de backend, webhook ni migraciones. Suite **158/158**. T-016 no está completa.
+- **T-016 Paso 1 COMPLETADO:** dominio autoritativo del carrito (`src/cart.js`) y `POST /carrito/resumen`. Implementado, corregido, auditado, aprobado y enviado a `main`. El endpoint no persiste y no llama a Supabase, Mercado Pago ni logística.
+- **T-016 Paso 2 COMPLETADO:** checkout multítem autoritativo. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES, solo documentales) y aprobado por el usuario el 2026-09-12. Contrato `{ items, customer, delivery }`, compatibilidad legacy, rechazo de mezcla, una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un `external_reference`. Suite **158/158**.
+- **T-016 Paso 3 COMPLETADO:** carrito frontend + `localStorage`. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES; la observación era QA visual/manual), validado en navegador y aprobado por el usuario el 2026-09-13. D1-A y D2-A. Sin cambios de backend, webhook ni migraciones. Suite **158/158**.
+
+- **T-016 COMPLETADA:** Pasos 1–4 COMPLETADOS. Paso 4: documentación alineada y regresiones 158/158; QA frontend manual, sin tests DOM nuevos.
 
 ### PENDIENTE
 
-- **T-016** en curso. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 COMPLETADO. Paso 4 PENDIENTE.
-- No implementar todavía el Paso 4.
 - **DEC-022** propuesta; **T-017** bloqueada. Idempotencia durable fuera de T-016.
 - Recibir credenciales de Correo Argentino. La solicitud ya fue enviada. No bloquea T-016.
 - No realizar llamadas reales a MiCorreo hasta recibirlas.
@@ -32,7 +32,7 @@
 
 ### PRÓXIMO PASO
 
-**T-016 Paso 4 — cierre de regresiones y documentación final.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Paso 4 PENDIENTE.
+T-016 está COMPLETADA. El próximo trabajo requiere definición y autorización separadas; EasyPanel/credenciales, DEC-022/T-017, stock, Correo Argentino y deuda npm quedan fuera de este cierre.
 
 ### Regla operativa
 
@@ -1031,7 +1031,7 @@ Evitar que `POST /webhook` confirme con HTTP 200 fallos temporales que impidiero
 
 ### T-016 — Implementar carrito multítem con checkout autoritativo
 
-**Estado:** en curso — Paso 1 COMPLETADO; Paso 2 COMPLETADO; Paso 3 COMPLETADO; Paso 4 PENDIENTE
+**Estado:** COMPLETADA — Pasos 1–4 COMPLETADOS (2026-09-13)
 **Prioridad:** P2
 **Decisión:** DEC-021 aceptada (2026-09-11)
 
@@ -1048,7 +1048,7 @@ El backlog usa identificadores `T-XXX`, no `T-016A`. Esta tarea se divide en cua
 - `src/cart.js` — dominio de parseo, agrupación, validación y cálculo autoritativo (existe desde el Paso 1)
 - `src/app.js` — `POST /carrito/resumen` existe; el Paso 2 evoluciona `POST /crear-preferencia`
 - `src/catalog.js` — `maxQuantity: 4` temporal ya aplicado en el Paso 1; no cambiar precios ni moneda
-- `public/js/` — carrito, producto, entrega, checkout; posible página de carrito (Paso 3)
+- `public/js/` — carrito, producto, entrega, checkout; página `public/carrito.html` (Paso 3 completado)
 - `tests/index.test.js`
 - Documentación: `docs/DESIGN.md`, `docs/REQUIREMENTS.md`, `README.md`, `docs/SKILLS.md`, `docs/SECURITY.md`, `docs/CURRENT_CONTEXT.md`, `docs/PROGRESS.md`
 
@@ -1060,7 +1060,7 @@ El backlog usa identificadores `T-XXX`, no `T-016A`. Esta tarea se divide en cua
 - `package.json`, dependencias, `.env`
 - Stock real, reservas, autenticación, rotación de credenciales
 - DEC-022 / T-017 (idempotencia durable)
-- Commit, push o deploy de los pasos restantes (el Paso 1 ya está en `main`)
+- Commit, push o deploy de este cierre (Pasos 1–3 ya están en `main`)
 
 #### Paso 1 — Dominio y resumen backend
 
@@ -1123,12 +1123,13 @@ Hechos verificados:
 
 #### Paso 4 — Tests, regresiones y documentación
 
-**Estado:** PENDIENTE
+**Estado:** COMPLETADO (2026-09-13)
 
-1. Completar la lista de tests de DEC-021 §15 si algo quedó pendiente.
-2. Verificar regresiones: HMAC, importe, moneda, duplicado, atómico, `pending → paid`, cotización de envío informativa, PII ausente en logs.
-3. Actualizar `docs/DESIGN.md`, `docs/REQUIREMENTS.md`, `README.md`, `docs/SKILLS.md` (el curl actual todavía cita `REMERA-LEMONT-001`), `docs/SECURITY.md`, `docs/CURRENT_CONTEXT.md` y `docs/PROGRESS.md`.
-4. Tras cambiar `src/`, recordar la regla operativa: reiniciar Node antes de QA manual.
+1. Suite existente ejecutada: **158/158**, 1 suite, 0 fallos; regresiones de carrito, legacy, webhook, importes/moneda, transición atómica y cotización informativa.
+2. README, REQUIREMENTS, DESIGN, SKILLS, SECURITY, DEC-021 y documentos de estado alineados con el código en main.
+3. QA frontend manual del Paso 3 correcto y aprobado; sin tests DOM nuevos ni jsdom/Playwright a propósito.
+4. Diff solo Markdown; sin cambios de código, tests, dependencias, migraciones o infraestructura. Sin lectura de .env ni servicios reales. `git diff --check` correcto.
+5. DEC-022/T-017, stock, Correo, deuda npm y credenciales siguen fuera de T-016. Sin commit ni push.
 
 #### Criterios de aceptación
 

@@ -5,16 +5,15 @@
 La aplicación es un monolito pequeño de Node.js. Express sirve el frontend estático y expone las rutas de API. El backend se comunica directamente con Mercado Pago y Supabase.
 
 ```text
-Navegador
-  |-- archivos estáticos ----------------------> Express
-  |-- POST /crear-preferencia ----------------> Express
-  |                                               |--> Supabase RPC: crear order + items pending
-  |                                               `--> Mercado Pago: crear preferencia
-  `---------------- redirección a Checkout Pro ------> Mercado Pago
-
-Mercado Pago -- POST /webhook --> Express
-                                   |--> Mercado Pago: consultar payment
-                                   `--> Supabase: actualizar order a paid
+Producto → Agregar al carrito → lemont.cart (version 1, sku + quantity)
+  → POST /carrito/resumen → backend autoritativo → entrega.html
+  → POST /crear-preferencia { items, customer, delivery }
+Producto → Comprar ahora → entrega.html?id&sku&quantity=1
+  → POST /crear-preferencia { sku, quantity, customer, delivery }
+Ambos → 1 RPC → orden pending + N order_items
+  → 1 preferencia MP, N items, 1 external_reference de la RPC
+  → Checkout Pro → webhook HMAC → Payment.get
+  → pending → paid contra orders.amount/currency persistidos
 ```
 
 ## Módulos principales
@@ -27,13 +26,21 @@ Mercado Pago -- POST /webhook --> Express
 - `src/payments.js`: clientes de Mercado Pago, creación de preferencias y consulta de pagos.
 - `src/orders.js`: cliente Supabase, persistencia de pedidos y transición `pending → paid`.
 - `src/webhookSignature.js`: validación HMAC-SHA256 de firma webhook (DEC-009).
-- `public/index.html`: vista del producto.
-- `public/app.js`: inicia la preferencia y redirige al checkout.
-- `public/styles.css`: presentación visual compartida.
+- `src/cart.js`: resolver común, validación, agrupación y cálculo en centavos; resumen y arrays RPC/MP.
+- `public/index.html`: inicio LEMONT.
+- `public/carrito.html`: página de carrito.
+- `public/js/app.js`: header/footer y contador por unidades, visible en móvil.
+- `public/js/producto.js`: talle, Agregar al carrito y Comprar ahora.
+- `public/js/cartStore.js`: persistencia `lemont.cart`, versión 1, solo SKU + quantity, sin PII.
+- `public/js/carrito.js`: DOM seguro, edición y resumen backend.
+- `public/js/entrega.js`: formulario y aside; caminos carrito y legacy.
+- `public/js/checkout.js`: envía uno de los dos contratos y redirige a MP.
+- `public/app.js`: stub histórico; no ejecuta el checkout vigente.
+- `public/css/reset.css`, `styles.css`, `components.css`: presentación visual compartida.
 - `public/success.html`, `failure.html`, `pending.html`: páginas de retorno.
 - `package.json`: scripts y dependencias de ejecución.
 - `.env.example`: contrato de configuración, sin valores reales.
-- `tests/index.test.js`: suite Jest con 29 tests.
+- `tests/index.test.js`: suite Jest con 158 tests.
 
 ## Estructura de archivos backend (implementada — T-009 completada)
 
@@ -48,25 +55,26 @@ src/
   orders.js                   # createPendingOrder, markOrderAsPaid — Supabase
   webhookSignature.js         # Validación HMAC-SHA256 de x-signature — DEC-009
 tests/
-  index.test.js               # Suite Jest actual: 79 tests
+  index.test.js               # Suite Jest actual: 158 tests
 ```
 
 ## Flujo de creación de pago
 
-1. El comprador selecciona S, M, L o XL. Sin variante, Continuar permanece deshabilitado.
-2. Producto abre Entrega con `product id`, `sku` y `quantity: 1`, sin PII en la URL.
-3. Entrega recopila y valida cliente y domicilio.
-4. El frontend envía `POST /crear-preferencia` únicamente con `{ sku, quantity, customer, delivery }`.
-5. El servidor resuelve el producto y su talle mediante `getProduct(sku)` y valida los datos de entrada.
-6. El servidor valida que `quantity` sea un entero entre 1 y `product.maxQuantity`; los cuatro SKUs actuales tienen máximo 1.
-7. El servidor calcula `total = product.unitPrice * quantity` y construye un array `p_items` autoritativo desde `src/catalog.js`.
-8. `createPendingOrder` llama `public.create_pending_order_with_items`. PostgreSQL valida, calcula el total, genera `external_reference` y crea atómicamente `orders` + `order_items` con estado `pending`.
-9. El servidor crea la preferencia con exactamente el `external_reference` devuelto por la RPC, título de variante, `unit_price`, cantidad y moneda autoritativos, además de `notification_url`, `back_urls` y `auto_return: "approved"`.
-10. Devuelve `preference_id`, `init_point` y `sandbox_init_point`; el frontend prioriza `init_point` y conserva `sandbox_init_point` como fallback.
+1. Seleccionar S/M/L/XL habilita ambos CTA. Agregar al carrito no navega; Comprar ahora no modifica el carrito (D1-A).
+2. El carrito almacena solo SKU y quantity. `POST /carrito/resumen` alimenta el resumen del carrito y el aside de entrega sin persistir ni cobrar.
+3. Entrega valida cliente/domicilio y envía `{ items, customer, delivery }`; el camino temporal conserva `{ sku, quantity, customer, delivery }`. Ambos requieren datos válidos.
+4. El handler detecta propiedades propias: `items` combinado con `sku` o `quantity` raíz devuelve HTTP 400 `{ "error": "Carrito inválido" }`, sin RPC ni MP. El legacy conserva el orden y mensajes de validación.
+5. `src/cart.js` limita a 50 entradas originales, agrupa SKUs y valida cantidad acumulada hasta 4. Es un máximo temporal, no stock. Resuelve precios/moneda desde `src/catalog.js`.
+6. Calcula precios unitarios, líneas y subtotal en centavos enteros. Del mismo resolver salen `p_items`, `preference.items` y `expectedAmount = subtotalCents / 100`, sin envío.
+7. Una llamada a `create_pending_order_with_items` crea una orden `pending` y N `order_items`. PostgreSQL calcula el total y genera `external_reference`. Node comprueba importe, moneda y estado de la respuesta.
+8. Una preferencia MP recibe N ítems y exactamente esa referencia; conserva URLs de retorno, notificación y `auto_return: "approved"`.
+9. Se devuelven `preference_id`, `init_point` y `sandbox_init_point`; el frontend prioriza `init_point` y deshabilita el botón durante el request.
 
-Si falla el alta del pedido en Supabase, la creación de preferencia se detiene y el cliente recibe un error genérico (T-002, completada).
+Si falla la RPC o su respuesta es inconsistente, no se llama MP. Si falla MP, la orden puede quedar pending: no se compensa ni borra. La idempotencia durable pertenece a DEC-022/T-017, fuera de T-016.
 
 ## Flujo del webhook
+
+Antes de procesar, el webhook valida HMAC-SHA256. No recalcula precios del catálogo: compara contra `orders.amount` y `orders.currency` persistidos.
 
 1. `POST /webhook` obtiene el tipo desde `topic` o `type`.
 2. Obtiene el identificador desde `id`, `resource`, `data.id` o `data.id` en query.
@@ -83,6 +91,8 @@ Si falla el alta del pedido en Supabase, la creación de preferencia se detiene 
 | Método | Ruta | Propósito |
 |---|---|---|
 | GET | `/` | Frontend estático principal |
+| POST | `/carrito/resumen` | Resumen autoritativo sin persistencia |
+| POST | `/cotizar-envio` | Cotización informativa, solo 1 SKU × quantity 1 |
 | POST | `/crear-preferencia` | Crear pedido y preferencia de pago |
 | POST | `/webhook` | Recibir eventos de Mercado Pago |
 | GET | `/webhook` | Diagnóstico temporal, solo con `NODE_ENV !== "production"` |
@@ -96,14 +106,9 @@ La tabla `orders` usa `external_reference` como clave de correlación única. El
 
 ## Flujo de compra con entrega
 
-1. Producto selecciona una variante por talle.
-2. Producto abre `entrega.html` transportando solo `product id`, `sku` y `quantity`.
-3. Entrega recopila nombre, apellido, email, teléfono y domicilio; piso/departamento y referencia son opcionales.
-4. El navegador envía únicamente `sku`, `quantity`, `customer` y `delivery`.
-5. El backend valida y normaliza antes de consultar Supabase o Mercado Pago.
-6. Supabase registra el pedido `pending`; luego Checkout Pro continúa con el flujo existente.
+Carrito continúa a `entrega.html` sin query de producto. Un carrito vacío bloquea la compra; un resumen inválido muestra error genérico y permite volver a editar/eliminar. El aside contiene N líneas del backend, renderizadas con DOM seguro. Comprar ahora conserva `entrega.html?id=…&sku=…&quantity=1` y sus validaciones legacy.
 
-El frontend no controla precio, moneda, total, nombre, talle separado, estado, `external_reference` ni identificadores de Mercado Pago. No existe PII en la URL. La prueba manual hasta Supabase/pending está verificada; la prueba real posterior a Etapa 5 hasta `paid` está pendiente.
+Cliente y domicilio viven en el formulario, nunca en localStorage ni en la URL. El frontend no controla precio, moneda, total, estado ni `external_reference`. La cotización solo se inicializa para exactamente 1 SKU × quantity 1; para varias líneas/unidades informa la limitación y no llama al endpoint.
 
 ## Cotización logística local — Etapa 6A
 
@@ -113,7 +118,7 @@ La Etapa 5 prepara el destino y la Etapa 6A agrega cotización informativa media
 Entrega → POST /cotizar-envio → shipping.js → micorreo.js → /token → /rates → opciones normalizadas
 ```
 
-El request del navegador contiene solo `sku`, `quantity` y `postalCodeDestination`. `src/catalog.js` aporta medidas; configuración aporta `customerId` y CP de origen. `micorreo.js` mantiene JWT únicamente en memoria, comparte una obtención en curso, aplica expiración/timeout y renueva una sola vez ante 401.
+Solo admite 1 SKU × quantity 1; cantidades 2 y 4 se rechazan antes de MiCorreo. El request del navegador contiene solo `sku`, `quantity` y `postalCodeDestination`. `src/catalog.js` aporta medidas; configuración aporta `customerId` y CP de origen. `micorreo.js` mantiene JWT únicamente en memoria, comparte una obtención en curso, aplica expiración/timeout y renueva una sola vez ante 401.
 
 La respuesta pública expone `type`, `label` y `price`. Domicilio es informativo y sucursal aclara que su selección está pendiente. No existen `/agencies`, `/shipping/import`, tracking, etiquetas, creación de envío ni estados logísticos. La tarifa no se persiste ni forma parte del total.
 
@@ -123,7 +128,7 @@ Las medidas 300 g / 5 × 25 × 35 cm son temporales de QA y deben reemplazarse p
 
 `orders` conserva identidad, cliente, entrega, total, moneda, estado y correlación de pago. `order_items` conserva snapshots autoritativos de SKU, nombre, talle nullable, cantidad, precio unitario y `line_total` generado. La FK `order_items.order_id → orders.id` usa `ON DELETE CASCADE`.
 
-La RPC `create_pending_order_with_items` recibe datos escalares estrictos y `p_items jsonb` validado: array obligatorio, propiedades permitidas explícitas, tipos y rangos controlados, y rechazo de items vacíos o importes inconsistentes. La suma se calcula en PostgreSQL y debe coincidir con `p_expected_amount`. La compra actual envía un item; el contrato admite múltiples items para una evolución futura, sin que exista carrito todavía.
+La RPC `create_pending_order_with_items` recibe datos escalares estrictos y `p_items jsonb` validado: array obligatorio, propiedades permitidas explícitas, tipos y rangos controlados, y rechazo de items vacíos o importes inconsistentes. La suma se calcula en PostgreSQL y debe coincidir con `p_expected_amount`. El checkout vigente envía N ítems agrupados desde el carrito, o uno en el camino legacy.
 
 La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `service_role`. Navegadores, `anon` y `authenticated` no pueden ejecutarla directamente.
 
@@ -133,7 +138,7 @@ La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `serv
 - `REMERA-LEMONT-001` fue retirado y no se acepta.
 - Precio vigente: ARS 1.000 temporal para pruebas controladas; debe reemplazarse antes del lanzamiento comercial.
 - `src/catalog.js` es la única autoridad sobre precio, moneda, nombre y máximo.
-- No existe selector de cantidad ni stock real. La existencia de un SKU no representa disponibilidad.
+- El carrito permite editar cantidades hasta `maxQuantity: 4` temporal. No existe stock real; un SKU no representa disponibilidad.
 - El stock futuro requiere disponibilidad, reserva atómica, concurrencia, liberación por abandono y confirmación tras el pago.
 
 ## Servicios externos
@@ -149,14 +154,14 @@ La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `serv
 - Correlación por `external_reference`.
 - Confirmación mediante consulta a Mercado Pago en lugar de confiar solo en el evento.
 - Retornos estáticos separados del estado autoritativo del pedido.
-- CommonJS y JavaScript sin framework frontend.
+- CommonJS en backend; vanilla + ES modules en `public/js/`.
 - Configuración sensible mediante variables de entorno.
 
 ## Limitaciones estructurales
 
 - Puerto fijo y catálogo versionado en backend; sin fuente administrable externa todavía.
 - La ruta `GET /webhook` queda restringida a entornos no productivos.
-- No hay manejo explícito de reintentos, timeouts ni rate limits.
+- No hay idempotencia durable del checkout ni rate limiting. Los timeouts/reintentos de MiCorreo no resuelven esa deuda.
 - El backend endurecido está desplegado en EasyPanel/VPS desde la rama `main` de `checkout-mp-supabase-template`, bajo `checkout.lemont01.com`; no hay infraestructura como código.
 
 ## Implementado y vigente
@@ -171,33 +176,23 @@ La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `serv
 - Logs estructurados JSON con `request_id` y lista de campos prohibidos (T-010, DEC-017).
 - Migración SQL versionada aplicada en Supabase con RLS habilitada (T-006, DEC-012).
 - `GET /webhook` condicionado a `NODE_ENV !== "production"` (T-011).
-- Catálogo seguro en `src/catalog.js`; `POST /crear-preferencia` acepta solo `{ sku, quantity }` y calcula precio, total y moneda en backend (T-012, DEC-013).
+- Catálogo autoritativo en `src/catalog.js` (T-012/DEC-013); el handler acepta `items[]` (T-016) y conserva legacy `{ sku, quantity, customer, delivery }`. Precio, total y moneda se calculan en backend.
+- T-016 COMPLETADA, Pasos 1–4: carrito, checkout dual y documentación alineada.
 - Deploy a staging documentado para EasyPanel/VPS con checklists y rollback (T-013, DEC-016).
 - Política resiliente 401/200/503 del webhook implementada y validada en producción (T-015, DEC-019).
 
 ## Frontend actual de LEMONT
 
-El backend de pagos actual fue validado de punta a punta en producción el 2026-08-22, incluyendo un pago real de ARS 100 y una nueva verificación `pending → paid` después del deploy de la versión endurecida. El frontend debe integrarse con este contrato sin modificar innecesariamente el motor de pagos.
+Vanilla + ES modules en `public/js/`; header/footer inyectados por `app.js`. Home, Catálogo, Producto, Carrito, Entrega y Contacto comparten el cromado LEMONT. Las tarjetas conservan Ver producto/Próximamente; solo Remera LEMONT es comprable. Las imágenes externas son temporales.
 
-Alcance inicial del frontend:
+- **D1-A:** Agregar al carrito es principal, no navega y muestra feedback; Comprar ahora es secundario y conserva legacy sin agregar. Ambos requieren talle.
+- `cartStore` agrupa, descarta campos extra y recupera un carrito vacío si la estructura/JSON es inválida. Guarda solo `{ version: 1, items: [{ sku, quantity }] }` en `lemont.cart`, nunca PII. Sus límites son informativos.
+- Contador = suma de cantidades, visible también en móvil; se actualiza con mutaciones, carga y eventos storage.
+- Carrito y resumen usan `createElement`, `textContent` y `replaceChildren`; no interpolan datos locales ni del resumen en innerHTML.
+- **D2-A:** vaciado solo manual. Crear preferencia, redirigir o visitar `/success`, `/failure`, `/pending` no vacía ni confirma pago.
+- QA visual/manual del Paso 3 correcto y aprobado. Sin tests DOM a propósito, sin jsdom/Playwright. Suite backend: **158/158**, verificada nuevamente el 2026-09-13.
 
-- Home.
-- Catálogo.
-- Contacto.
-- Producto/compra.
-
-Principios de diseño e implementación:
-
-- HTML semántico cuando corresponda.
-- CSS organizado y responsabilidades visuales claras.
-- JavaScript modular, entendible y separado por responsabilidad.
-- Buena indentación, nombres claros y legibilidad humana.
-- Evitar abstracciones o complejidad que no aporten valor al alcance inicial.
-- Preservar el contrato seguro `{ sku, quantity, customer, delivery }` de `POST /crear-preferencia`; el frontend no controla precios, moneda ni confirmación de pago.
-
-Home, Catálogo y Contacto están implementados en HTML/CSS/JavaScript vanilla. El catálogo y los filtros se generan con JavaScript, la Remera LEMONT permite seleccionar talle e iniciar el checkout real y las demás tarjetas permanecen en `Próximamente`. Las imágenes externas provenientes de Stitch son temporales y deben sustituirse por assets propios optimizados en `public/assets/images/`.
-
-La rotación de credenciales privadas sigue siendo un requisito previo al lanzamiento público, no un requisito ya completado. Etapa 6A requiere credenciales y validación QA; el modelo `orders`/`order_items` ya está implementado y validado.
+El cierre documental no acredita un nuevo despliegue ni pagos reales. Credenciales, stock, logística, deuda npm e idempotencia durable siguen fuera de T-016.
 
 ## Regla operativa de recarga del runtime
 

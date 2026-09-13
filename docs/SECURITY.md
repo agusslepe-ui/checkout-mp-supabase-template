@@ -1,5 +1,20 @@
 # Seguridad
 
+## Estado de seguridad T-016 (2026-09-13)
+
+T-016 COMPLETADA, Pasos 1–4. Las secciones de Etapa 3/5/6A y sus cifras son antecedentes de esos cierres.
+
+- Precio, moneda y total son autoritativos en backend; la RPC genera `external_reference`.
+- `maxQuantity: 4` es temporal, no stock ni reserva.
+- `lemont.cart` guarda versión 1 y solo SKU + quantity, sin PII. localStorage no es fuente comercial.
+- Webhook HMAC + `Payment.get`; importe/moneda se comparan contra el pedido persistido, sin recálculo del catálogo.
+- D2-A: vaciado solo manual; preferencia, redirect y `/success` no vacían ni confirman pago.
+- DOM seguro en el carrito: datos locales/resumen con `textContent`, no innerHTML.
+- Cotización informativa solo 1 SKU × quantity 1, sin envío en el pago.
+- Rate limiting e idempotencia durable (DEC-022/T-017) siguen pendientes.
+- Deuda npm: 2 moderate + 2 high informadas en T-016 Paso 1; no se ejecutó `npm audit fix`. No se alteran los resultados históricos de 2026-08-21.
+- Regresiones: 158/158; frontend validado manualmente, sin tests DOM nuevos.
+
 ## Manejo de secretos
 
 - `MERCADOPAGO_ACCESS_TOKEN` y `SUPABASE_SERVICE_ROLE_KEY` son secretos de backend.

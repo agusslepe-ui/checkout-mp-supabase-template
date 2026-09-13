@@ -1,8 +1,12 @@
 # Progreso
 
-Última revisión documental: 2026-09-13. T-016 EN PROGRESO. Pasos 1–3 COMPLETADOS. Paso 4 PENDIENTE. Carrito frontend + checkout HTTP multítem y legacy. Tests: 158/158.
+Última revisión documental: 2026-09-13. T-016 COMPLETADA. Pasos 1–4 COMPLETADOS. DEC-021 implementada. Tests: 158/158.
 
-## T-016 Paso 3 — COMPLETADO — 2026-09-13
+## T-016 Paso 4 — COMPLETADO — 2026-09-13
+
+Cierre de regresiones y documentación final: README, REQUIREMENTS, DESIGN, SKILLS, SECURITY, DEC-021, TASKS, PROGRESS y CURRENT_CONTEXT alineados con main. Suite ejecutada: **158/158**, 1 suite, 0 fallos. Diff solo Markdown y `git diff --check` correcto. Sin código ni tests nuevos; QA frontend manual aprobado en Paso 3. Deudas fuera de T-016.
+
+## T-016 Paso 3 — COMPLETADO — 2026-09-13 (histórico de ese cierre)
 
 Cierre formal tras auditoría (APROBADO CON OBSERVACIONES: QA visual/manual pendiente), QA visual/manual correcto y aprobación del usuario. El Paso 3 no estaba completado antes de esa aprobación.
 
@@ -13,7 +17,7 @@ Cierre formal tras auditoría (APROBADO CON OBSERVACIONES: QA visual/manual pend
 - Sin cambios de backend, webhook, HMAC, migraciones, dependencias ni `.env`. Suite **158/158**.
 - DEC-021 ACCEPTED. T-016 EN PROGRESO. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 COMPLETADO. Paso 4 PENDIENTE.
 
-## T-016 Paso 2 — COMPLETADO — 2026-09-12
+## T-016 Paso 2 — COMPLETADO — 2026-09-12 (histórico de ese cierre)
 
 Cierre formal tras auditoría (APROBADO CON OBSERVACIONES, solo documentales) y aprobación del usuario. El Paso 2 no estaba completado antes de esa aprobación.
 
@@ -27,16 +31,16 @@ Cierre formal tras auditoría (APROBADO CON OBSERVACIONES, solo documentales) y 
 
 ## Estado actual
 
-- **T-016** permanece **en curso**.
+- **T-016 COMPLETADA**, Pasos 1–4 COMPLETADOS.
 - Paso 1 COMPLETADO (en `main`).
 - Paso 2 COMPLETADO (auditado y aprobado el 2026-09-12).
 - Paso 3 COMPLETADO (auditado, QA visual/manual correcto y aprobado el 2026-09-13). D1-A y D2-A.
-- Paso 4 PENDIENTE — cierre de regresiones y documentación final. Todavía no implementarlo.
-- DEC-021 permanece **aceptada**. DEC-022 / T-017 permanecen fuera de T-016.
+- Paso 4 COMPLETADO — regresiones y documentación final (2026-09-13).
+- DEC-021 **aceptada e implementada**. DEC-022 / T-017 permanecen fuera de T-016.
 
 ### T-016 Paso 1 COMPLETADO — 2026-09-12 (histórico de ese cierre)
 
-En el cierre del Paso 1, los Pasos 2–4 estaban pendientes. Eso ya no es el estado vigente: los Pasos 1–3 están COMPLETADOS; el Paso 4 sigue PENDIENTE.
+En el cierre del Paso 1, los Pasos 2–4 estaban pendientes. Eso ya no es el estado vigente: los Pasos 1–4 están COMPLETADOS.
 
 - Dominio autoritativo en `src/cart.js`: parseo, tope de 50 entradas originales antes de agrupar, agrupación de SKUs duplicados, validación de cantidad acumulada contra `maxQuantity: 4`, cálculo en centavos.
 - `POST /carrito/resumen` valida y resume. No persiste. No llama a Supabase, Mercado Pago ni logística.
@@ -56,7 +60,7 @@ En el cierre del Paso 1, los Pasos 2–4 estaban pendientes. Eso ya no es el est
 - DEC-022 quedó **propuesta** (no aceptada). T-017 quedó **bloqueada**.
 - Sin cambios de código, tests, migraciones, commit ni push.
 
-### Auditoría de preparación del carrito — 2026-09-11
+### Auditoría de preparación del carrito — 2026-09-11 (histórica, previa a T-016)
 
 #### VERIFICADO EN CÓDIGO / MIGRACIONES / TESTS
 
@@ -161,7 +165,7 @@ Estado corregido tras auditoría: revisar las correcciones del Paso 1 con el usu
 - Definir y restaurar el precio comercial definitivo antes del lanzamiento.
 - Diseñar el stock por SKU como etapa separada, incluyendo disponibilidad, reserva, concurrencia, liberación por abandono y confirmación después del pago.
 
-El proyecto tiene un flujo completo de pago implementado, endurecido y cubierto con tests. Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supabase y Mercado Pago productivo, se verificó el arranque local y se desplegó la versión endurecida en EasyPanel. Un pago real de ARS 100 confirmó de punta a punta `checkout → pending → pago aprobado → webhook → paid`; la transición se volvió a verificar después del despliegue. La próxima fase es el frontend de LEMONT.
+El proyecto tiene un flujo completo de pago implementado, endurecido y cubierto con tests. Las tareas T-001 a T-015 están completadas. El 2026-08-22 se reconectaron Supabase y Mercado Pago productivo, se verificó el arranque local y se desplegó la versión endurecida en EasyPanel. Un pago real de ARS 100 confirmó de punta a punta `checkout → pending → pago aprobado → webhook → paid`; la transición se volvió a verificar después del despliegue. En ese cierre la próxima fase era el frontend de LEMONT; ya está implementado, incluido el carrito de T-016.
 
 - **Backend**: Node.js + CommonJS + Express 5. Mercado Pago Checkout Pro. Supabase con `service_role`.
 - **Tests**: Jest instalado. Último resultado histórico documentado previo a las correcciones: 79/79. Las cifras anteriores permanecen en la bitácora como hitos históricos.
@@ -244,11 +248,20 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**T-016 Paso 4 — cierre de regresiones y documentación final.** Todavía NO implementarlo. T-016 permanece EN PROGRESO. Paso 4 PENDIENTE.
+T-016 está COMPLETADA. El próximo trabajo requiere definición y autorización separadas; EasyPanel/credenciales, DEC-022/T-017, stock, Correo Argentino y deuda npm quedan fuera de este cierre.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 
 ## Bitácora
+
+### 2026-09-13 — Cierre del Paso 4 y de T-016
+
+- T-016 COMPLETADA; Pasos 1–4 COMPLETADOS; DEC-021 aceptada e implementada.
+- Contraste con main: 4105a8d, 72eee3c y 39563b1 (Pasos 1–3).
+- Documentación: README.md y docs/REQUIREMENTS.md, DESIGN.md, SKILLS.md, SECURITY.md, DECISIONS.md (solo DEC-021), TASKS.md, PROGRESS.md, CURRENT_CONTEXT.md.
+- Verificación real: npm.cmd test, 158/158, 1 suite, 0 fallos; git diff --check correcto; solo Markdown. QA visual/manual del Paso 3 ya aprobado, sin tests DOM agregados.
+- Sin modificar src/, public/, tests/, dependencias o migraciones; sin leer .env, servicios reales, commit, push ni deploy.
+- Próximo trabajo fuera de T-016: deudas de npm/credenciales, stock, Correo e idempotencia durable requieren alcance y autorización propios.
 
 ### 2026-09-13 — Cierre formal del Paso 3 de T-016
 

@@ -2,9 +2,9 @@
 
 ## Objetivo
 
-Proveer una plantilla mínima y comprensible para iniciar pagos de un producto mediante Mercado Pago Checkout Pro, conservar un pedido interno en Supabase y confirmar el resultado del pago desde el backend.
+Proveer una plantilla mínima y comprensible para iniciar pagos de un carrito multítem mediante Mercado Pago Checkout Pro, conservar un pedido interno en Supabase y confirmar el resultado del pago desde el backend.
 
-El objetivo comercial definitivo todavía no está documentado. Actualmente el sistema funciona como demostración técnica de una tienda con un solo producto.
+El objetivo comercial definitivo todavía no está documentado. El sistema permite comprar varias variantes de Remera LEMONT; no se presume una visión comercial adicional. T-016 está COMPLETADA (Pasos 1–4).
 
 ## Usuarios
 
@@ -21,9 +21,9 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 
 ## Funcionalidades requeridas actuales
 
-- Mostrar el producto de prueba y permitir iniciar el pago.
-- Crear una referencia interna por intento de compra.
-- Registrar el pedido con estado `pending`.
+- Seleccionar talle, agregar al carrito persistente, editar cantidades y continuar a entrega. “Comprar ahora” conserva la compra legacy sin agregar al carrito.
+- Generar la referencia interna dentro de la RPC y reutilizarla exactamente en Mercado Pago.
+- Registrar una orden `pending` con N `order_items` y crear una preferencia con N ítems.
 - Crear una preferencia de Checkout Pro con producto, importe, moneda y URLs necesarias.
 - Redirigir al comprador al enlace de checkout recibido.
 - Recibir eventos de tipo `payment` en el webhook.
@@ -37,7 +37,9 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 ## Datos de entrada
 
 - Configuración: credencial de Mercado Pago, URL pública, URL de Supabase y clave de servicio.
-- Inicio de compra: recibe solo `sku` y `quantity`; el producto, precio y moneda se resuelven desde el catálogo del servidor.
+- Inicio de compra: `{ items: [{ sku, quantity }], customer, delivery }` o legacy `{ sku, quantity, customer, delivery }`. Ambos requieren cliente/entrega válidos. Mezcla de contratos: HTTP 400 `{ "error": "Carrito inválido" }`.
+- Resumen: `POST /carrito/resumen` recibe `{ items }`, valida y devuelve importes del backend sin persistir.
+- Carrito local: `lemont.cart`, versión 1, solo SKU y cantidad; sin PII ni datos comerciales.
 - Webhook: tipo de evento y `payment_id`, recibidos en query string o cuerpo JSON.
 - API de Mercado Pago: estado, importe, moneda, referencia externa y metadatos del pago.
 
@@ -52,12 +54,13 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 ## Restricciones
 
 - El servidor usa el puerto fijo `3003`.
-- El producto actual del catálogo es Remera LEMONT (`REMERA-LEMONT-001`), importe unitario 100, moneda ARS y cantidad máxima 10.
+- Remera LEMONT: `LEM-REM-001-S`, `LEM-REM-001-M`, `LEM-REM-001-L`, `LEM-REM-001-XL`; ARS 1.000 temporal, `maxQuantity: 4` transitorio (no stock). Máximo 50 entradas originales antes de agrupar.
+- Cotización informativa solo 1 SKU × quantity 1; no se suma al pago.
 - La integración requiere una URL pública HTTPS para webhooks y retornos confiables.
 - La clave `service_role` de Supabase solo puede usarse en backend.
 - La confirmación del pago depende de la disponibilidad de Mercado Pago y Supabase.
-- No hay pruebas automatizadas ni contrato de disponibilidad definido.
-- No hay migraciones versionadas; el esquema debe verificarse manualmente.
+- Hay 158 tests automatizados en Jest. Frontend vanilla + ES modules: QA manual, sin tests DOM a propósito. No hay contrato de disponibilidad definido.
+- Existen migraciones versionadas 001–004, aplicadas; no se requiere una nueva para T-016.
 
 ## El sistema no debe
 
@@ -65,9 +68,9 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 - Confiar ciegamente en el cuerpo del webhook.
 - Exponer secretos al frontend, repositorio, logs o respuestas HTTP.
 - Marcar como pagado un pedido inexistente, ya pagado o con importe o moneda diferente.
-- Permitir que el navegador determine libremente el producto o precio sin validación del servidor.
+- Permitir que el navegador o localStorage definan precio, total, moneda, estado o `external_reference`; el backend es autoritativo.
 - Ejecutar pagos reales como parte de pruebas automatizadas ordinarias.
-- Tratar las páginas `/success`, `/failure` o `/pending` como fuente autoritativa del estado.
+- Tratar `/success`, `/failure` o `/pending` como autoridad ni vaciar el carrito al visitarlas. D2-A: solo vaciado manual, nunca al crear preferencia o redirigir.
 
 ## Requisitos pendientes de definición
 
