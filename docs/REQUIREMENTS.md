@@ -1,5 +1,9 @@
 # Requisitos
 
+## Actualización T-019 — COMPLETADA (DEC-024 ACEPTADA)
+
+La cotización informativa admite contrato dual items[] o sku+quantity y 1–4 unidades totales, con perfiles editables TEMPORAL/QA (300 g / 5 × 25 × 35 cm para cada cantidad). Cantidades totales 5+ se rechazan sin MiCorreo. CP origen productivo acordado 5465 desde entorno. Domicilio/sucursal y Clásico/Express solo cuando los devuelve MiCorreo; sin elegir agencia, sin persistencia ni envío en el pago. Suite vigente 211/211. `POST /rates` PROD verificado (`micorreo_rates_ok options=4`, destino QA 5400). Las medidas actuales **no** están aprobadas para producción. Etapa C pendiente.
+
 ## Objetivo
 
 Proveer una plantilla mínima y comprensible para iniciar pagos de un carrito multítem mediante Mercado Pago Checkout Pro, conservar un pedido interno en Supabase y confirmar el resultado del pago desde el backend.

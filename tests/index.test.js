@@ -1404,6 +1404,106 @@ describe("cotización de envío", () => {
     errorSpy.mockRestore();
   });
 
+  test.each([
+    [{ sku: "LEM-REM-001-S", quantity: 1 }, 1],
+    [{ sku: "LEM-REM-001-S", quantity: 2 }, 2],
+    [{ sku: "LEM-REM-001-S", quantity: 4 }, 4],
+    [{ items: [{ sku: "LEM-REM-001-S", quantity: 2 }, { sku: "LEM-REM-001-M", quantity: 1 }] }, 3],
+    [{ items: [{ sku: "LEM-REM-001-S", quantity: 2 }, { sku: "LEM-REM-001-S", quantity: 1 }] }, 3],
+    [{ items: ["S", "M", "L", "XL"].map((size) => ({ sku: `LEM-REM-001-${size}`, quantity: 1 })) }, 4],
+  ])("T-019 selecciona el perfil autoritativo para %j", async (selection, totalUnits) => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "fixture-token", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(200, { rates: [] }));
+    const { routes, fetchMock, preferenceCreate, supabaseMock } = loadApp({ fetchImpl });
+    const { PACKAGE_PROFILES } = require("../src/packageProfiles");
+    // Diferenciar perfiles en el fixture para detectar selección incorrecta.
+    PACKAGE_PROFILES[totalUnits] = { weight: 321 + totalUnits, height: 10 + totalUnits, width: 26, length: 36 };
+    const product = require("../src/catalog").getProduct("LEM-REM-001-S");
+    const oldShipping = product.shipping;
+    product.shipping = null;
+    const response = createResponse();
+    try {
+      await routes.post["/cotizar-envio"]({ body: {
+        ...selection, postalCodeDestination: "5400", totalUnits: 99,
+        dimensions: { weight: 999 }, weight: 999, price: 1,
+        customerId: "untrusted", postalCodeOrigin: "9999", productType: "EP", deliveredType: "S",
+      } }, response);
+    } finally { product.shipping = oldShipping; }
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ options: [] });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      customerId: "qa-customer", postalCodeOrigin: "1000", postalCodeDestination: "5400",
+      dimensions: PACKAGE_PROFILES[totalUnits],
+    });
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {}, { items: [] }, { items: null }, { items: [{ sku: "INVALID", quantity: 1 }] },
+    ...[0, -1, 1.5, "2", null].map((quantity) => ({ items: [{ sku: "LEM-REM-001-S", quantity }] })),
+    { items: [{ sku: "LEM-REM-001-S", quantity: 3 }, { sku: "LEM-REM-001-S", quantity: 2 }] },
+    { items: [{ sku: "LEM-REM-001-S", quantity: 1 }], sku: "LEM-REM-001-S" },
+    { items: [{ sku: "LEM-REM-001-S", quantity: 1 }], quantity: 1 },
+    { items: [{ sku: "LEM-REM-001-S", quantity: 1 }], postalCodeDestination: "bad" },
+  ])("T-019 rechaza contrato/carrito inválido %# sin red", async (body) => {
+    const { routes, fetchMock } = loadApp();
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({ body: { postalCodeDestination: "5400", ...body } }, response);
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "No pudimos calcular el envío" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    null,
+    { weight: 0, height: 5, width: 25, length: 35 },
+    { weight: 25001, height: 5, width: 25, length: 35 },
+    { weight: 300.5, height: 5, width: 25, length: 35 },
+    { weight: 300, height: 151, width: 25, length: 35 },
+    { weight: 300, height: 5, width: 0, length: 35 },
+    { weight: 300, height: 5, width: 25, length: 1.5 },
+  ])("T-019 perfil ausente/inválido %# falla sin red", async (profile) => {
+    const { routes, fetchMock } = loadApp();
+    require("../src/packageProfiles").PACKAGE_PROFILES[2] = profile;
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({ body: {
+      sku: "LEM-REM-001-S", quantity: 2, postalCodeDestination: "5400",
+    } }, response);
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "No pudimos calcular el envío" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("T-019 normaliza CP/EP de D/S, descarta desconocidos y no expone wrapper", async () => {
+    const rates = ["D", "S"].flatMap((deliveredType) => ["CP", "EP"].map((productType) => ({
+      deliveredType, productType, productName: "untrusted upstream label", price: "498.06",
+    })));
+    rates.push({ deliveredType: "D", productType: "UNKNOWN", price: 1 },
+      { deliveredType: "UNKNOWN", productType: "CP", price: 1 },
+      ...[null, "", " ", false, -1, "NaN", Infinity].map((price) => ({ deliveredType: "D", productType: "CP", price })));
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(makeFetchResponse(200, { token: "fixture-token", expires_in: 3600 }))
+      .mockResolvedValueOnce(makeFetchResponse(200, { rates, customerId: "private-wrapper", validTo: "private-validity" }));
+    const { routes, fetchMock } = loadApp({ fetchImpl });
+    const response = createResponse();
+    await routes.post["/cotizar-envio"]({ body: {
+      items: [{ sku: "LEM-REM-001-S", quantity: 2 }], postalCodeDestination: "5400",
+    } }, response);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.options).toEqual(["home", "agency"].flatMap((type) => ["classic", "express"].map((service) => ({
+      id: `micorreo:${type}:${service}`, provider: "micorreo", type, deliveryType: type, service,
+      label: `${type === "home" ? "Envío a domicilio" : "Retiro en sucursal"} — ${service === "classic" ? "Clásico" : "Express"}`,
+      price: 498.06,
+    }))));
+    const payload = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(payload).not.toHaveProperty("deliveredType");
+    expect(payload).not.toHaveProperty("productType");
+    const output = JSON.stringify(response.body) + serializedLogOutput(logSpy, warnSpy, errorSpy);
+    for (const secret of ["private-wrapper", "private-validity", "untrusted upstream label", "fixture-token", "qa-customer"]) expect(output).not.toContain(secret);
+  });
+
   test("normaliza domicilio y sucursal usando configuración y medidas autoritativas", async () => {
     const fetchImpl = jest
       .fn()
@@ -1433,8 +1533,8 @@ describe("cotización de envío", () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({
       options: [
-        { type: "home", label: "Envío a domicilio", price: 498.06 },
-        { type: "agency", label: "Retiro en sucursal", price: 390 },
+        { id: "micorreo:home:classic", provider: "micorreo", type: "home", deliveryType: "home", service: "classic", label: "Envío a domicilio — Clásico", price: 498.06 },
+        { id: "micorreo:agency:classic", provider: "micorreo", type: "agency", deliveryType: "agency", service: "classic", label: "Retiro en sucursal — Clásico", price: 390 },
       ],
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -1453,8 +1553,7 @@ describe("cotización de envío", () => {
 
   test.each([
     ["SKU", { sku: "INVALID", quantity: 1, postalCodeDestination: "1000" }],
-    ["cantidad 2", { sku: "LEM-REM-001-S", quantity: 2, postalCodeDestination: "1000" }],
-    ["cantidad 4", { sku: "LEM-REM-001-S", quantity: 4, postalCodeDestination: "1000" }],
+    ["total 5", { items: [{ sku: "LEM-REM-001-S", quantity: 3 }, { sku: "LEM-REM-001-M", quantity: 2 }], postalCodeDestination: "1000" }],
     ["cantidad", { sku: "LEM-REM-001-S", quantity: 5, postalCodeDestination: "1000" }],
     ["CP", { sku: "LEM-REM-001-S", quantity: 1, postalCodeDestination: "12" }],
   ])("rechaza %s inválido antes de llamar a MiCorreo", async (caseName, body) => {

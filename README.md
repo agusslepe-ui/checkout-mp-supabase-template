@@ -1,5 +1,11 @@
 # Mercado Pago Checkout Pro + Supabase
 
+## T-019 — cotización multítem COMPLETADA (DEC-024 ACEPTADA)
+
+`POST /cotizar-envio` acepta items[] o legacy sku+quantity (sin mezcla), hasta **4 unidades totales**. Perfiles editables en `src/packageProfiles.js`: **TEMPORAL/QA**, todos 300 g / 5 × 25 × 35 cm; **no** están aprobados como packaging de producción. Origen: **CP 5465 — Rodeo, San Juan**, mediante `SHIPPING_ORIGIN_POSTAL_CODE`.
+
+El frontend muestra domicilio/sucursal y Clásico/Express solo según respuesta de MiCorreo, sin elegir agencia. El envío continúa **informativo, fuera del total y del pago**. Suite vigente: **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`. Próximo: Etapa C — cobrar el envío.
+
 Aplicación mínima de comercio electrónico para probar un pago de una Remera LEMONT mediante Mercado Pago Checkout Pro. El servidor registra primero un pedido pendiente en Supabase, crea la preferencia de pago y procesa el webhook de Mercado Pago. Un pedido solo pasa a `paid` después de consultar el pago en la API y confirmar que está aprobado y que el importe y la moneda coinciden.
 
 ## Tecnologías

@@ -1,5 +1,17 @@
 # Tareas
 
+## T-019 — MiCorreo Etapa B: cotización real multítem
+
+**Estado:** COMPLETADA
+**Decisión:** DEC-024 ACEPTADA. **Cierre formal:** 2026-09-15.
+
+- Contrato dual de cotización, `resolveCart` exportado sin cambiar reglas, 1–4 unidades totales y perfiles editables TEMPORAL/QA (todos 300/5/25/35).
+- Normalización D/S + CP/EP; frontend mínimo multítem, sin selección de agencia ni envío incluido en el pago.
+- Auditoría técnica: APROBADO CON OBSERVACIONES. Suite **211/211**, 4 suites.
+- Prueba real `POST /rates` PROD: `micorreo_rates_ok options=4`. Origen CP 5465 (Rodeo, San Juan). Destino QA CP 5400. No se imprimió JWT, password, Basic Auth, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Mercado Pago intacto. Envío no cobrado.
+- Los perfiles 1–4 siguen TEMPORAL/QA. Las medidas actuales **no** están aprobadas para producción.
+- Siguiente etapa, **no implementada:** Etapa C — cobrar el envío (incluir tarifa en total, orden y Mercado Pago).
+
 ## T-018 — MiCorreo Etapa A: autenticación + ShippingProvider
 
 **Estado:** COMPLETADA
@@ -11,21 +23,22 @@
 - Verificado: **178/178** tests, 2 suites; fetch mockeado. Incluye regresiones de cantidad 2/4, payload autoritativo, ausencia de secretos, checkout y webhook.
 - Conservados contrato público, quantity 1, dimensiones TEMPORAL/QA, envío fuera del total y tarifas sin persistir. Sin Etapas B/C/D ni cambios a DEC-022/T-017.
 - Prueba contra API real PROD: `POST /token` ejecutada por el usuario → `micorreo_auth_ok`. No se imprimió ni persistió JWT, contraseña, Basic Auth ni `customerId`. **No** se probaron `/rates` ni `/shipping/import`.
-- Siguiente etapa, **no implementada:** Etapa B — cotización real multítem. Antes hay que definir peso real de la remera, dimensiones reales del paquete, estrategia de paquete multítem, CP de origen y servicios iniciales.
+- La etapa siguiente (Etapa B / T-019) se cerró el 2026-09-15. Este bloque permanece como histórico de T-018.
 
 ## Estado vigente — 2026-09-15
 
 ### COMPLETADO Y VALIDADO
 
 - Datos de cliente/entrega y migración 003 aplicados. Las columnas nuevas de `orders` son nullable para preservar historia.
-- Etapa 6A implementada localmente con mocks. T-018 agregó la prueba real de `POST /token` PROD; `/rates` sigue sin prueba real.
+- Etapa 6A implementada localmente con mocks. T-018 probó `POST /token` PROD. T-019 probó `POST /rates` PROD (`micorreo_rates_ok options=4`). `/shipping/import` no fue llamado.
 - Migración 004 aplicada y validada manualmente: tabla `order_items`, relación con `orders`, cascada y RPC atómica.
 - Runtime Node integrado con `create_pending_order_with_items`; Mercado Pago usa el `external_reference` generado por PostgreSQL.
 - Columnas legacy conservadas temporalmente desde el primer item.
 - Webhook, HMAC, idempotencia y transición `pending → paid` sin cambios.
 - Incidente QA de columnas `customer_*`/`shipping_*` en `NULL` resuelto: se estaba ejecutando una instancia Node antigua. La RPC activa, firma, permisos e `INSERT` fueron verificados como correctos.
-- Último resultado comprobado de tests: **178/178** (T-018). El recuento 158/158 queda como antecedente del cierre de T-016.
-- **DEC-023 ACEPTADA** (cierre formal 2026-09-15). **T-018 COMPLETADA:** autenticación + provider. Prueba real `POST /token` PROD → `micorreo_auth_ok`. JWT no impreso ni persistido. `/rates` y `/shipping/import` no fueron probados.
+- Último resultado comprobado de tests: **211/211** (T-019). El recuento 178/178 queda como antecedente de T-018; 158/158 como cierre de T-016.
+- **DEC-024 ACEPTADA** / **T-019 COMPLETADA** (cierre formal 2026-09-15): cotización informativa multítem, 1–4 unidades totales, perfiles TEMPORAL/QA. `POST /rates` PROD → `micorreo_rates_ok options=4`. Origen 5465, destino QA 5400. Envío fuera del pago.
+- **DEC-023 ACEPTADA** (cierre formal 2026-09-15). **T-018 COMPLETADA:** autenticación + provider. Prueba real `POST /token` PROD → `micorreo_auth_ok`.
 - Auditoría 2026-09-11: el checkout HTTP era de un solo SKU; desde el Paso 2 acepta múltiples ítems usando la RPC existente.
 - **T-016 Paso 1 COMPLETADO:** dominio autoritativo del carrito (`src/cart.js`) y `POST /carrito/resumen`. Implementado, corregido, auditado, aprobado y enviado a `main`. El endpoint no persiste y no llama a Supabase, Mercado Pago ni logística.
 - **T-016 Paso 2 COMPLETADO:** checkout multítem autoritativo. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES, solo documentales) y aprobado por el usuario el 2026-09-12. Contrato `{ items, customer, delivery }`, compatibilidad legacy, rechazo de mezcla, una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un `external_reference`. Suite **158/158**.
@@ -36,17 +49,17 @@
 ### PENDIENTE
 
 - **DEC-022** propuesta; **T-017** bloqueada. Idempotencia durable fuera de T-016.
-- **Etapa B — cotización real multítem:** pendiente. No implementada. Antes de empezarla hay que definir peso real de la remera, dimensiones reales del paquete, estrategia de paquete multítem, CP de origen y servicios a ofrecer inicialmente.
-- Etapas C/D (envío en el total / creación de envío post-pago) pendientes.
-- Reemplazar medidas QA (`300 g / 5 × 25 × 35 cm`) por dimensiones/peso reales antes de producción.
+- **Etapa C — cobrar el envío:** pendiente. El costo se conoce; todavía no entra en `orders.amount`, Mercado Pago ni webhook.
+- Etapa D (creación de envío post-pago) pendiente. No llamar `/shipping/import`.
+- Reemplazar medidas QA (`300 g / 5 × 25 × 35 cm`) por dimensiones/peso reales **antes de usar tarifas en producción**. Los perfiles 1–4 siguen TEMPORAL/QA.
 - Rotar credenciales privadas comprometidas y restaurar precio comercial antes del lanzamiento público.
 - `maxQuantity: 4` es transitorio y no sustituye stock real. El stock real será una evolución futura.
-- Cotización de envío sigue limitada a `quantity: 1` hasta implementar logística multítem correctamente.
+- Cotización informativa limitada a **1–4 unidades totales** del carrito agrupado (D1). Independiente de `maxQuantity` por SKU.
 - Vulnerabilidades npm (2 moderate + 2 high) informadas durante `npm ci` de T-016 Paso 1. No se ejecutó `npm audit fix`. Auditarlas en una tarea separada; no forman parte de T-016.
 
 ### PRÓXIMO PASO
 
-**Etapa B — cotización real multítem.** Todavía no implementarla. Requiere definición previa de peso, dimensiones, paquete multítem, CP de origen y servicios iniciales. DEC-022/T-017, stock, deuda npm y Etapas C/D quedan fuera de este cierre.
+**Etapa C — cobrar el envío.** Todavía no implementarla. Antes hay que aprobar medidas reales de producción (los perfiles actuales son TEMPORAL/QA). DEC-022/T-017, stock, deuda npm y Etapa D quedan fuera de este cierre.
 
 ### Regla operativa
 

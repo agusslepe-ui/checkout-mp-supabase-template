@@ -1,5 +1,19 @@
 # Diseño técnico
 
+## T-019 / DEC-024 — diseño vigente (COMPLETADA / ACEPTADA)
+
+`POST /cotizar-envio → ShippingService → ShippingProvider → MiCorreoProvider` conserva las capas de T-018.
+
+El servicio acepta `{ items: [{ sku, quantity }], postalCodeDestination }` o legacy `{ sku, quantity, postalCodeDestination }`. Mezcla/ausencia de contratos devuelve 400 genérico. `resolveCart` agrupa y valida; sumar quantities resueltas da `totalUnits`. Solo 1–4 unidades totales: 5+ se rechazan antes de autenticación/tarifas.
+
+`packageProfiles.js` es la autoridad editable de dimensiones: cuatro perfiles TEMPORAL/QA, todos 300 g / 5 × 25 × 35 cm. `catalog.shipping` queda obsoleto/no autoritativo. Peso entero 1–25000 g y dimensiones enteras 1–150 cm; perfil ausente/inválido falla con 503 sin red. No inferir packaging real.
+
+Payload de `/rates`: customerId y CP origen del entorno, CP destino validado y dimensions del perfil. Sin `deliveredType` ni `productType`. Origen de producción acordado: **5465, Rodeo, San Juan**; fixture 1000. No se cambia configuración privada.
+
+Opciones: D/S → home/agency; CP/EP → classic/express; id `micorreo:<deliveryType>:<service>`, provider, type (compatibilidad), deliveryType, service, label controlado y price numérico finito no negativo. Se descartan tipos desconocidos y precios inválidos. No exponer customerId/validTo/productName crudo. El frontend usa texto seguro, admite items y legacy, invalida respuestas tardías al cambiar CP/carrito y no envía datos autoritativos.
+
+Cotización informativa sin persistir ni sumar al checkout. Sin selección de agencia/importación. Prueba real `POST /rates` PROD (2026-09-15): `micorreo_rates_ok options=4`; origen 5465, destino QA 5400; sin JWT/secretos impresos; sin `/shipping/import`. Perfiles 1–4 TEMPORAL/QA; medidas **no** aprobadas para producción. Etapa C pendiente. Las referencias a quantity 1 de las secciones siguientes describen el estado anterior a T-019.
+
 ## Arquitectura general
 
 La aplicación es un monolito pequeño de Node.js. Express sirve el frontend estático y expone las rutas de API. El backend se comunica directamente con Mercado Pago y Supabase.

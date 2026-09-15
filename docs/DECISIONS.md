@@ -1,5 +1,23 @@
 # Decisiones técnicas
 
+## DEC-024 — Perfiles de paquete + cotización informativa multítem
+
+**Estado:** ACEPTADA.
+**Tarea:** T-019. **Cierre formal:** 2026-09-15, tras auditoría (APROBADO CON OBSERVACIONES) y prueba real `POST /rates` PROD.
+
+- D1/B1: cotizar solo 1–4 unidades totales del carrito resuelto/agrupado. Es independiente del máximo por SKU; 5+ devuelve 400 genérico sin llamar MiCorreo.
+- D2: cuatro perfiles editables en `src/packageProfiles.js`. Cada perfil 1/2/3/4 usa **300 g / 5 × 25 × 35 cm**, TEMPORAL/QA, no packaging definitivo de producción ni multiplicación de medidas individuales.
+- D3: frontend mínimo multítem en `envio.js` y `entrega.js`; cotización informativa, sin incorporarla al pago.
+- D4: mostrar domicilio/sucursal devueltos; sin selección de agencia ni `/agencies`.
+- D5: CP → Clásico, EP → Express solo si está en la respuesta; no solicitar EP ni enviar `deliveredType`. Descartar servicios desconocidos.
+- Backend autoritativo: contrato dual `items[]` o `sku+quantity`, sin mezcla, resuelto con `resolveCart`. CustomerId/origen desde entorno, dimensiones desde perfil, destino validado; ignorar campos comerciales/logísticos del cliente.
+- Origen de producción acordado: **CP 5465 — Rodeo, San Juan**. Configurarlo privadamente mediante `SHIPPING_ORIGIN_POSTAL_CODE`; no se cambió `.env`. Fixtures pueden usar 1000.
+- Respuesta normalizada: id/provider/type/deliveryType/service/label/price. Sin customerId, validTo ni respuesta cruda; sin persistir tarifas ni secretos.
+- Etapa B = saber costo; Etapa C = cobrar costo. Mercado Pago, webhook, HMAC, RPC, migraciones, `orders.amount` y `preference.items` intactos.
+- Prueba real `POST /rates` PROD (2026-09-15): `micorreo_rates_ok options=4`. Origen CP 5465 (Rodeo, San Juan). Destino QA CP 5400. No se imprimió JWT, password, Basic Auth, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Mercado Pago intacto. Envío no cobrado.
+- Los perfiles 1–4 siguen TEMPORAL/QA. Las medidas actuales **no** están aprobadas para producción.
+- Etapa C (cobrar el envío) sigue PENDIENTE.
+
 ## DEC-023 — ShippingService / ShippingProvider / MiCorreoProvider
 
 **Fecha:** 2026-09-14. **Estado:** ACEPTADA.

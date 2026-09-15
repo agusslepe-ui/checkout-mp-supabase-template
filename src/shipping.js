@@ -1,4 +1,5 @@
-const { getProduct } = require("./catalog");
+const { CartError, resolveCart } = require("./cart");
+const { MAX_QUOTE_UNITS, getPackageProfile } = require("./packageProfiles");
 const {
   micorreoBaseUrl,
   micorreoUser,
@@ -26,27 +27,36 @@ class ShippingUnavailableError extends Error {
 
 /** @param {import("./shippingProvider").ShippingProvider} provider */
 function createShippingService(provider = MiCorreoProvider) {
-  async function getShippingQuotes({ sku, quantity, postalCodeDestination }) {
-    const product = getProduct(sku);
-    if (!product) throw new ShippingInputError();
-    // La cotizacion actual solo conoce las medidas de una unidad.
-    if (quantity !== 1) {
-      throw new ShippingInputError();
+  async function getShippingQuotes(input) {
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new ShippingInputError();
+    const hasItems = Object.prototype.hasOwnProperty.call(input, "items");
+    const hasSku = Object.prototype.hasOwnProperty.call(input, "sku");
+    const hasQuantity = Object.prototype.hasOwnProperty.call(input, "quantity");
+    if (hasItems ? (hasSku || hasQuantity) : !(hasSku && hasQuantity)) throw new ShippingInputError();
+    let lines;
+    try {
+      ({ lines } = resolveCart({ items: hasItems ? input.items : [{ sku: input.sku, quantity: input.quantity }] }));
+    } catch (error) {
+      if (error instanceof CartError) throw new ShippingInputError();
+      throw error;
     }
+    const totalUnits = lines.reduce((total, line) => total + line.quantity, 0);
+    if (totalUnits < 1 || totalUnits > MAX_QUOTE_UNITS) throw new ShippingInputError();
 
-    const destination = normalizePostalCode(postalCodeDestination);
+    const destination = normalizePostalCode(input.postalCodeDestination);
     ensureShippingConfiguration();
-    ensureDimensions(product.shipping);
+    const profile = getPackageProfile(totalUnits);
+    ensureDimensions(profile);
 
     const ratePayload = {
       customerId: micorreoCustomerId,
       postalCodeOrigin: shippingOriginPostalCode.trim().toUpperCase(),
       postalCodeDestination: destination,
       dimensions: {
-        weight: product.shipping.weightGrams,
-        height: product.shipping.heightCm,
-        width: product.shipping.widthCm,
-        length: product.shipping.lengthCm,
+        weight: profile.weight,
+        height: profile.height,
+        width: profile.width,
+        length: profile.length,
       },
     };
 
@@ -90,12 +100,12 @@ function ensureShippingConfiguration() {
 
 function ensureDimensions(dimensions) {
   const values = [
-    dimensions?.weightGrams,
-    dimensions?.heightCm,
-    dimensions?.widthCm,
-    dimensions?.lengthCm,
+    dimensions?.height,
+    dimensions?.width,
+    dimensions?.length,
   ];
-  if (values.some((value) => !Number.isFinite(value) || value <= 0)) {
+  if (!Number.isInteger(dimensions?.weight) || dimensions.weight < 1 || dimensions.weight > 25000 ||
+      values.some((value) => !Number.isInteger(value) || value < 1 || value > 150)) {
     throw new ShippingUnavailableError();
   }
 }
@@ -112,9 +122,21 @@ function normalizeRates(response) {
 
   return response.rates.flatMap((rate) => {
     const option = labels[rate?.deliveredType];
+    const service = { CP: "classic", EP: "express" }[rate?.productType];
+    if (!Object.prototype.hasOwnProperty.call(labels, rate?.deliveredType) ||
+        !["CP", "EP"].includes(rate?.productType)) return [];
+    if (!["number", "string"].includes(typeof rate?.price) || String(rate.price).trim() === "") return [];
     const price = Number(rate?.price);
     if (!option || !Number.isFinite(price) || price < 0) return [];
-    return [{ ...option, price }];
+    return [{
+      id: `micorreo:${option.type}:${service}`,
+      provider: "micorreo",
+      type: option.type,
+      deliveryType: option.type,
+      service,
+      label: `${option.label} — ${service === "classic" ? "Clásico" : "Express"}`,
+      price,
+    }];
   });
 }
 

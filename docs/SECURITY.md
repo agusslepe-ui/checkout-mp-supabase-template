@@ -1,5 +1,14 @@
 # Seguridad
 
+## T-019 / DEC-024 — 2026-09-15 (COMPLETADA / ACEPTADA)
+
+- Cotización dual limitada en backend a 1–4 unidades totales; reutiliza validación/agrupación del carrito. 5+ responde 400 genérico sin MiCorreo.
+- Campos del cliente (price, dimensions, customerId, origen, servicio) nunca son autoridad. Perfiles QA validados antes del transporte. No se agregan logs de payloads, wrapper, tokens ni credenciales.
+- Normalización solo D/S + CP/EP; campos públicos permitidos y labels controlados. Render de API con textContent/createElement, sin innerHTML; se descartan respuestas tardías tras cambiar CP o carrito.
+- Variables opcionales al startup y autenticación/retry de T-018 intactos. Sin cambios a pago, HMAC, webhook, RPC ni migraciones. Sin persistencia de tarifas.
+- **211/211 tests** con red mockeada. Sin lectura de `.env` ni llamadas reales. Perfiles TEMPORAL/QA, no dimensiones productivas. CP origen acordado 5465 desde entorno, sin cambio privado.
+- Prueba real `POST /rates` PROD: `micorreo_rates_ok options=4`. Origen 5465, destino QA 5400. No se imprimió JWT, password, Basic, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Envío no cobrado. Perfiles TEMPORAL/QA, no aprobados para producción. Etapa C no implementada.
+
 ## T-018 / DEC-023 — 2026-09-14
 
 - Autenticación MiCorreo exportada solo para uso interno: no existe endpoint público de autenticación.

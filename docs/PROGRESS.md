@@ -1,5 +1,26 @@
 # Progreso
 
+## 2026-09-15 — Cierre formal T-019 / DEC-024
+
+- Objetivo: registrar la aprobación del usuario y la prueba real PROD. Sin código, tests, migraciones, `.env`, commit ni push.
+- DEC-024 → ACEPTADA. T-019 → COMPLETADA.
+- Implementación local COMPLETADA. Auditoría técnica: APROBADO CON OBSERVACIONES. Suite **211/211**, 4 suites.
+- Prueba real `POST /rates` PROD: `micorreo_rates_ok options=4`. Origen CP 5465 (Rodeo, San Juan). Destino QA CP 5400.
+- No se imprimió JWT, password, Basic Auth, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Mercado Pago intacto. Envío no cobrado.
+- Perfiles 1–4 siguen TEMPORAL/QA. Las medidas actuales **no** están aprobadas para producción.
+- Etapa C (cobrar el envío) sigue PENDIENTE.
+
+## T-019 — IMPLEMENTADO LOCALMENTE / PENDIENTE DE AUDITORÍA (histórico de esa sesión)
+
+- Objetivo: Etapa B bajo DEC-024 y D1–D5 aprobadas. En esa sesión no se declaraba T-019 COMPLETADA ni se implementaba Etapa C. El cierre formal es el de 2026-09-15.
+- Nuevos: `src/packageProfiles.js`, `tests/packageProfiles.test.js`, `tests/envio.test.js`.
+- Modificados: `src/cart.js` (solo export), `src/catalog.js` (comentario obsoleto), `src/shipping.js`, `public/js/envio.js`, `public/js/entrega.js`, `tests/index.test.js` y documentación README/REQUIREMENTS/DESIGN/SECURITY/DECISIONS/TASKS/CURRENT_CONTEXT/PROGRESS.
+- Contrato dual con resolver común; tope de 4 unidades totales; perfiles editables 1–4 TEMPORAL/QA, todos 300 g / 5 × 25 × 35 cm; payload exclusivamente autoritativo y validación de límites de dimensiones.
+- Normalización domicilio/sucursal y Clásico/Express solo según respuesta; sin pedir servicio ni agencia. Cotizaciones obsoletas se invalidan al cambiar CP/carrito.
+- Verificación: **211/211 tests**, 4 suites, 0 fallos; sintaxis frontend correcta; `git diff --check` sin errores. Pruebas frontend con DOM mínimo en memoria, sin navegador ni QA visual real.
+- Sin lectura de `.env`, dependencias, red real, commit/push ni cambios a pagos/webhook/HMAC/RPC/migraciones. Total comercial intacto.
+- Origen acordado CP 5465 — Rodeo, San Juan, a configurar privadamente; fixtures 1000. En esa sesión `/rates` PROD aún no estaba probado.
+
 ## 2026-09-15 — Cierre formal T-018 / DEC-023
 
 - Objetivo: registrar la aprobación del usuario. Sin código, tests, migraciones, `.env`, commit ni push.
@@ -19,7 +40,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-15. DEC-023 ACEPTADA. T-018 COMPLETADA. T-016 COMPLETADA. Tests: 178/178.
+Última revisión documental: 2026-09-15. DEC-024 ACEPTADA. T-019 COMPLETADA. DEC-023 ACEPTADA. T-018 COMPLETADA. T-016 COMPLETADA. Tests: 211/211.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 
@@ -50,10 +71,12 @@ Cierre formal tras auditoría (APROBADO CON OBSERVACIONES, solo documentales) y 
 
 ## Estado actual
 
+- **DEC-024 ACEPTADA.** **T-019 COMPLETADA** (2026-09-15).
+- Prueba real `POST /rates` PROD: `micorreo_rates_ok options=4`. Origen 5465, destino QA 5400. JWT/secretos no impresos. Sin `/shipping/import`, sin envío creado, sin cobro de shipping.
+- Perfiles 1–4 TEMPORAL/QA; medidas **no** aprobadas para producción. Etapa C pendiente.
 - **DEC-023 ACEPTADA.** **T-018 COMPLETADA** (2026-09-15).
-- Prueba real `POST /token` PROD: `micorreo_auth_ok`. JWT no impreso ni persistido. `/rates` y `/shipping/import` no fueron probados.
-- Suite vigente: **178/178**, 2 suites.
-- Etapa B (cotización real multítem) y Etapas C/D pendientes.
+- Prueba real `POST /token` PROD: `micorreo_auth_ok`. JWT no impreso ni persistido.
+- Suite vigente: **211/211**, 4 suites.
 - **T-016 COMPLETADA**, Pasos 1–4 COMPLETADOS.
 - Paso 1 COMPLETADO (en `main`).
 - Paso 2 COMPLETADO (auditado y aprobado el 2026-09-12).
@@ -271,7 +294,7 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Etapa B — cotización real multítem.** Todavía no implementarla. Antes hay que definir peso real de la remera, dimensiones reales del paquete, estrategia de paquete multítem, CP de origen y servicios iniciales. DEC-022/T-017, stock, deuda npm y Etapas C/D quedan fuera de este cierre.
+**Etapa C — cobrar el envío.** Todavía no implementarla. Antes hay que aprobar peso y dimensiones reales de producción; los perfiles actuales son TEMPORAL/QA. DEC-022/T-017, stock, deuda npm y Etapa D quedan fuera de este cierre.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 

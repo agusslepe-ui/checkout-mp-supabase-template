@@ -1,4 +1,5 @@
-// TEMPORAL / QA: reemplazar por peso y dimensiones reales antes de producción.
+// OBSOLETO / no autoritativo para cotización. Conservado por compatibilidad.
+// T-019 usa exclusivamente packageProfiles.js (TEMPORAL / QA).
 const REMERA_LEMONT_QA_SHIPPING = {
   weightGrams: 300,
   heightCm: 5,

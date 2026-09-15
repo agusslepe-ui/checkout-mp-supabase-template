@@ -232,11 +232,14 @@ function initializeCartDelivery(form, submitButton, statusElement) {
   const shipping = form.querySelector(".shipping-quote");
   const originalShipping = shipping.cloneNode(true);
   let revision = 0;
+  let disposeShipping;
   const back = element("a", "Editar carrito", "text-link");
   back.href = "carrito.html";
 
   async function refresh() {
     const current = ++revision;
+    disposeShipping?.();
+    disposeShipping = undefined;
     cartReady = false;
     submitButton.disabled = true;
     checkoutItems = cartStore.getItems();
@@ -259,11 +262,12 @@ function initializeCartDelivery(form, submitButton, statusElement) {
         element("p", "El backend determina los importes. El límite de 4 por variante no es stock. El envío no está incluido."));
       aside.querySelector("h2").id = "summary-title";
       aside.append(back);
-      if (items.length === 1 && items[0].quantity === 1) {
+      const totalUnits = summary.items.reduce((total, line) => total + line.quantity, 0);
+      if (totalUnits >= 1 && totalUnits <= 4) {
         shipping.replaceChildren(...[...originalShipping.childNodes].map((node) => node.cloneNode(true)));
-        inicializarCotizacionEnvio({ form, sku: items[0].sku, quantity: 1 });
+        disposeShipping = inicializarCotizacionEnvio({ form, items });
       } else {
-        shipping.replaceChildren(element("h2", "Envío informativo"), element("p", "La cotización informativa todavía no cubre varios ítems o unidades. El envío no se suma al pago."));
+        shipping.replaceChildren(element("h2", "Envío informativo"), element("p", "La cotización informativa está disponible para compras de 1 a 4 unidades totales. El envío no se suma al pago."));
         shipping.querySelector("h2").id = "shipping-title";
       }
       cartReady = true;

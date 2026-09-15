@@ -138,6 +138,7 @@ function isPositiveSafeInteger(value) {
 
 module.exports = {
   CartError,
+  resolveCart,
   MAX_CART_ITEMS,
   summarizeCart,
   resolveCheckoutCart,
