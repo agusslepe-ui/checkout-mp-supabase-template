@@ -1,5 +1,19 @@
 # Decisiones técnicas
 
+## DEC-023 — ShippingService / ShippingProvider / MiCorreoProvider
+
+**Fecha:** 2026-09-14. **Estado:** ACEPTADA.
+**Cierre formal:** 2026-09-15, tras auditoría de T-018 (APROBADO CON OBSERVACIONES) y prueba real de `POST /token` PROD.
+
+- Separación mínima: servicio → contrato interno con `authenticate()` y `quoteRates(...)` → MiCorreoProvider.
+- Etapa A (T-018) COMPLETADA: autenticación y provider. Variables MiCorreo opcionales al startup.
+- Contrato oficial aportado por el usuario: `POST {MICORREO_BASE_URL}/token`, HTTP Basic Auth, respuesta `{ token, expires }`; parseo de fecha, fallback JWT `exp`, margen, caché en memoria, solicitud compartida, timeout y un retry de tarifas ante 401.
+- Hook interno exportado; nunca endpoint público ni secretos en logs/respuestas HTTP.
+- Prueba real ejecutada por el usuario: `POST /token` contra API MiCorreo PROD → `micorreo_auth_ok`. No se imprimió ni persistió JWT, contraseña, Basic Auth ni `customerId`. No se invocó `/rates` ni `/shipping/import`.
+- `/cotizar-envio` conserva quantity estrictamente 1, dimensiones TEMPORAL/QA y tarifa informativa sin persistencia ni inclusión en el total.
+- Fuera de alcance hasta definición y autorización posteriores: Etapas B/C/D, cotización real multítem, paquete real, sucursal, Express, `/shipping/import`, shipments, emails y devoluciones. Etiquetas/tracking no se implementan: según el usuario, no están documentados oficialmente en el PDF actual.
+- Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend de compra y DEC-022/T-017 intactos.
+
 Este registro distingue decisiones observadas en el código de decisiones todavía pendientes. Las alternativas indicadas como inferidas deben confirmarse antes de rediseñar el sistema.
 
 ---

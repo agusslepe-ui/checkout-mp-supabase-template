@@ -1,17 +1,31 @@
 # Tareas
 
-## Estado vigente — 2026-09-13
+## T-018 — MiCorreo Etapa A: autenticación + ShippingProvider
+
+**Estado:** COMPLETADA
+**Decisión:** DEC-023 ACEPTADA. **Fecha:** 2026-09-14 (implementación local). **Cierre formal:** 2026-09-15.
+
+- Servicio en `src/shipping.js`, contrato estructural en `src/shippingProvider.js`, implementación MiCorreo en `src/micorreo.js`.
+- `authenticate()` exportada solo para backend; POST Basic, `expires`, fallback `exp`, margen de 30 s, caché compartida en memoria y timeout de 8 s. Tarifas: un retry ante 401, incluso bajo concurrencia.
+- Implementación local COMPLETADA. Auditoría técnica: APROBADA CON OBSERVACIONES.
+- Verificado: **178/178** tests, 2 suites; fetch mockeado. Incluye regresiones de cantidad 2/4, payload autoritativo, ausencia de secretos, checkout y webhook.
+- Conservados contrato público, quantity 1, dimensiones TEMPORAL/QA, envío fuera del total y tarifas sin persistir. Sin Etapas B/C/D ni cambios a DEC-022/T-017.
+- Prueba contra API real PROD: `POST /token` ejecutada por el usuario → `micorreo_auth_ok`. No se imprimió ni persistió JWT, contraseña, Basic Auth ni `customerId`. **No** se probaron `/rates` ni `/shipping/import`.
+- Siguiente etapa, **no implementada:** Etapa B — cotización real multítem. Antes hay que definir peso real de la remera, dimensiones reales del paquete, estrategia de paquete multítem, CP de origen y servicios iniciales.
+
+## Estado vigente — 2026-09-15
 
 ### COMPLETADO Y VALIDADO
 
 - Datos de cliente/entrega y migración 003 aplicados. Las columnas nuevas de `orders` son nullable para preservar historia.
-- Etapa 6A implementada localmente con mocks, sin llamadas reales a Correo Argentino.
+- Etapa 6A implementada localmente con mocks. T-018 agregó la prueba real de `POST /token` PROD; `/rates` sigue sin prueba real.
 - Migración 004 aplicada y validada manualmente: tabla `order_items`, relación con `orders`, cascada y RPC atómica.
 - Runtime Node integrado con `create_pending_order_with_items`; Mercado Pago usa el `external_reference` generado por PostgreSQL.
 - Columnas legacy conservadas temporalmente desde el primer item.
 - Webhook, HMAC, idempotencia y transición `pending → paid` sin cambios.
 - Incidente QA de columnas `customer_*`/`shipping_*` en `NULL` resuelto: se estaba ejecutando una instancia Node antigua. La RPC activa, firma, permisos e `INSERT` fueron verificados como correctos.
-- Último resultado comprobado de tests: **158/158**.
+- Último resultado comprobado de tests: **178/178** (T-018). El recuento 158/158 queda como antecedente del cierre de T-016.
+- **DEC-023 ACEPTADA** (cierre formal 2026-09-15). **T-018 COMPLETADA:** autenticación + provider. Prueba real `POST /token` PROD → `micorreo_auth_ok`. JWT no impreso ni persistido. `/rates` y `/shipping/import` no fueron probados.
 - Auditoría 2026-09-11: el checkout HTTP era de un solo SKU; desde el Paso 2 acepta múltiples ítems usando la RPC existente.
 - **T-016 Paso 1 COMPLETADO:** dominio autoritativo del carrito (`src/cart.js`) y `POST /carrito/resumen`. Implementado, corregido, auditado, aprobado y enviado a `main`. El endpoint no persiste y no llama a Supabase, Mercado Pago ni logística.
 - **T-016 Paso 2 COMPLETADO:** checkout multítem autoritativo. Implementado por Codex, auditado (APROBADO CON OBSERVACIONES, solo documentales) y aprobado por el usuario el 2026-09-12. Contrato `{ items, customer, delivery }`, compatibilidad legacy, rechazo de mezcla, una orden `pending`, N `order_items`, una preferencia, N ítems de Mercado Pago, un `external_reference`. Suite **158/158**.
@@ -22,9 +36,9 @@
 ### PENDIENTE
 
 - **DEC-022** propuesta; **T-017** bloqueada. Idempotencia durable fuera de T-016.
-- Recibir credenciales de Correo Argentino. La solicitud ya fue enviada. No bloquea T-016.
-- No realizar llamadas reales a MiCorreo hasta recibirlas.
-- Reemplazar medidas QA por dimensiones/peso reales antes de producción.
+- **Etapa B — cotización real multítem:** pendiente. No implementada. Antes de empezarla hay que definir peso real de la remera, dimensiones reales del paquete, estrategia de paquete multítem, CP de origen y servicios a ofrecer inicialmente.
+- Etapas C/D (envío en el total / creación de envío post-pago) pendientes.
+- Reemplazar medidas QA (`300 g / 5 × 25 × 35 cm`) por dimensiones/peso reales antes de producción.
 - Rotar credenciales privadas comprometidas y restaurar precio comercial antes del lanzamiento público.
 - `maxQuantity: 4` es transitorio y no sustituye stock real. El stock real será una evolución futura.
 - Cotización de envío sigue limitada a `quantity: 1` hasta implementar logística multítem correctamente.
@@ -32,7 +46,7 @@
 
 ### PRÓXIMO PASO
 
-T-016 está COMPLETADA. El próximo trabajo requiere definición y autorización separadas; EasyPanel/credenciales, DEC-022/T-017, stock, Correo Argentino y deuda npm quedan fuera de este cierre.
+**Etapa B — cotización real multítem.** Todavía no implementarla. Requiere definición previa de peso, dimensiones, paquete multítem, CP de origen y servicios iniciales. DEC-022/T-017, stock, deuda npm y Etapas C/D quedan fuera de este cierre.
 
 ### Regla operativa
 

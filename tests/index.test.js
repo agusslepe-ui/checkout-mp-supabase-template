@@ -1479,6 +1479,22 @@ describe("cotización de envío", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  test("MiCorreo opcional al startup y authenticate solo interno sin rutas nuevas", () => {
+    const { routes, fetchMock } = loadApp({ env: {
+      MICORREO_BASE_URL: undefined, MICORREO_USER: undefined,
+      MICORREO_PASSWORD: undefined, MICORREO_CUSTOMER_ID: undefined,
+      SHIPPING_ORIGIN_POSTAL_CODE: undefined,
+    } });
+    expect(Object.keys(routes.post).sort()).toEqual([
+      "/carrito/resumen", "/cotizar-envio", "/crear-preferencia", "/webhook",
+    ]);
+    expect(Object.keys(routes.get).sort()).toEqual([
+      "/failure", "/pending", "/success", "/webhook",
+    ]);
+    expect(require("../src/micorreo").authenticate).toEqual(expect.any(Function));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("reutiliza el JWT vigente entre cotizaciones", async () => {
     const fetchImpl = jest
       .fn()
@@ -1588,7 +1604,8 @@ describe("cotización de envío", () => {
   });
 
   test("rechaza una respuesta inválida y no expone secretos ni PII en logs", async () => {
-    const privateValues = ["qa-user", "qa-password", "qa-customer", "B1900ABC"];
+    const privateValues = ["qa-user", "qa-password", "qa-customer", "B1900ABC",
+      Buffer.from("qa-user:qa-password").toString("base64"), "Basic ", "Bearer "];
     const fetchImpl = jest
       .fn()
       .mockResolvedValueOnce(makeFetchResponse(200, { token: "jwt-private", expires_in: 3600 }))

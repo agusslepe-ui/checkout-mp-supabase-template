@@ -1,5 +1,14 @@
 # Seguridad
 
+## T-018 / DEC-023 — 2026-09-14
+
+- Autenticación MiCorreo exportada solo para uso interno: no existe endpoint público de autenticación.
+- Variables MiCorreo opcionales al startup; la función comprueba configuración al invocarse, sin registrar valores.
+- Token/Basic/user/password/customerId no se muestran en logs ni respuestas HTTP. Los errores de transporte/autenticación se reemplazan por categorías constantes.
+- Caché de token solo en memoria, expiración con margen, request en vuelo compartido y retry de tarifas limitado. Concurrencia y timeout cubiertos por tests mockeados.
+- Suite completa: 178/178 tests. Los recuentos de secciones anteriores son históricos.
+- Prueba real `POST /token` PROD (2026-09-15): `micorreo_auth_ok`. No se imprimió ni persistió JWT, contraseña, Basic Auth ni `customerId`. `/rates` y `/shipping/import` no fueron invocados. Checkout, pagos, webhook y HMAC intactos.
+
 ## Estado de seguridad T-016 (2026-09-13)
 
 T-016 COMPLETADA, Pasos 1–4. Las secciones de Etapa 3/5/6A y sus cifras son antecedentes de esos cierres.
@@ -58,10 +67,10 @@ Al cierre de Etapa 5 la suite pasaba **61/61 tests**, incluida una regresión de
 
 - `MICORREO_USER`, `MICORREO_PASSWORD`, JWT y Basic Auth son secretos de backend; nunca se persisten, registran ni envían al navegador.
 - Tampoco se registran `customerId`, códigos postales, domicilio, PII, request completo o respuesta completa de Correo Argentino.
-- `.env.example` contiene únicamente nombres vacíos. Las credenciales QA solicitadas todavía no fueron recibidas y no existen valores reales en el repositorio.
+- `.env.example` contiene únicamente nombres vacíos. No hay valores reales de MiCorreo en el repositorio.
 - Los errores públicos son genéricos y las categorías internas no incluyen datos externos sensibles.
 - La suite actual pasa 75/75 e incluye regresiones de ausencia de secretos/PII. El mecanismo de solicitud JWT compartida está implementado; no existe todavía una prueba aislada de concurrencia simultánea.
-- La integración de red real contra QA sigue pendiente. No confundir tests con mocks con validación del contrato externo.
+- T-018 validó `POST /token` PROD (`micorreo_auth_ok`). `/rates` y `/shipping/import` siguen sin prueba real. No confundir tests con mocks con validación de esas rutas.
 - Las medidas 300 g / 5 × 25 × 35 cm son temporales de QA y deben reemplazarse antes de producción.
 
 ## Riesgos detectados

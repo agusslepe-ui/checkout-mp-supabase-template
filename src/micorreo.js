@@ -3,18 +3,18 @@ const {
   micorreoUser,
   micorreoPassword,
 } = require("./config");
+const { ShippingProviderError } = require("./shippingProvider");
 
 const REQUEST_TIMEOUT_MS = 8000;
-const DEFAULT_TOKEN_LIFETIME_MS = 5 * 60 * 1000;
 const TOKEN_EXPIRY_MARGIN_MS = 30 * 1000;
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
 let tokenRequestPromise = null;
 
-class MicorreoError extends Error {
+class MicorreoError extends ShippingProviderError {
   constructor(type, status = null) {
-    super(type);
+    super(type, status);
     this.name = "MicorreoError";
     this.type = type;
     this.status = status;
@@ -22,7 +22,7 @@ class MicorreoError extends Error {
 }
 
 async function quoteRates(payload) {
-  let token = await getToken();
+  let token = await authenticate();
   let response = await request("/rates", {
     method: "POST",
     headers: {
@@ -33,8 +33,9 @@ async function quoteRates(payload) {
   });
 
   if (response.status === 401) {
-    clearToken();
-    token = await getToken();
+    // Un 401 tardio no debe invalidar una renovacion de otra cotizacion.
+    if (cachedToken === token) clearToken();
+    token = await authenticate();
     response = await request("/rates", {
       method: "POST",
       headers: {
@@ -46,13 +47,19 @@ async function quoteRates(payload) {
   }
 
   if (!response.ok) {
+    if (response.status === 401 && cachedToken === token) clearToken();
     throw new MicorreoError("micorreo_rate_error", response.status);
   }
 
   return parseJson(response, "micorreo_invalid_response");
 }
 
-async function getToken() {
+async function authenticate() {
+  if ([micorreoBaseUrl, micorreoUser, micorreoPassword].some(
+    (value) => typeof value !== "string" || value.trim() === ""
+  )) {
+    throw new MicorreoError("micorreo_config_error");
+  }
   if (cachedToken && Date.now() < tokenExpiresAt) return cachedToken;
   if (tokenRequestPromise) return tokenRequestPromise;
 
@@ -115,26 +122,31 @@ async function parseJson(response, errorType) {
 
 function calculateTokenExpiry(token, responseBody) {
   const now = Date.now();
+  const expires = typeof responseBody?.expires === "string"
+    ? Date.parse(responseBody.expires)
+    : NaN;
+  if (Number.isFinite(expires)) return expires - TOKEN_EXPIRY_MARGIN_MS;
+
+  // exp solo se decodifica para gestionar cache, no valida la firma del JWT.
+  const jwtExpiry = readJwtExpiry(token);
+  if (Number.isFinite(jwtExpiry)) return jwtExpiry - TOKEN_EXPIRY_MARGIN_MS;
+
   const expiresIn = Number(responseBody?.expires_in ?? responseBody?.expiresIn);
 
   if (Number.isFinite(expiresIn) && expiresIn > 0) {
-    return now + Math.max(1000, expiresIn * 1000 - TOKEN_EXPIRY_MARGIN_MS);
+    return now + expiresIn * 1000 - TOKEN_EXPIRY_MARGIN_MS;
   }
 
-  const jwtExpiry = readJwtExpiry(token);
-  if (jwtExpiry > now) {
-    return Math.max(now + 1000, jwtExpiry - TOKEN_EXPIRY_MARGIN_MS);
-  }
-
-  return now + DEFAULT_TOKEN_LIFETIME_MS - TOKEN_EXPIRY_MARGIN_MS;
+  // Sin vencimiento conocido se usa una vez, sin inventar una vigencia.
+  return now;
 }
 
 function readJwtExpiry(token) {
   try {
     const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
-    return Number(payload.exp) * 1000;
+    return typeof payload.exp === "number" ? payload.exp * 1000 : NaN;
   } catch (error) {
-    return 0;
+    return NaN;
   }
 }
 
@@ -143,4 +155,7 @@ function clearToken() {
   tokenExpiresAt = 0;
 }
 
-module.exports = { MicorreoError, quoteRates };
+/** @type {import("./shippingProvider").ShippingProvider} */
+const MiCorreoProvider = Object.freeze({ authenticate, quoteRates });
+
+module.exports = { MicorreoError, MiCorreoProvider, authenticate, quoteRates };

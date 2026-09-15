@@ -1,6 +1,6 @@
 # Contexto actual del proyecto
 
-> Resumen compacto para agentes. Última actualización: 2026-09-13 (T-016 COMPLETADA; Pasos 1–4 COMPLETADOS; DEC-021 implementada; tests 158/158).
+> Resumen compacto para agentes. Última actualización: 2026-09-15 (DEC-023 ACEPTADA; T-018 COMPLETADA; T-016 COMPLETADA; tests 178/178).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -20,13 +20,14 @@
 - **T-016 Paso 3 COMPLETADO:** carrito frontend + `localStorage` (`lemont.cart`, solo SKU + quantity). Página `carrito.html`, contador por unidades, D1-A (Agregar al carrito + Comprar ahora), D2-A (no auto-vaciar), resumen vía `POST /carrito/resumen`, checkout `items[]`. Cotización informativa solo 1 SKU × quantity 1. Auditado (APROBADO CON OBSERVACIONES: QA visual pendiente), QA visual/manual correcto, aprobado el 2026-09-13. Sin backend, webhook ni migraciones. Suite **158/158**.
 
 - **T-016 Paso 4 COMPLETADO:** regresiones 158/158 y documentación alineada con main (2026-09-13). T-016 COMPLETADA; DEC-021 implementada. QA frontend manual, sin tests DOM nuevos.
+- **DEC-023 ACEPTADA / T-018 COMPLETADA (2026-09-15):** `ShippingService → ShippingProvider → MiCorreoProvider`. Autenticación interna `authenticate()`, JWT solo en memoria, sin endpoint público. Auditoría: APROBADA CON OBSERVACIONES. Prueba real `POST /token` PROD → `micorreo_auth_ok`. JWT no impreso ni persistido. `/rates` y `/shipping/import` no fueron probados. Suite **178/178**. Cotización sigue informativa, quantity 1, medidas TEMPORAL/QA, envío fuera del total.
 
 ### VALIDADO
 
 - La migración 004 y la RPC fueron validadas manualmente en Supabase real: un pedido y su item, total, moneda, estado, columnas legacy, relación y `ON DELETE CASCADE`.
 - El runtime local actualizado crea la preferencia, `orders` y `order_items`, y redirige a Checkout Pro.
 - El webhook permanece sin cambios: HMAC, validación de importe/moneda, idempotencia y transición atómica `pending → paid` siguen vigentes.
-- Último resultado comprobado de tests: **158/158**. El resultado histórico previo a T-016 Paso 1 permanece documentado como 79/79.
+- Último resultado comprobado de tests: **178/178** (T-018). El cierre de T-016 quedó en 158/158; el histórico previo a T-016 Paso 1 permanece como 79/79.
 - Incidente QA resuelto: pedidos nuevos aparecieron con `customer_*` y `shipping_*` en `NULL`. Se comprobó una sola RPC activa, firma/permisos correctos y definición/`INSERT` activos correctos. La causa fue una instancia antigua iniciada con `npm start`; tras reiniciar Node quedó cargado el runtime actualizado.
 
 ### PENDIENTE
@@ -35,13 +36,14 @@
 - `maxQuantity: 4` está aplicado en `src/catalog.js` como techo **temporal**. **No sustituye stock real.** El stock real será una evolución futura.
 - Cotización de envío sigue limitada a `quantity: 1` hasta implementar logística multítem correctamente.
 - Vulnerabilidades npm (2 moderate + 2 high) informadas durante `npm ci`. No se ejecutó `npm audit fix`. Auditarlas en una tarea separada; no forman parte de T-016 Paso 1.
-- Correo Argentino: solicitud de credenciales enviada y todavía no recibida. No realizar llamadas reales hasta disponer de accesos. Las medidas `300 g / 5 × 25 × 35 cm` continúan marcadas como temporales de QA y deben reemplazarse antes de producción. Esta espera **no** bloquea T-016.
+- Correo Argentino: `POST /token` PROD verificado (`micorreo_auth_ok`). `/rates` y `/shipping/import` **no** fueron probados. Las medidas `300 g / 5 × 25 × 35 cm` continúan marcadas como temporales de QA y deben reemplazarse antes de producción.
+- **Etapa B** (cotización real multítem) y Etapas C/D pendientes. Antes de Etapa B hay que definir peso real de la remera, dimensiones reales del paquete, estrategia de paquete multítem, CP de origen y servicios iniciales.
 - Rotar las credenciales privadas documentadas como expuestas antes del lanzamiento público.
 - El precio ARS 1.000 sigue siendo temporal de prueba; no es el precio comercial definitivo.
 
 ### PRÓXIMO PASO
 
-T-016 está COMPLETADA. El próximo trabajo requiere definición y autorización separadas; EasyPanel/credenciales, DEC-022/T-017, stock, Correo Argentino y deuda npm quedan fuera de este cierre.
+**Etapa B — cotización real multítem.** Todavía no implementarla. Requiere definición previa de peso, dimensiones, paquete multítem, CP de origen y servicios iniciales.
 
 **Regla operativa obligatoria:** después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.
 
@@ -57,7 +59,7 @@ El JWT se obtiene con Basic Auth, se conserva solo en memoria, se reutiliza con 
 
 Las medidas `300 g × 5 × 25 × 35 cm` están marcadas como **TEMPORALES / QA** y no representan el paquete real. Deben sustituirse antes de producción. La cotización no cambia `orders.amount`, Mercado Pago, Supabase, webhook, HMAC, DEC-019, T-015 ni `pending → paid`.
 
-Estado: **IMPLEMENTADA Y TESTEADA LOCALMENTE; PENDIENTE DE CREDENCIALES Y VALIDACIÓN CONTRA MICORREO QA**. Al cierre de esta etapa la suite pasaba 75/75; el último resultado histórico documentado previo a las correcciones es 79/79. No hubo llamadas reales a Correo Argentino. Ya se solicitó acceso y se esperan usuario, contraseña, `customerId` y cualquier requisito adicional de QA.
+Estado histórico al cierre de Etapa 6A: **IMPLEMENTADA Y TESTEADA LOCALMENTE; PENDIENTE DE CREDENCIALES Y VALIDACIÓN CONTRA MICORREO QA**. Al cierre de esa etapa la suite pasaba 75/75. Ese pendiente de credenciales quedó superado por T-018: `POST /token` PROD → `micorreo_auth_ok`. `/rates` y `/shipping/import` siguen sin prueba real.
 
 ### Antecedente: Etapa 5
 
@@ -179,7 +181,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Datos de entrega**: `003_add_order_customer_delivery.sql` aplicada y verificada; agrega doce columnas nullable sin completar pedidos históricos.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. `maxQuantity: 4` es temporal y no es stock. El cliente no controla importe ni moneda.
 - **Carrito:** Paso 1 COMPLETADO — `src/cart.js` y `POST /carrito/resumen`. Paso 2 COMPLETADO — checkout `{ items, customer, delivery }` y legacy. Paso 3 COMPLETADO — `public/carrito.html`, `cartStore` (`lemont.cart`, solo SKU + quantity), contador por unidades, D1-A, D2-A. El frontend no es autoridad de precios.
-- **Tests locales**: último resultado comprobado **158/158**, 1 suite, 0 fallos. Sintaxis y `git diff --check` verificados; sin `.env` ni servicios reales.
+- **Tests locales**: último resultado comprobado **178/178**, 2 suites, 0 fallos. T-016 cerró en 158/158.
 - **Envío**: únicamente `quantity: 1` hasta implementar logística multítem correctamente; 2/4 rechazadas antes de MiCorreo. El máximo comercial del catálogo sigue en 4 y no es stock.
 - **Límite del carrito**: 50 entradas originales antes de agrupar; SKUs duplicados se agrupan; después se valida la cantidad acumulada por SKU contra `maxQuantity`.
 - **Dependencias**: npm ci reportó 4 vulnerabilidades (2 moderate, 2 high). No se ejecutó `npm audit fix` ni se modificaron paquetes. Remediación pendiente en una tarea separada; no forma parte de T-016 Paso 1.
@@ -225,10 +227,10 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. T-016 está COMPLETADA. El próximo trabajo requiere definición y autorización separadas; EasyPanel/credenciales, DEC-022/T-017, stock, Correo Argentino y deuda npm quedan fuera de este cierre.
-2. No implementar todavía DEC-022, webhook, migraciones, Correo Argentino ni `npm audit fix`.
-3. En paralelo, no bloqueante: cuando Correo Argentino entregue credenciales, validar MiCorreo QA. Eso no forma parte de T-016.
-4. DEC-022 / T-017 no se implementan hasta que el usuario acepte esa decisión. El stock real tampoco forma parte de T-016.
+1. **Etapa B — cotización real multítem.** Todavía no implementarla.
+2. Antes de Etapa B hay que definir: peso real de la remera; dimensiones reales del paquete; estrategia de paquete multítem; CP de origen; servicios a ofrecer inicialmente.
+3. No implementar todavía `/rates` de producción, `/shipping/import`, Etapas C/D, DEC-022, webhook, migraciones ni `npm audit fix`.
+4. DEC-022 / T-017 no se implementan hasta que el usuario acepte esa decisión. El stock real tampoco forma parte de esta etapa.
 
 El modelo `orders` + `order_items` ya está implementado y no debe volver a tratarse como propuesta futura. El carrito de interfaz del Paso 3 ya existe.
 

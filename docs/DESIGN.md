@@ -112,6 +112,18 @@ Cliente y domicilio viven en el formulario, nunca en localStorage ni en la URL. 
 
 ## Cotización logística local — Etapa 6A
 
+### Actualización T-018 / DEC-023 — 2026-09-14
+
+`POST /cotizar-envio → ShippingService (shipping.js) → ShippingProvider (contrato estructural en shippingProvider.js) → MiCorreoProvider (micorreo.js)`.
+
+El servicio valida entrada y construye el payload desde catálogo/configuración; admite inyección del provider mediante `createShippingService`. El contrato contiene `authenticate` y `quoteRates`, con un error común; no hay registro de providers ni jerarquía de implementaciones. MiCorreo conserva autenticación/transporte. La exportación `getShippingQuotes` mantiene el handler existente sin cambiar `app.js`.
+
+`authenticate()` exportada devuelve el token solo al backend. Prioridad de vencimiento: `Date.parse(expires)` → JWT `exp` → compatibilidad legacy `expires_in`/`expiresIn`. Margen de 30 segundos, sin cachear vencimientos desconocidos ni extender tokens vencidos. La lectura de `exp` no valida la firma del JWT. Se comparte una autenticación en vuelo y se libera también al fallar. Un 401 de tarifas permite un solo retry; un 401 tardío no invalida un token distinto renovado concurrentemente. Se conserva timeout de fetch de 8 segundos.
+
+**Prueba real (2026-09-15):** el usuario ejecutó `POST /token` contra API MiCorreo PROD. Resultado: `micorreo_auth_ok`. No se imprimió ni persistió JWT, contraseña, Basic Auth ni `customerId`. No se invocó `quoteRates`, `/rates` ni `/shipping/import`. `authenticate()` no se monta en Express. No hay scripts de ejecución automática.
+
+Las descripciones de Etapa 6A siguientes son antecedentes de contrato de cotización (quantity 1, medidas QA, tarifa informativa). `/rates` y `/shipping/import` siguen sin prueba real.
+
 La Etapa 5 prepara el destino y la Etapa 6A agrega cotización informativa mediante MiCorreo:
 
 ```text
@@ -122,7 +134,7 @@ Solo admite 1 SKU × quantity 1; cantidades 2 y 4 se rechazan antes de MiCorreo.
 
 La respuesta pública expone `type`, `label` y `price`. Domicilio es informativo y sucursal aclara que su selección está pendiente. No existen `/agencies`, `/shipping/import`, tracking, etiquetas, creación de envío ni estados logísticos. La tarifa no se persiste ni forma parte del total.
 
-Las medidas 300 g / 5 × 25 × 35 cm son temporales de QA y deben reemplazarse por datos reales. La integración no fue validada contra MiCorreo QA porque las credenciales solicitadas todavía no fueron recibidas.
+Las medidas 300 g / 5 × 25 × 35 cm son temporales de QA y deben reemplazarse por datos reales. T-018 validó únicamente `POST /token` PROD; `/rates` y `/shipping/import` no fueron probados.
 
 ## Modelo `orders` + `order_items` implementado
 

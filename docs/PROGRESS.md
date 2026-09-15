@@ -1,6 +1,25 @@
 # Progreso
 
-Última revisión documental: 2026-09-13. T-016 COMPLETADA. Pasos 1–4 COMPLETADOS. DEC-021 implementada. Tests: 158/158.
+## 2026-09-15 — Cierre formal T-018 / DEC-023
+
+- Objetivo: registrar la aprobación del usuario. Sin código, tests, migraciones, `.env`, commit ni push.
+- DEC-023 → ACEPTADA. T-018 → COMPLETADA.
+- Implementación local COMPLETADA. Auditoría técnica: APROBADA CON OBSERVACIONES.
+- Prueba contra API real PROD: `POST /token` → `micorreo_auth_ok`. No se imprimió ni persistió JWT, contraseña, Basic Auth ni `customerId`.
+- No se invocó `/rates` ni `/shipping/import`. No se insinúa que esas rutas hayan sido probadas.
+- Suite: **178/178** tests, 2 suites, 0 fallos.
+- Etapas B/C/D pendientes. Próximo paso registrado: Etapa B — cotización real multítem, todavía no implementada. Antes hay que definir peso real de la remera, dimensiones reales del paquete, estrategia de paquete multítem, CP de origen y servicios iniciales.
+
+## 2026-09-14 — T-018 Etapa A implementada localmente (histórico de esa sesión)
+
+- Objetivo: autenticación y separación mínima bajo DEC-023; en esa sesión la decisión se registró desde el pedido porque DEC-023/T-018 no existían en estos archivos. El cierre formal es el de 2026-09-15.
+- Archivos: `src/micorreo.js`, `src/shipping.js`, nuevo `src/shippingProvider.js`, `tests/index.test.js`, nuevo `tests/micorreo.test.js`, `docs/DECISIONS.md`, `docs/TASKS.md`, `docs/DESIGN.md`, `docs/SECURITY.md` y esta bitácora.
+- Autenticación interna exportada, expiración oficial y fallback JWT, margen de 30 s, caché en memoria, request en vuelo compartido, timeout de 8 s y retry único ante 401 con protección frente a respuestas tardías.
+- Verificación: suite completa 178/178, 2 suites, 0 fallos; `git diff --check` corregido y verificado sin errores de whitespace.
+- Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
+- En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
+
+Última revisión documental: 2026-09-15. DEC-023 ACEPTADA. T-018 COMPLETADA. T-016 COMPLETADA. Tests: 178/178.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 
@@ -31,12 +50,16 @@ Cierre formal tras auditoría (APROBADO CON OBSERVACIONES, solo documentales) y 
 
 ## Estado actual
 
+- **DEC-023 ACEPTADA.** **T-018 COMPLETADA** (2026-09-15).
+- Prueba real `POST /token` PROD: `micorreo_auth_ok`. JWT no impreso ni persistido. `/rates` y `/shipping/import` no fueron probados.
+- Suite vigente: **178/178**, 2 suites.
+- Etapa B (cotización real multítem) y Etapas C/D pendientes.
 - **T-016 COMPLETADA**, Pasos 1–4 COMPLETADOS.
 - Paso 1 COMPLETADO (en `main`).
 - Paso 2 COMPLETADO (auditado y aprobado el 2026-09-12).
 - Paso 3 COMPLETADO (auditado, QA visual/manual correcto y aprobado el 2026-09-13). D1-A y D2-A.
 - Paso 4 COMPLETADO — regresiones y documentación final (2026-09-13).
-- DEC-021 **aceptada e implementada**. DEC-022 / T-017 permanecen fuera de T-016.
+- DEC-021 **aceptada e implementada**. DEC-022 / T-017 permanecen fuera de T-016 y de T-018.
 
 ### T-016 Paso 1 COMPLETADO — 2026-09-12 (histórico de ese cierre)
 
@@ -248,7 +271,7 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-T-016 está COMPLETADA. El próximo trabajo requiere definición y autorización separadas; EasyPanel/credenciales, DEC-022/T-017, stock, Correo Argentino y deuda npm quedan fuera de este cierre.
+**Etapa B — cotización real multítem.** Todavía no implementarla. Antes hay que definir peso real de la remera, dimensiones reales del paquete, estrategia de paquete multítem, CP de origen y servicios iniciales. DEC-022/T-017, stock, deuda npm y Etapas C/D quedan fuera de este cierre.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 

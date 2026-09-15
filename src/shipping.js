@@ -6,7 +6,8 @@ const {
   micorreoCustomerId,
   shippingOriginPostalCode,
 } = require("./config");
-const { MicorreoError, quoteRates } = require("./micorreo");
+const { MiCorreoProvider } = require("./micorreo");
+const { ShippingProviderError } = require("./shippingProvider");
 
 class ShippingInputError extends Error {
   constructor() {
@@ -23,40 +24,47 @@ class ShippingUnavailableError extends Error {
   }
 }
 
-async function getShippingQuotes({ sku, quantity, postalCodeDestination }) {
-  const product = getProduct(sku);
-  if (!product) throw new ShippingInputError();
-  // La cotizacion actual solo conoce las medidas de una unidad.
-  if (quantity !== 1) {
-    throw new ShippingInputError();
-  }
-
-  const destination = normalizePostalCode(postalCodeDestination);
-  ensureShippingConfiguration();
-  ensureDimensions(product.shipping);
-
-  const ratePayload = {
-    customerId: micorreoCustomerId,
-    postalCodeOrigin: shippingOriginPostalCode.trim().toUpperCase(),
-    postalCodeDestination: destination,
-    dimensions: {
-      weight: product.shipping.weightGrams,
-      height: product.shipping.heightCm,
-      width: product.shipping.widthCm,
-      length: product.shipping.lengthCm,
-    },
-  };
-
-  try {
-    const response = await quoteRates(ratePayload);
-    return normalizeRates(response);
-  } catch (error) {
-    if (error instanceof MicorreoError) {
-      throw new ShippingUnavailableError(error.type);
+/** @param {import("./shippingProvider").ShippingProvider} provider */
+function createShippingService(provider = MiCorreoProvider) {
+  async function getShippingQuotes({ sku, quantity, postalCodeDestination }) {
+    const product = getProduct(sku);
+    if (!product) throw new ShippingInputError();
+    // La cotizacion actual solo conoce las medidas de una unidad.
+    if (quantity !== 1) {
+      throw new ShippingInputError();
     }
-    throw error;
+
+    const destination = normalizePostalCode(postalCodeDestination);
+    ensureShippingConfiguration();
+    ensureDimensions(product.shipping);
+
+    const ratePayload = {
+      customerId: micorreoCustomerId,
+      postalCodeOrigin: shippingOriginPostalCode.trim().toUpperCase(),
+      postalCodeDestination: destination,
+      dimensions: {
+        weight: product.shipping.weightGrams,
+        height: product.shipping.heightCm,
+        width: product.shipping.widthCm,
+        length: product.shipping.lengthCm,
+      },
+    };
+
+    try {
+      const response = await provider.quoteRates(ratePayload);
+      return normalizeRates(response);
+    } catch (error) {
+      if (error instanceof ShippingProviderError) {
+        throw new ShippingUnavailableError(error.type);
+      }
+      throw error;
+    }
   }
+  return { getShippingQuotes };
 }
+
+const ShippingService = createShippingService();
+const { getShippingQuotes } = ShippingService;
 
 function normalizePostalCode(value) {
   if (typeof value !== "string") throw new ShippingInputError();
@@ -114,4 +122,6 @@ module.exports = {
   ShippingInputError,
   ShippingUnavailableError,
   getShippingQuotes,
+  createShippingService,
+  ShippingService,
 };
