@@ -14,7 +14,11 @@ const variante = producto?.variantes?.find((item) => item.sku === sku);
 
 const cartMode = !["id", "sku", "quantity"].some((key) => params.has(key));
 let checkoutItems = [];
-let cartReady = false;
+let cartReady = !cartMode;
+let checkoutSubtotal = null;
+let checkoutCurrency = "ARS";
+let selectedShippingOptionId = null;
+let selectedShippingAmount = null;
 
 if (cartMode) {
   if (!cartStore.getItems().length) renderInvalidSelection();
@@ -71,14 +75,14 @@ function renderDeliveryForm() {
           </fieldset>
 
           <section class="shipping-quote" aria-labelledby="shipping-title">
-            <h2 id="shipping-title">Cotización de envío</h2>
-            <p>Calculá opciones informativas con tu código postal. El envío todavía no se suma al pago.</p>
+            <h2 id="shipping-title">Envío</h2>
+            <p>Calculá las opciones disponibles y elegí un envío a domicilio para pagar.</p>
             <button class="button button--secondary" type="button" data-shipping-button>Calcular envío</button>
             <div class="shipping-options" data-shipping-options></div>
             <p class="form-status" data-shipping-status aria-live="polite"></p>
           </section>
 
-          <button class="button button--accent button--full" type="submit" data-delivery-submit>Iniciar pago</button>
+          <button class="button button--accent button--full" type="submit" data-delivery-submit disabled>Iniciar pago</button>
           <p class="form-status" data-delivery-status aria-live="polite"></p>
         </form>
       </section>
@@ -93,10 +97,17 @@ function renderDeliveryForm() {
           <div><dt>Cantidad</dt><dd>${quantity}</dd></div>
           <div><dt>Precio informativo</dt><dd>${formatearPrecio(producto.precio)}</dd></div>
         </dl>
-        <p>El backend determina el precio y la moneda finales. El envío no se suma al pago.</p>`}
+        `}
+        <dl class="order-totals" data-order-totals>
+          <div><dt>Subtotal</dt><dd data-order-subtotal>—</dd></div>
+          <div><dt>Envío</dt><dd data-order-shipping>—</dd></div>
+          <div><dt>Total</dt><dd data-order-total>—</dd></div>
+        </dl>
+        <p>Los importes mostrados son informativos. El backend recotiza el envío y determina el total definitivo al pagar.</p>
       </aside>
     </div>`;
 
+  if (!cartMode) checkoutSubtotal = producto.precio * quantity;
   initializeForm();
 }
 
@@ -104,9 +115,31 @@ function initializeForm() {
   const form = deliveryRoot.querySelector("[data-delivery-form]");
   const submitButton = form.querySelector("[data-delivery-submit]");
   const statusElement = form.querySelector("[data-delivery-status]");
+  const onShippingSelectionChange = (selection) => {
+    selectedShippingOptionId = selection?.id || null;
+    selectedShippingAmount = Number.isFinite(Number(selection?.price))
+      ? Number(selection.price)
+      : null;
+    renderOrderAmounts();
+    refreshSubmitState();
+  };
+  const refreshSubmitState = () => {
+    submitButton.disabled = !cartReady || !selectedShippingOptionId;
+  };
 
-  if (cartMode) initializeCartDelivery(form, submitButton, statusElement);
-  else inicializarCotizacionEnvio({ form, sku, quantity });
+  if (cartMode) {
+    initializeCartDelivery(
+      form,
+      submitButton,
+      statusElement,
+      onShippingSelectionChange,
+      refreshSubmitState
+    );
+  } else {
+    inicializarCotizacionEnvio({ form, sku, quantity, onSelectionChange: onShippingSelectionChange });
+    renderOrderAmounts();
+    refreshSubmitState();
+  }
 
   form.addEventListener("input", (event) => {
     if (event.target.matches("input, select, textarea")) {
@@ -125,6 +158,10 @@ function initializeForm() {
       cartReady = false;
       submitButton.disabled = true;
       statusElement.textContent = "El carrito cambió. Volvé al carrito para revisar tu compra.";
+      return;
+    }
+    if (!selectedShippingOptionId) {
+      statusElement.textContent = "Elegí una opción de envío a domicilio para continuar.";
       return;
     }
     const fields = [...form.querySelectorAll("input, select, textarea")];
@@ -157,6 +194,11 @@ function initializeForm() {
       ...(cartMode ? { items: checkoutItems } : { sku, quantity }),
       customer,
       delivery,
+      shippingOptionId: selectedShippingOptionId,
+      onShippingInvalidated: () => {
+        onShippingSelectionChange(null);
+        form.querySelector("[data-shipping-options]")?.replaceChildren();
+      },
       button: submitButton,
       statusElement,
     });
@@ -227,7 +269,53 @@ function renderInvalidSelection() {
   deliveryRoot.innerHTML = `<section class="product-not-found" aria-labelledby="invalid-title"><p class="eyebrow eyebrow--accent">Entrega</p><h1 id="invalid-title">Compra no disponible</h1><p>Volvé al producto y seleccioná un talle válido.</p><a class="button button--accent" href="producto.html?id=remera-lemont">Volver al producto</a></section>`;
 }
 
-function initializeCartDelivery(form, submitButton, statusElement) {
+function renderOrderAmounts() {
+  const aside = deliveryRoot.querySelector(".delivery-summary");
+  const subtotal = aside?.querySelector("[data-order-subtotal]");
+  const shipping = aside?.querySelector("[data-order-shipping]");
+  const total = aside?.querySelector("[data-order-total]");
+  if (!subtotal || !shipping || !total) return;
+
+  subtotal.textContent = Number.isFinite(checkoutSubtotal)
+    ? formatCartPrice(checkoutSubtotal, checkoutCurrency)
+    : "—";
+  shipping.textContent = Number.isFinite(selectedShippingAmount)
+    ? formatCartPrice(selectedShippingAmount, checkoutCurrency)
+    : "Elegí una opción";
+  total.textContent = Number.isFinite(checkoutSubtotal) && Number.isFinite(selectedShippingAmount)
+    ? formatCartPrice(checkoutSubtotal + selectedShippingAmount, checkoutCurrency)
+    : "—";
+}
+
+function appendOrderTotals(aside) {
+  const totals = document.createElement("dl");
+  totals.className = "order-totals";
+  totals.setAttribute("data-order-totals", "");
+  for (const [label, attribute] of [
+    ["Subtotal", "data-order-subtotal"],
+    ["Envío", "data-order-shipping"],
+    ["Total", "data-order-total"],
+  ]) {
+    const row = document.createElement("div");
+    const term = element("dt", label);
+    const value = element("dd", "—");
+    value.setAttribute(attribute, "");
+    row.append(term, value);
+    totals.append(row);
+  }
+  aside.append(
+    totals,
+    element("p", "Los importes mostrados son informativos. El backend recotiza el envío y determina el total definitivo al pagar.")
+  );
+}
+
+function initializeCartDelivery(
+  form,
+  submitButton,
+  statusElement,
+  onShippingSelectionChange,
+  refreshSubmitState
+) {
   const aside = deliveryRoot.querySelector(".delivery-summary");
   const shipping = form.querySelector(".shipping-quote");
   const originalShipping = shipping.cloneNode(true);
@@ -241,13 +329,13 @@ function initializeCartDelivery(form, submitButton, statusElement) {
     disposeShipping?.();
     disposeShipping = undefined;
     cartReady = false;
-    submitButton.disabled = true;
+    onShippingSelectionChange(null);
     checkoutItems = cartStore.getItems();
     const items = checkoutItems;
     aside.replaceChildren(element("h2", "Resumen", "cart-summary-title"), element("p", "Validando carrito…"));
     aside.querySelector("h2").id = "summary-title";
     aside.append(back);
-    shipping.replaceChildren(element("h2", "Envío informativo"), element("p", "El envío informativo se habilita después de validar la compra. No se suma al pago."));
+    shipping.replaceChildren(element("h2", "Envío"), element("p", "El envío se habilita después de validar la compra."));
     shipping.querySelector("h2").id = "shipping-title";
     if (!items.length) {
       aside.append(element("p", "Compra no disponible. Tu carrito está vacío."));
@@ -258,20 +346,27 @@ function initializeCartDelivery(form, submitButton, statusElement) {
       const summary = await requestCartSummary(items);
       if (current !== revision) return;
       aside.replaceChildren(element("h2", "Resumen"), ...summary.items.map((line) => summaryLine(line, summary.currency)),
-        element("p", "Subtotal: " + formatCartPrice(summary.subtotal, summary.currency), "cart-total"),
-        element("p", "El backend determina los importes. El límite de 4 por variante no es stock. El envío no está incluido."));
+        element("p", "El límite de 4 por variante no es stock."));
       aside.querySelector("h2").id = "summary-title";
       aside.append(back);
+      checkoutSubtotal = Number(summary.subtotal);
+      checkoutCurrency = summary.currency;
+      appendOrderTotals(aside);
+      renderOrderAmounts();
       const totalUnits = summary.items.reduce((total, line) => total + line.quantity, 0);
       if (totalUnits >= 1 && totalUnits <= 4) {
         shipping.replaceChildren(...[...originalShipping.childNodes].map((node) => node.cloneNode(true)));
-        disposeShipping = inicializarCotizacionEnvio({ form, items });
+        disposeShipping = inicializarCotizacionEnvio({
+          form,
+          items,
+          onSelectionChange: onShippingSelectionChange,
+        });
       } else {
-        shipping.replaceChildren(element("h2", "Envío informativo"), element("p", "La cotización informativa está disponible para compras de 1 a 4 unidades totales. El envío no se suma al pago."));
+        shipping.replaceChildren(element("h2", "Envío no disponible"), element("p", "Solo podemos calcular el envío para compras de 1 a 4 unidades totales."));
         shipping.querySelector("h2").id = "shipping-title";
       }
       cartReady = true;
-      submitButton.disabled = false;
+      refreshSubmitState();
       statusElement.textContent = "";
     } catch {
       if (current !== revision) return;
@@ -282,6 +377,7 @@ function initializeCartDelivery(form, submitButton, statusElement) {
       retry.type = "button";
       retry.addEventListener("click", refresh);
       aside.append(retry);
+      refreshSubmitState();
     }
   }
   // No reemplazar el formulario ni perder PII al cambiar el carrito en otra pestaña.

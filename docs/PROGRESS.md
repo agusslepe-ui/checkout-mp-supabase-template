@@ -1,5 +1,23 @@
 # Progreso
 
+## 2026-09-15 — T-020 correcciones post-auditoría
+
+- Auditoría Grok: APROBADA CON OBSERVACIONES. Se corrigieron orden de validación pre-RPC, mensajes 400 controlados de shipping, logs genéricos y documentación vigente/histórica.
+- Regresiones nuevas: tarifa 498,06 en centavos; `/rates` vacío; carrito 3+2; inconsistencia interna sin RPC/MP; allowlist de mensajes frontend.
+- Verificación: **242/242 tests**, 4 suites, 0 fallos, sin red real. Migración 005 no aplicada.
+- Estado: **IMPLEMENTADO LOCALMENTE + AUDITORÍA CORREGIDA + PENDIENTE DE CUTOVER**. T-020 no está COMPLETADA y DEC-025 no está ACEPTADA.
+- Sin lectura de `.env`, llamadas reales, SQL aplicado, commit, push ni deploy.
+
+## 2026-09-15 — T-020 implementada localmente (antes de auditoría)
+
+- Se integró shipping autoritativo en checkout: recotización MiCorreo, selección por ID, solo home cobrable y tarifa vigente.
+- Se agregaron subtotal/envío/total y snapshot de carrier a la RPC y a la migración local 005, sin ejecutar SQL.
+- Mercado Pago recibe productos + ítem `Envío`; webhook y HMAC permanecen intactos y comparan contra `orders.amount` total.
+- Frontend exige envío, muestra Subtotal/Envío/Total e invalida por cambio de CP/carrito o 409. Agency sigue informativa.
+- Tests en ese punto: 211/211 antes; 236/236 después, sin red real. `git diff --check` correcto salvo avisos informativos LF/CRLF.
+- Sin `.env`, llamadas reales, `/shipping/import`, SQL aplicado, commit, push ni deploy.
+- Estado en ese punto: T-020 no completada; DEC-025 no aceptada. La auditoría posterior fue aprobada con observaciones y ya fue corregida localmente.
+
 ## 2026-09-15 — Cierre formal T-019 / DEC-024
 
 - Objetivo: registrar la aprobación del usuario y la prueba real PROD. Sin código, tests, migraciones, `.env`, commit ni push.
@@ -8,7 +26,7 @@
 - Prueba real `POST /rates` PROD: `micorreo_rates_ok options=4`. Origen CP 5465 (Rodeo, San Juan). Destino QA CP 5400.
 - No se imprimió JWT, password, Basic Auth, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Mercado Pago intacto. Envío no cobrado.
 - Perfiles 1–4 siguen TEMPORAL/QA. Las medidas actuales **no** están aprobadas para producción.
-- Etapa C (cobrar el envío) sigue PENDIENTE.
+- En ese cierre histórico, Etapa C (cobrar el envío) seguía PENDIENTE. El estado vigente está en T-020.
 
 ## T-019 — IMPLEMENTADO LOCALMENTE / PENDIENTE DE AUDITORÍA (histórico de esa sesión)
 
@@ -40,7 +58,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-15. DEC-024 ACEPTADA. T-019 COMPLETADA. DEC-023 ACEPTADA. T-018 COMPLETADA. T-016 COMPLETADA. Tests: 211/211.
+Última revisión documental: 2026-09-15. T-020 corregida post-auditoría y pendiente de cutover; DEC-025 no aceptada. Tests: 242/242.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 
@@ -71,12 +89,13 @@ Cierre formal tras auditoría (APROBADO CON OBSERVACIONES, solo documentales) y 
 
 ## Estado actual
 
+- **T-020 IMPLEMENTADA LOCALMENTE / AUDITORÍA CORREGIDA / PENDIENTE DE CUTOVER.** **DEC-025 PROPUESTA / IMPLEMENTADA LOCALMENTE / AUDITORÍA APROBADA CON OBSERVACIONES.** Migración 005 no aplicada; falta QA integrado.
 - **DEC-024 ACEPTADA.** **T-019 COMPLETADA** (2026-09-15).
 - Prueba real `POST /rates` PROD: `micorreo_rates_ok options=4`. Origen 5465, destino QA 5400. JWT/secretos no impresos. Sin `/shipping/import`, sin envío creado, sin cobro de shipping.
-- Perfiles 1–4 TEMPORAL/QA; medidas **no** aprobadas para producción. Etapa C pendiente.
+- Perfiles 1–4 TEMPORAL/QA; medidas **no** aprobadas para producción. La referencia a Etapa C pendiente corresponde al cierre histórico de T-019.
 - **DEC-023 ACEPTADA.** **T-018 COMPLETADA** (2026-09-15).
 - Prueba real `POST /token` PROD: `micorreo_auth_ok`. JWT no impreso ni persistido.
-- Suite vigente: **211/211**, 4 suites.
+- Suite vigente: **242/242**, 4 suites.
 - **T-016 COMPLETADA**, Pasos 1–4 COMPLETADOS.
 - Paso 1 COMPLETADO (en `main`).
 - Paso 2 COMPLETADO (auditado y aprobado el 2026-09-12).
@@ -294,7 +313,7 @@ El detalle verificable está en `docs/TASKS.md`.
 
 ## Próxima acción recomendada
 
-**Etapa C — cobrar el envío.** Todavía no implementarla. Antes hay que aprobar peso y dimensiones reales de producción; los perfiles actuales son TEMPORAL/QA. DEC-022/T-017, stock, deuda npm y Etapa D quedan fuera de este cierre.
+**Cutover controlado de T-020.** Aplicar migración 005 solo con autorización explícita y ejecutar QA integrado. Antes del lanzamiento público hay que aprobar peso y dimensiones reales; los perfiles actuales son TEMPORAL/QA. DEC-022/T-017, stock, deuda npm y Etapa D quedan fuera de este cierre.
 
 > Codex no debe leer `.env`, exponer secretos, hacer commit ni push sin autorización explícita del usuario.
 

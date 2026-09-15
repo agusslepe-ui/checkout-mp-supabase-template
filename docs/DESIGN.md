@@ -1,6 +1,29 @@
 # Diseño técnico
 
-## T-019 / DEC-024 — diseño vigente (COMPLETADA / ACEPTADA)
+## T-020 / DEC-025 — diseño implementado localmente, auditoría corregida, pendiente de cutover
+
+```text
+checkout { items|legacy, customer, delivery, shippingOptionId }
+  → resolver carrito y subtotal en centavos
+  → rechazar 5+ sin MiCorreo/RPC/MP
+  → recalcular perfil y POST /rates
+  → normalizar/deduplicar rates y buscar el ID home exacto
+  → tomar tarifa actual y calcular total en centavos
+  → construir productos + Envío y validar su total exacto en centavos
+  → RPC atómica: order pending + N items + shipping snapshot + total
+  → validar respuesta RPC
+  → preferencia MP: N productos + ítem Envío
+```
+
+El browser solo elige `shippingOptionId`. No decide tarifa, subtotal, total, moneda, provider, service, customerId, origen ni dimensiones. Son cobrables `micorreo:home:classic` y `micorreo:home:express`; agency se muestra sin control seleccionable. Un ID válido desaparecido responde 409; fallos de MiCorreo, 503 antes de persistir.
+
+Node trabaja en centavos: `totalCents = subtotalCents + shippingCents`. La RPC valida `products_subtotal` contra los items, el snapshot home y `p_expected_amount` contra subtotal + envío. `orders.amount` pasa a ser el total final. El webhook no cambia: compara `Payment.get` contra ese snapshot total y la moneda persistida.
+
+La migración 005 agrega seis columnas nullable y checks de cohesión/allowlist/aritmética, elimina la firma anterior y crea una única firma nueva `SECURITY INVOKER`, con `search_path` fijo y `EXECUTE` solo para `service_role`. No fue aplicada.
+
+Frontend mantiene la tarifa solo en memoria para mostrar Subtotal/Envío/Total; envía únicamente el ID y la invalida al cambiar CP/carrito o ante 409. Los perfiles continúan TEMPORAL/QA. T-017, `/shipping/import`, agencias, tracking y stock quedan fuera.
+
+## T-019 / DEC-024 — antecedente (COMPLETADA / ACEPTADA)
 
 `POST /cotizar-envio → ShippingService → ShippingProvider → MiCorreoProvider` conserva las capas de T-018.
 
@@ -12,7 +35,7 @@ Payload de `/rates`: customerId y CP origen del entorno, CP destino validado y d
 
 Opciones: D/S → home/agency; CP/EP → classic/express; id `micorreo:<deliveryType>:<service>`, provider, type (compatibilidad), deliveryType, service, label controlado y price numérico finito no negativo. Se descartan tipos desconocidos y precios inválidos. No exponer customerId/validTo/productName crudo. El frontend usa texto seguro, admite items y legacy, invalida respuestas tardías al cambiar CP/carrito y no envía datos autoritativos.
 
-Cotización informativa sin persistir ni sumar al checkout. Sin selección de agencia/importación. Prueba real `POST /rates` PROD (2026-09-15): `micorreo_rates_ok options=4`; origen 5465, destino QA 5400; sin JWT/secretos impresos; sin `/shipping/import`. Perfiles 1–4 TEMPORAL/QA; medidas **no** aprobadas para producción. Etapa C pendiente. Las referencias a quantity 1 de las secciones siguientes describen el estado anterior a T-019.
+En el cierre histórico de T-019, la cotización era informativa y Etapa C estaba pendiente. Sin selección de agencia/importación. Prueba real `POST /rates` PROD (2026-09-15): `micorreo_rates_ok options=4`; origen 5465, destino QA 5400; sin JWT/secretos impresos; sin `/shipping/import`. Perfiles 1–4 TEMPORAL/QA; medidas **no** aprobadas para producción. El estado vigente de cobro local está descrito arriba. Las referencias a quantity 1 de las secciones siguientes describen el estado anterior a T-019.
 
 ## Arquitectura general
 
@@ -21,11 +44,12 @@ La aplicación es un monolito pequeño de Node.js. Express sirve el frontend est
 ```text
 Producto → Agregar al carrito → lemont.cart (version 1, sku + quantity)
   → POST /carrito/resumen → backend autoritativo → entrega.html
-  → POST /crear-preferencia { items, customer, delivery }
+  → POST /crear-preferencia { items, customer, delivery, shippingOptionId }
 Producto → Comprar ahora → entrega.html?id&sku&quantity=1
-  → POST /crear-preferencia { sku, quantity, customer, delivery }
-Ambos → 1 RPC → orden pending + N order_items
-  → 1 preferencia MP, N items, 1 external_reference de la RPC
+  → POST /crear-preferencia { sku, quantity, customer, delivery, shippingOptionId }
+Ambos → recotización home → validar productos + Envío antes de persistir
+  → 1 RPC → orden pending + N order_items + snapshot de shipping
+  → 1 preferencia MP, N productos + Envío, 1 external_reference de la RPC
   → Checkout Pro → webhook HMAC → Payment.get
   → pending → paid contra orders.amount/currency persistidos
 ```
@@ -76,12 +100,12 @@ tests/
 
 1. Seleccionar S/M/L/XL habilita ambos CTA. Agregar al carrito no navega; Comprar ahora no modifica el carrito (D1-A).
 2. El carrito almacena solo SKU y quantity. `POST /carrito/resumen` alimenta el resumen del carrito y el aside de entrega sin persistir ni cobrar.
-3. Entrega valida cliente/domicilio y envía `{ items, customer, delivery }`; el camino temporal conserva `{ sku, quantity, customer, delivery }`. Ambos requieren datos válidos.
+3. Entrega valida cliente/domicilio y envía `{ items, customer, delivery, shippingOptionId }`; el camino temporal conserva `{ sku, quantity, customer, delivery, shippingOptionId }`. Ambos requieren datos y una opción home válidos.
 4. El handler detecta propiedades propias: `items` combinado con `sku` o `quantity` raíz devuelve HTTP 400 `{ "error": "Carrito inválido" }`, sin RPC ni MP. El legacy conserva el orden y mensajes de validación.
 5. `src/cart.js` limita a 50 entradas originales, agrupa SKUs y valida cantidad acumulada hasta 4. Es un máximo temporal, no stock. Resuelve precios/moneda desde `src/catalog.js`.
-6. Calcula precios unitarios, líneas y subtotal en centavos enteros. Del mismo resolver salen `p_items`, `preference.items` y `expectedAmount = subtotalCents / 100`, sin envío.
-7. Una llamada a `create_pending_order_with_items` crea una orden `pending` y N `order_items`. PostgreSQL calcula el total y genera `external_reference`. Node comprueba importe, moneda y estado de la respuesta.
-8. Una preferencia MP recibe N ítems y exactamente esa referencia; conserva URLs de retorno, notificación y `auto_return: "approved"`.
+6. Calcula precios unitarios, líneas y subtotal en centavos enteros; recotiza y obtiene `shippingCents`. Construye N productos + `Envío` y comprueba que su suma en centavos coincide con `subtotalCents + shippingCents` **antes de la RPC**.
+7. Una llamada a `create_pending_order_with_items` crea una orden `pending` y N `order_items`, con subtotal, shipping snapshot y total. PostgreSQL valida `p_items`, calcula `SUM(quantity * unit_price)`, compara el subtotal y genera `external_reference`. Node comprueba importe, moneda y estado de la respuesta.
+8. Una preferencia MP recibe los N productos + `Envío` y exactamente esa referencia; conserva URLs de retorno, notificación y `auto_return: "approved"`.
 9. Se devuelven `preference_id`, `init_point` y `sandbox_init_point`; el frontend prioriza `init_point` y deshabilita el botón durante el request.
 
 Si falla la RPC o su respuesta es inconsistente, no se llama MP. Si falla MP, la orden puede quedar pending: no se compensa ni borra. La idempotencia durable pertenece a DEC-022/T-017, fuera de T-016.

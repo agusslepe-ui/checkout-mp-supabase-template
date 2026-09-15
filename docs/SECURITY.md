@@ -1,5 +1,16 @@
 # Seguridad
 
+## T-020 / DEC-025 — implementada localmente / auditoría corregida / pendiente de cutover
+
+- El navegador envía únicamente `shippingOptionId`; precio de envío, subtotal, total, moneda, provider, service, customerId, origen y dimensiones permanecen bajo autoridad del backend.
+- Checkout vuelve a resolver el carrito y a consultar `/rates`. Solo home Classic/Express es cobrable. Agency, IDs manipulados y opciones ambiguas no crean órdenes.
+- Carritos de 5+ unidades fallan antes de MiCorreo, RPC y Mercado Pago. Fallos de MiCorreo fallan antes de persistir; una opción desaparecida responde 409.
+- Node calcula en centavos. La RPC valida `p_items`, calcula `SUM(quantity * unit_price)`, lo compara con `p_products_subtotal` y valida `p_expected_amount = p_products_subtotal + p_shipping_amount` antes de insertar `orders` y `order_items`; no suma filas ya insertadas de `order_items`.
+- Mercado Pago recibe productos + un ítem `Envío`, nunca `shipments`. El webhook/HMAC no fue modificado y compara exclusivamente contra `orders.amount` y `orders.currency`.
+- La migración 005 mantiene snapshots históricos en null, restringe valores cobrables y conserva RPC `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` solo para `service_role`. No fue aplicada.
+- Tests 242/242 con dotenv, Supabase, Mercado Pago y red simulados. No se leyeron secretos ni se hicieron llamadas reales.
+- Riesgos pendientes: orden pending huérfana si MP falla, doble checkout sin idempotencia durable, perfiles TEMPORAL/QA, credenciales por rotar y falta de stock real. Producción comercial bloqueada.
+
 ## T-019 / DEC-024 — 2026-09-15 (COMPLETADA / ACEPTADA)
 
 - Cotización dual limitada en backend a 1–4 unidades totales; reutiliza validación/agrupación del carrito. 5+ responde 400 genérico sin MiCorreo.

@@ -1,14 +1,24 @@
 # Contexto actual del proyecto
 
+## Actualización vigente T-020 / DEC-025
+
+**T-020 IMPLEMENTADA LOCALMENTE / AUDITORÍA CORREGIDA / PENDIENTE DE CUTOVER. DEC-025 PROPUESTA / IMPLEMENTADA LOCALMENTE / AUDITORÍA APROBADA CON OBSERVACIONES.** No marcar T-020 COMPLETADA ni DEC-025 ACEPTADA.
+
+Checkout exige `shippingOptionId`, recotiza MiCorreo y cobra la tarifa actual. Solo home Classic/Express es cobrable; agency es informativa. `orders.amount = products_subtotal + shipping_amount`, y Mercado Pago recibe productos + un ítem `Envío`, sin `shipments`. La migración 005 existe localmente y no fue aplicada. Suite local: **242/242**.
+
+El webhook/HMAC sigue intacto y compara el pago contra `orders.amount`/`currency`. Sin `/shipping/import`, agencias, tracking, stock ni T-017. Perfiles 1–4: 300 g / 5 × 25 × 35 cm TEMPORAL/QA; producción comercial continúa bloqueada.
+
+Próximo: cutover controlado → aplicación autorizada de migración → QA integrado. No deploy ni pruebas reales en esta implementación.
+
 ## Actualización vigente T-019 / DEC-024
 
 **T-019 COMPLETADA. DEC-024 ACEPTADA.** Cierre formal 2026-09-15.
 
 Cotización dual items o legacy, resolver común, tope 4 unidades totales, perfiles editables TEMPORAL/QA 1–4 (todos 300/5/25/35), frontend multítem y normalización CP/EP + D/S. Sin selección de agencia ni costo incluido en el pago. Origen CP 5465 — Rodeo, San Juan.
 
-Suite **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. Próximo: **Etapa C — cobrar el envío**.
+En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío**; el estado vigente es T-020 local pendiente de cutover.
 
-> Resumen compacto para agentes. Última actualización: 2026-09-15 (DEC-024 ACEPTADA; T-019 COMPLETADA; DEC-023 ACEPTADA; T-018 COMPLETADA; T-016 COMPLETADA; tests 211/211).
+> Resumen compacto para agentes. Última actualización: 2026-09-15 (T-020 corregida post-auditoría y pendiente de cutover; tests 242/242).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -36,23 +46,23 @@ Suite **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (
 - La migración 004 y la RPC fueron validadas manualmente en Supabase real: un pedido y su item, total, moneda, estado, columnas legacy, relación y `ON DELETE CASCADE`.
 - El runtime local actualizado crea la preferencia, `orders` y `order_items`, y redirige a Checkout Pro.
 - El webhook permanece sin cambios: HMAC, validación de importe/moneda, idempotencia y transición atómica `pending → paid` siguen vigentes.
-- Último resultado comprobado de tests: **211/211** (T-019). T-018 cerró en 178/178; T-016 en 158/158; el histórico previo a T-016 Paso 1 permanece como 79/79.
+- Último resultado comprobado de tests: **242/242** (T-020 corregida). T-019 cerró en 211/211; T-018 en 178/178; T-016 en 158/158.
 - Incidente QA resuelto: pedidos nuevos aparecieron con `customer_*` y `shipping_*` en `NULL`. Se comprobó una sola RPC activa, firma/permisos correctos y definición/`INSERT` activos correctos. La causa fue una instancia antigua iniciada con `npm start`; tras reiniciar Node quedó cargado el runtime actualizado.
 
 ### PENDIENTE
 
 - **DEC-022** está propuesta (no aceptada). **T-017** está bloqueada. Idempotencia durable fuera de T-016.
 - `maxQuantity: 4` está aplicado en `src/catalog.js` como techo **temporal**. **No sustituye stock real.** El stock real será una evolución futura.
-- Cotización informativa limitada a **1–4 unidades totales** del carrito agrupado. Independiente de `maxQuantity` por SKU. El envío **no** se cobra todavía.
+- T-020 corrigió las observaciones de auditoría; la migración 005 todavía debe aplicarse de forma controlada antes del QA integrado. DEC-025 no está aceptada.
 - Vulnerabilidades npm (2 moderate + 2 high) informadas durante `npm ci`. No se ejecutó `npm audit fix`. Auditarlas en una tarea separada; no forman parte de T-016 Paso 1.
 - Correo Argentino: `POST /token` PROD (`micorreo_auth_ok`) y `POST /rates` PROD (`micorreo_rates_ok options=4`) verificados. `/shipping/import` **no** fue llamado. Las medidas `300 g / 5 × 25 × 35 cm` siguen TEMPORAL/QA y **no** están aprobadas para producción.
-- **Etapa C** (cobrar el envío) y Etapa D (crear envío post-pago) pendientes.
+- Etapa D (crear envío post-pago) permanece pendiente y fuera de T-020.
 - Rotar las credenciales privadas documentadas como expuestas antes del lanzamiento público.
 - El precio ARS 1.000 sigue siendo temporal de prueba; no es el precio comercial definitivo.
 
 ### PRÓXIMO PASO
 
-**Etapa C — cobrar el envío.** Todavía no implementarla. Antes hay que aprobar peso y dimensiones reales de producción.
+**Preparar el cutover controlado de T-020.** Aplicar la migración 005 solo con autorización explícita y luego ejecutar QA. Las medidas reales de producción siguen pendientes y bloquean el lanzamiento comercial.
 
 **Regla operativa obligatoria:** después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.
 
@@ -186,12 +196,12 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Identificadores**: PostgreSQL genera `LEMONT-ORDER-<UUID>` dentro de `create_pending_order_with_items`; Node reutiliza exactamente esa referencia en Mercado Pago.
 - **Logs**: JSON estructurado por helper propio `log()`, con `request_id`, niveles y lista explícita de campos prohibidos.
 - **Base de datos**: Supabase, tablas `orders` y `order_items`; creación atómica mediante RPC con `service_role` solo desde backend. RLS habilitada y sin ejecución pública de la RPC.
-- **Migraciones SQL**: 001–004 aplicadas. La 004 crea `order_items` y la RPC atómica; fue validada manualmente en Supabase real.
+- **Migraciones SQL**: 001–004 aplicadas. La 005 agrega shipping snapshot y reemplaza la RPC; está creada localmente y NO aplicada.
 - **Datos de entrega**: `003_add_order_customer_delivery.sql` aplicada y verificada; agrega doce columnas nullable sin completar pedidos históricos.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. `maxQuantity: 4` es temporal y no es stock. El cliente no controla importe ni moneda.
 - **Carrito:** Paso 1 COMPLETADO — `src/cart.js` y `POST /carrito/resumen`. Paso 2 COMPLETADO — checkout `{ items, customer, delivery }` y legacy. Paso 3 COMPLETADO — `public/carrito.html`, `cartStore` (`lemont.cart`, solo SKU + quantity), contador por unidades, D1-A, D2-A. El frontend no es autoridad de precios.
-- **Tests locales**: último resultado comprobado **211/211**, 4 suites, 0 fallos. T-018 cerró en 178/178; T-016 en 158/158.
-- **Envío**: cotización informativa de 1–4 unidades totales (T-019). Perfiles TEMPORAL/QA. `POST /rates` PROD verificado. El envío no entra al total. El máximo comercial del catálogo sigue en 4 por SKU y no es stock.
+- **Tests locales**: último resultado comprobado **242/242**, 4 suites, 0 fallos. T-019 cerró en 211/211; T-018 en 178/178; T-016 en 158/158.
+- **Envío**: T-020 implementado localmente. Checkout recotiza y suma home Classic/Express al total; agency es informativa. Perfiles TEMPORAL/QA. La migración aún no fue aplicada.
 - **Límite del carrito**: 50 entradas originales antes de agrupar; SKUs duplicados se agrupan; después se valida la cantidad acumulada por SKU contra `maxQuantity`.
 - **Dependencias**: npm ci reportó 4 vulnerabilidades (2 moderate, 2 high). No se ejecutó `npm audit fix` ni se modificaron paquetes. Remediación pendiente en una tarea separada; no forma parte de T-016 Paso 1.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
@@ -220,6 +230,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | `supabase/migrations/002_add_order_product_variant.sql` | Agrega `product_sku` y `product_size` nullable. Aplicada y verificada sin alterar registros históricos. |
 | `supabase/migrations/003_add_order_customer_delivery.sql` | Agrega datos de cliente y destino como columnas nullable. Aplicada y verificada sin alterar registros históricos. |
 | `supabase/migrations/004_create_order_items.sql` | Crea `order_items` y la RPC atómica estricta. Aplicada y validada manualmente en Supabase real. |
+| `supabase/migrations/005_add_order_shipping_snapshot.sql` | Agrega shipping snapshot y total, y reemplaza la RPC. Creada localmente; NO aplicada. |
 | `Dockerfile` | Build de staging con Node.js 22; instala con `npm ci`, expone `3003` y ejecuta `npm start`. |
 | `.dockerignore` | Excluye `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales del contexto Docker. |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). Incluye `LOG_LEVEL=info`. |
@@ -236,10 +247,11 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. **Etapa C — cobrar el envío.** Todavía no implementarla.
-2. Antes de Etapa C hay que aprobar peso y dimensiones reales de producción. Los perfiles 1–4 actuales son TEMPORAL/QA y **no** están aprobados para cobro.
-3. No implementar todavía `/shipping/import`, Etapa D, DEC-022, webhook, migraciones ni `npm audit fix`.
-4. DEC-022 / T-017 no se implementan hasta que el usuario acepte esa decisión. El stock real tampoco forma parte de esta etapa.
+1. Revisar y autorizar el cutover de T-020 / DEC-025.
+2. Aplicar la migración 005 de forma controlada solo después de aprobación explícita.
+3. Ejecutar QA de carrito → envío → pago → webhook → paid.
+4. Reemplazar perfiles TEMPORAL/QA por medidas reales antes de producción comercial.
+5. No implementar todavía `/shipping/import`, Etapa D, DEC-022/T-017, stock ni `npm audit fix` dentro de este alcance.
 
 El modelo `orders` + `order_items` ya está implementado y no debe volver a tratarse como propuesta futura. El carrito de interfaz del Paso 3 ya existe.
 

@@ -1,10 +1,16 @@
 # Mercado Pago Checkout Pro + Supabase
 
+## T-020 — IMPLEMENTADO LOCALMENTE + AUDITORÍA CORREGIDA + PENDIENTE DE CUTOVER
+
+`POST /crear-preferencia` exige `shippingOptionId`, vuelve a cotizar MiCorreo y cobra el precio actual. Solo domicilio Classic/Express es cobrable; sucursal continúa informativa. El backend persiste `products_subtotal`, `shipping_amount`, shipping snapshot y `amount` total mediante la RPC nueva. Mercado Pago recibe productos + un ítem `Envío`, sin `shipments`.
+
+La migración `005_add_order_shipping_snapshot.sql` fue creada pero **NO aplicada**. Suite local: **242/242**. T-020 no está completada y DEC-025 no está aceptada: la auditoría fue aprobada con observaciones y sus correcciones quedaron implementadas; faltan cutover controlado, aplicación de migración y QA. Los perfiles 300 g / 5 × 25 × 35 cm son TEMPORAL/QA; la tienda no está lista para público.
+
 ## T-019 — cotización multítem COMPLETADA (DEC-024 ACEPTADA)
 
 `POST /cotizar-envio` acepta items[] o legacy sku+quantity (sin mezcla), hasta **4 unidades totales**. Perfiles editables en `src/packageProfiles.js`: **TEMPORAL/QA**, todos 300 g / 5 × 25 × 35 cm; **no** están aprobados como packaging de producción. Origen: **CP 5465 — Rodeo, San Juan**, mediante `SHIPPING_ORIGIN_POSTAL_CODE`.
 
-El frontend muestra domicilio/sucursal y Clásico/Express solo según respuesta de MiCorreo, sin elegir agencia. El envío continúa **informativo, fuera del total y del pago**. Suite vigente: **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`. Próximo: Etapa C — cobrar el envío.
+En ese cierre histórico, el frontend mostraba domicilio/sucursal y Clásico/Express solo según respuesta de MiCorreo, sin elegir agencia, y el envío permanecía fuera del pago. La suite era **211/211**. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`.
 
 Aplicación mínima de comercio electrónico para probar un pago de una Remera LEMONT mediante Mercado Pago Checkout Pro. El servidor registra primero un pedido pendiente en Supabase, crea la preferencia de pago y procesa el webhook de Mercado Pago. Un pedido solo pasa a `paid` después de consultar el pago en la API y confirmar que está aprobado y que el importe y la moneda coinciden.
 
@@ -57,7 +63,7 @@ LOG_LEVEL=info
 
 ## Base de datos
 
-Las migraciones `supabase/migrations/001` a `004` definen `orders`, variantes, cliente/entrega, `order_items` y la RPC `create_pending_order_with_items`. La RPC crea atómicamente una orden `pending` y sus líneas, calcula el total y genera `external_reference`; Node reutiliza esa referencia en Mercado Pago. El backend conserva la autoridad comercial. Las migraciones ya están aplicadas; no ejecutar cambios de esquema sin autorización.
+Las migraciones `supabase/migrations/001` a `004` aplicadas definen `orders`, variantes, cliente/entrega y `order_items`. La migración 005 local agrega el shipping snapshot y reemplaza `create_pending_order_with_items`; todavía no fue aplicada. La RPC crea atómicamente una orden `pending` y sus líneas, valida subtotal + envío = total y genera `external_reference`; Node reutiliza esa referencia en Mercado Pago. No ejecutar cambios de esquema sin autorización.
 
 ## Ejecución
 
@@ -97,7 +103,8 @@ $checkoutBody = @'
 {
   "items": [{ "sku": "LEM-REM-001-S", "quantity": 1 }],
   "customer": { "firstName": "Ana", "lastName": "Perez", "email": "ana.cliente@example.test", "phone": "541123456789" },
-  "delivery": { "province": "AR-B", "locality": "La Plata", "postalCode": "B1900ABC", "street": "Calle 12", "streetNumber": "345", "apartment": "", "notes": "" }
+  "delivery": { "province": "AR-B", "locality": "La Plata", "postalCode": "B1900ABC", "street": "Calle 12", "streetNumber": "345", "apartment": "", "notes": "" },
+  "shippingOptionId": "micorreo:home:classic"
 }
 '@
 $checkoutBody | curl.exe -X POST http://localhost:3003/crear-preferencia -H "Content-Type: application/json" --data-binary '@-'
@@ -118,11 +125,11 @@ El ejemplo usa datos ficticios y requiere un entorno de prueba autorizado. Sin `
 
 1. Producto permite **Agregar al carrito** tras seleccionar talle. Guarda en `lemont.cart` únicamente `{ version: 1, items: [{ sku, quantity }] }`, sin PII.
 2. Carrito y entrega consultan `POST /carrito/resumen`. El backend agrupa, valida y calcula importes en centavos desde el catálogo, sin persistir ni cobrar.
-3. Entrega envía `POST /crear-preferencia` con `{ items, customer, delivery }`.
-4. El backend crea una orden `pending` y N `order_items` mediante una RPC; luego una preferencia MP con N ítems y el único `external_reference` devuelto por la RPC.
+3. Entrega cotiza, exige una opción home y envía `POST /crear-preferencia` con `{ items, customer, delivery, shippingOptionId }`.
+4. El backend recotiza, crea una orden `pending` con N `order_items` y shipping snapshot mediante una RPC; luego una preferencia MP con N productos + ítem `Envío` y el único `external_reference` devuelto por la RPC.
 5. El navegador redirige a Checkout Pro. El webhook valida HMAC, consulta `Payment.get` y confirma `pending → paid` contra `orders.amount` y `orders.currency` persistidos.
 
-**Comprar ahora (D1-A)** conserva el camino temporal `entrega.html?id=…&sku=…&quantity=1` y el contrato `{ sku, quantity, customer, delivery }`, sin agregar al carrito. Ambos botones requieren talle. Mezclar `items` con `sku` o `quantity` raíz devuelve HTTP 400 `{ "error": "Carrito inválido" }`.
+**Comprar ahora (D1-A)** conserva el camino temporal `entrega.html?id=…&sku=…&quantity=1` y el contrato `{ sku, quantity, customer, delivery, shippingOptionId }`, sin agregar al carrito. Ambos botones requieren talle y una opción home cobrable. Mezclar `items` con `sku` o `quantity` raíz devuelve HTTP 400 `{ "error": "Carrito inválido" }`.
 
 **D2-A:** el carrito solo se vacía por acción manual. Crear una preferencia, redirigir o visitar `/success`, `/failure` o `/pending` no lo vacía. Esos retornos no confirman el pago.
 
@@ -139,10 +146,10 @@ El ejemplo usa datos ficticios y requiere un entorno de prueba autorizado. Sin `
 
 ## Limitaciones actuales
 
-Remera LEMONT tiene variantes S/M/L/XL, precio ARS 1.000 temporal y `maxQuantity: 4` transitorio: no es stock. No hay stock real, envío incluido en el total ni idempotencia durable del checkout (DEC-022 propuesta). La cotización informativa admite solo 1 SKU × quantity 1.
+Remera LEMONT tiene variantes S/M/L/XL, precio ARS 1.000 temporal y `maxQuantity: 4` transitorio: no es stock. T-020 incluye shipping home en el total localmente, pero la migración no fue aplicada y faltan cutover/QA. No hay stock real ni idempotencia durable del checkout (DEC-022 propuesta); agency permanece solo informativa.
 
 T-016 COMPLETADA (Pasos 1–4). `npm.cmd test`: **158/158**, 1 suite; frontend del carrito validado por QA manual, sin tests DOM a propósito.
 
-No hay autenticación de compradores ni panel administrativo. El catálogo está definido en backend como un módulo versionado; no existe interfaz de administración de productos. El deploy productivo fue ejecutado y el flujo `pending → paid` verificado con un pago real (2026-06-26). Ver `docs/SKILLS.md` y `docs/DECISIONS.md` (DEC-016) para la estrategia de entornos y rollback.
+No hay autenticación de compradores ni panel administrativo. El catálogo está definido en backend como un módulo versionado; no existe interfaz de administración de productos. El deploy productivo histórico fue verificado con un pago real (2026-06-26), pero T-020 no fue desplegada ni probada contra servicios reales. Ver `docs/SKILLS.md` y `docs/DECISIONS.md` (DEC-016) para la estrategia de entornos y rollback.
 
 Para el estado completo del proyecto, decisiones técnicas y próximos pasos, ver `docs/DECISIONS.md`, `docs/TASKS.md` y `docs/PROGRESS.md`.

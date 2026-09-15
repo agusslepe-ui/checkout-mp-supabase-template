@@ -1,4 +1,6 @@
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 const requiredEnv = {
   MERCADOPAGO_ACCESS_TOKEN: "configured",
@@ -20,6 +22,22 @@ function makeFetchResponse(status, body) {
     status,
     json: jest.fn(async () => body),
   };
+}
+
+function makeShippingFetch(rates, { tokenStatus = 200, rateStatus = 200 } = {}) {
+  return jest.fn(async (url) => {
+    if (url.endsWith("/token")) {
+      return makeFetchResponse(tokenStatus, tokenStatus === 200
+        ? { token: "jwt-checkout", expires_in: 3600 }
+        : { message: "private auth detail" });
+    }
+    if (url.endsWith("/rates")) {
+      return makeFetchResponse(rateStatus, rateStatus === 200
+        ? { rates }
+        : { message: "private rate detail" });
+    }
+    throw new Error("Unexpected external request in test");
+  });
 }
 
 function createResponse() {
@@ -114,6 +132,7 @@ function makePreferenceRequest(body = {}) {
 const validPreferenceBody = {
   sku: "LEM-REM-001-S",
   quantity: 1,
+  shippingOptionId: "micorreo:home:classic",
   customer: {
     firstName: "Ana María",
     lastName: "O'Connor",
@@ -169,7 +188,7 @@ function createQueryBuilder(supabaseMock) {
   };
 }
 
-function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl } = {}) {
+function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl, cart = {} } = {}) {
   jest.resetModules();
 
   for (const name of [
@@ -182,7 +201,15 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl } = {}) 
 
   Object.assign(process.env, requiredEnv, env);
   global.fetch = jest.fn(
-    fetchImpl || (async () => {
+    fetchImpl || (async (url) => {
+      if (url === "https://micorreo.test/v1/token") {
+        return makeFetchResponse(200, { token: "jwt-test", expires_in: 3600 });
+      }
+      if (url === "https://micorreo.test/v1/rates") {
+        return makeFetchResponse(200, {
+          rates: [{ deliveredType: "D", productType: "CP", price: 0 }],
+        });
+      }
       throw new Error("Unexpected external request in test");
     })
   );
@@ -284,8 +311,16 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl } = {}) 
       })),
     })),
   }));
+  jest.dontMock("../src/cart");
+  if (Object.keys(cart).length) {
+    jest.doMock("../src/cart", () => ({
+      ...jest.requireActual("../src/cart"),
+      ...cart,
+    }));
+  }
 
   require("../index.js");
+  jest.dontMock("../src/cart");
 
   return {
     app,
@@ -298,6 +333,40 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl } = {}) 
     fetchMock: global.fetch,
   };
 }
+
+describe("migración 005 de shipping snapshot", () => {
+  const sql = fs.readFileSync(
+    path.join(__dirname, "../supabase/migrations/005_add_order_shipping_snapshot.sql"),
+    "utf8"
+  );
+
+  test("agrega columnas, cohesión, total y allowlists sin tabla adicional", () => {
+    for (const column of [
+      "products_subtotal numeric(12, 2)",
+      "shipping_amount numeric(12, 2)",
+      "shipping_provider text",
+      "shipping_option_id text",
+      "shipping_delivery_type text",
+      "shipping_service text",
+    ]) expect(sql).toContain(column);
+    expect(sql).toContain("num_nonnulls(");
+    expect(sql).toContain("amount = products_subtotal + shipping_amount");
+    expect(sql).toContain("'micorreo:home:classic'");
+    expect(sql).toContain("'micorreo:home:express'");
+    expect(sql).not.toMatch(/create\s+table\s+(?:public\.)?order_shipping/i);
+    expect(sql).not.toContain("micorreo:agency:");
+  });
+
+  test("reemplaza la firma anterior y restringe la RPC nueva a service_role", () => {
+    expect(sql).toMatch(/drop function if exists public\.create_pending_order_with_items\([\s\S]*?jsonb\s*\);/i);
+    expect(sql).toContain("security invoker");
+    expect(sql).toContain("set search_path = pg_catalog, public");
+    expect(sql).toMatch(/revoke execute on function[\s\S]*from public, anon, authenticated;/i);
+    expect(sql).toMatch(/grant execute on function[\s\S]*to service_role;/i);
+    expect(sql).toContain("calculated_products_subtotal <> p_products_subtotal");
+    expect(sql).toContain("calculated_amount := calculated_products_subtotal + p_shipping_amount");
+  });
+});
 
 describe("configuración inicial", () => {
   afterEach(() => {
@@ -525,7 +594,9 @@ describe("creación de preferencias", () => {
     );
 
     expect(response.statusCode).toBe(400);
-    expect(response.body).toEqual({ error: "Cantidad inválida" });
+    expect(response.body).toEqual({
+      error: quantity > 4 ? "No pudimos calcular el envío" : "Cantidad inválida",
+    });
     expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
     expect(serializedLogOutput(logSpy, warnSpy, errorSpy)).not.toContain("1000");
@@ -553,7 +624,7 @@ describe("creación de preferencias", () => {
         product_sku: sku, quantity: 4, unit_price: 1000,
       }));
       expect(preferenceCreate).toHaveBeenCalledTimes(1);
-      expect(preferenceCreate.mock.calls[0][0].body.items).toHaveLength(1);
+      expect(preferenceCreate.mock.calls[0][0].body.items).toHaveLength(2);
       expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual(
         expect.objectContaining({ quantity: 4, unit_price: 1000, currency_id: "ARS" })
       );
@@ -561,7 +632,7 @@ describe("creación de preferencias", () => {
   );
 
   test("calcula amount y persiste la variante desde catalogo", async () => {
-    const { routes, supabaseMock, preferenceCreate } = loadApp();
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp();
 
     await routes.post["/crear-preferencia"](
       makePreferenceRequest(validPreferenceBody),
@@ -587,6 +658,12 @@ describe("creación de preferencias", () => {
         title: "Remera LEMONT - Talle S",
         quantity: 1,
         unit_price: 1000,
+        currency_id: "ARS",
+      },
+      {
+        title: "Envío",
+        quantity: 1,
+        unit_price: 0,
         currency_id: "ARS",
       },
     ]);
@@ -658,6 +735,12 @@ describe("creación de preferencias", () => {
     expect(rpcName).toBe("create_pending_order_with_items");
     expect(rpcParameters).toEqual({
       p_expected_amount: 1000,
+      p_products_subtotal: 1000,
+      p_shipping_amount: 0,
+      p_shipping_provider: "micorreo",
+      p_shipping_option_id: "micorreo:home:classic",
+      p_shipping_delivery_type: "home",
+      p_shipping_service: "classic",
       p_currency: "ARS",
       p_customer_first_name: "Ana María",
       p_customer_last_name: "O'Connor",
@@ -851,6 +934,7 @@ describe("checkout multítem", () => {
   const bodyFor = (overrides = {}) => ({
     customer: validPreferenceBody.customer,
     delivery: validPreferenceBody.delivery,
+    shippingOptionId: validPreferenceBody.shippingOptionId,
     items,
     ...overrides,
   });
@@ -906,15 +990,21 @@ describe("checkout multítem", () => {
     const [name, parameters] = supabaseMock.createPendingOrderRpc.mock.calls[0];
     expect(name).toBe("create_pending_order_with_items");
     expect(parameters.p_expected_amount).toBe(amount);
+    expect(parameters.p_products_subtotal).toBe(amount);
+    expect(parameters.p_shipping_amount).toBe(0);
+    expect(parameters.p_shipping_provider).toBe("micorreo");
+    expect(parameters.p_shipping_option_id).toBe("micorreo:home:classic");
+    expect(parameters.p_shipping_delivery_type).toBe("home");
+    expect(parameters.p_shipping_service).toBe("classic");
     expect(parameters.p_currency).toBe("ARS");
     expect(parameters.p_items).toEqual(lines.map(([size, quantity]) => ({
       product_sku: "LEM-REM-001-" + size, product_name: "Remera LEMONT",
       product_size: size, quantity, unit_price: 1000,
     })));
     expect(preferenceCreate.mock.calls[0][0].body).toEqual({
-      items: lines.map(([size, quantity]) => ({
+      items: [...lines.map(([size, quantity]) => ({
         title: "Remera LEMONT - Talle " + size, quantity, unit_price: 1000, currency_id: "ARS",
-      })),
+      })), { title: "Envío", quantity: 1, unit_price: 0, currency_id: "ARS" }],
       external_reference: rpcData().external_reference,
       notification_url: "https://example.test/webhook?source_news=webhooks",
       back_urls: { success: "https://example.test/success", failure: "https://example.test/failure", pending: "https://example.test/pending" },
@@ -937,7 +1027,10 @@ describe("checkout multítem", () => {
     expect(parameters.p_items).toEqual([{ product_sku: "LEM-REM-001-S", product_name: "Remera LEMONT", product_size: "S", quantity: 1, unit_price: 1000 }]);
     expect(parameters).not.toHaveProperty("p_status");
     expect(parameters).not.toHaveProperty("p_external_reference");
-    expect(preferenceCreate.mock.calls[0][0].body.items).toEqual([{ title: "Remera LEMONT - Talle S", quantity: 1, unit_price: 1000, currency_id: "ARS" }]);
+    expect(preferenceCreate.mock.calls[0][0].body.items).toEqual([
+      { title: "Remera LEMONT - Talle S", quantity: 1, unit_price: 1000, currency_id: "ARS" },
+      { title: "Envío", quantity: 1, unit_price: 0, currency_id: "ARS" },
+    ]);
     expect(preferenceCreate.mock.calls[0][0].body.external_reference).toBe("LEMONT-ORDER-RPC-TEST");
     expectPrivate(response);
   });
@@ -957,16 +1050,38 @@ describe("checkout multítem", () => {
     ["null", { items: null }],
     ["undefined", { items: undefined }],
   ])("rechaza carrito %s antes de leer comprador", async (label, overrides) => {
-    const { routes, supabaseMock, preferenceCreate } = loadApp();
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp();
     const body = bodyFor(overrides);
     Object.defineProperty(body, "customer", { get() { throw new Error("No debe leer customer"); } });
     const response = createResponse();
     await routes.post["/crear-preferencia"](makePreferenceRequest(body), response);
     expect(response.statusCode).toBe(400);
-    expect(response.body).toEqual({ error: "Carrito inválido" });
+    expect(response.body).toEqual({
+      error: ["cinco", "duplicados excedidos"].includes(label)
+        ? "No pudimos calcular el envío"
+        : "Carrito inválido",
+    });
     expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
     expectPrivate(response);
+  });
+
+  test("rechaza carrito multítem 3+2 antes de MiCorreo, RPC y MP", async () => {
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp();
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest(bodyFor({
+      items: [
+        { sku: "LEM-REM-001-S", quantity: 3 },
+        { sku: "LEM-REM-001-M", quantity: 2 },
+      ],
+    })), response);
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "No pudimos calcular el envío" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -1023,6 +1138,353 @@ describe("checkout multítem", () => {
     await routes.post["/crear-preferencia"](makePreferenceRequest(body), response);
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ error: message });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
+  test("recotiza home classic, persiste snapshot y cobra productos más envío", async () => {
+    const fetchImpl = makeShippingFetch([
+      { deliveredType: "D", productType: "CP", price: "8500.00" },
+    ]);
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp({
+      fetchImpl,
+      supabase: {
+        createPendingOrderRpc: async () => ({
+          data: {
+            order_id: 90,
+            external_reference: "LEMONT-ORDER-SHIPPING",
+            amount: "9500.00",
+            currency: "ARS",
+            status: "pending",
+          },
+          error: null,
+        }),
+      },
+    });
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest({
+        ...validPreferenceBody,
+        shippingPrice: 1,
+        price: 1,
+        amount: 1,
+        total: 1,
+      }),
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    const [, parameters] = supabaseMock.createPendingOrderRpc.mock.calls[0];
+    expect(parameters).toEqual(expect.objectContaining({
+      p_products_subtotal: 1000,
+      p_shipping_amount: 8500,
+      p_expected_amount: 9500,
+      p_shipping_provider: "micorreo",
+      p_shipping_option_id: "micorreo:home:classic",
+      p_shipping_delivery_type: "home",
+      p_shipping_service: "classic",
+    }));
+    const preferenceBody = preferenceCreate.mock.calls[0][0].body;
+    expect(preferenceBody.items).toEqual([
+      { title: "Remera LEMONT - Talle S", quantity: 1, unit_price: 1000, currency_id: "ARS" },
+      { title: "Envío", quantity: 1, unit_price: 8500, currency_id: "ARS" },
+    ]);
+    expect(preferenceBody).not.toHaveProperty("shipments");
+    expect(preferenceBody.external_reference).toBe("LEMONT-ORDER-SHIPPING");
+    expect(preferenceBody.items.reduce(
+      (total, item) => total + item.quantity * item.unit_price,
+      0
+    )).toBe(9500);
+    expect(fetchMock.mock.calls[1][0]).toBe("https://micorreo.test/v1/rates");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      customerId: "qa-customer",
+      postalCodeOrigin: "1000",
+      postalCodeDestination: "B1900ABC",
+      dimensions: { weight: 300, height: 5, width: 25, length: 35 },
+    });
+    expect(fetchMock.mock.invocationCallOrder[1]).toBeLessThan(
+      supabaseMock.createPendingOrderRpc.mock.invocationCallOrder[0]
+    );
+    expect(supabaseMock.createPendingOrderRpc.mock.invocationCallOrder[0]).toBeLessThan(
+      preferenceCreate.mock.invocationCallOrder[0]
+    );
+  });
+
+  test("conserva exactamente en centavos una tarifa decimal de 498.06", async () => {
+    const fetchImpl = makeShippingFetch([
+      { deliveredType: "D", productType: "CP", price: "498.06" },
+    ]);
+    const { routes, supabaseMock, preferenceCreate } = loadApp({
+      fetchImpl,
+      supabase: {
+        createPendingOrderRpc: async () => ({ data: {
+          order_id: 93,
+          external_reference: "LEMONT-ORDER-DECIMAL",
+          amount: "1498.06",
+          currency: "ARS",
+          status: "pending",
+        }, error: null }),
+      },
+    });
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest(validPreferenceBody),
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    const parameters = supabaseMock.createPendingOrderRpc.mock.calls[0][1];
+    expect(Math.round(parameters.p_shipping_amount * 100)).toBe(49806);
+    expect(parameters).toEqual(expect.objectContaining({
+      p_products_subtotal: 1000,
+      p_shipping_amount: 498.06,
+      p_expected_amount: 1498.06,
+    }));
+    const paymentItems = preferenceCreate.mock.calls[0][0].body.items;
+    expect(paymentItems.at(-1)).toEqual({
+      title: "Envío", quantity: 1, unit_price: 498.06, currency_id: "ARS",
+    });
+    expect(paymentItems.reduce(
+      (totalCents, item) => totalCents + Math.round(item.quantity * item.unit_price * 100),
+      0
+    )).toBe(149806);
+  });
+
+  test("un total interno de preferencia inconsistente no persiste ni llama MP", async () => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp({
+      cart: {
+        resolveCheckoutCart: () => ({
+          currency: "ARS",
+          subtotalCents: 100000,
+          orderItems: [{
+            product_sku: "LEM-REM-001-S", product_name: "Remera LEMONT",
+            product_size: "S", quantity: 1, unit_price: 1000,
+          }],
+          preferenceItems: [{
+            title: "Remera LEMONT - Talle S", quantity: 1,
+            unit_price: 999, currency_id: "ARS",
+          }],
+        }),
+      },
+    });
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest(validPreferenceBody),
+      response
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({ error: "No se pudo iniciar el pago" });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(parseLogEntries(...spies)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event: "total de preferencia inconsistente",
+        status_code: 500,
+        error_type: "preference_total_mismatch",
+      }),
+    ]));
+  });
+
+  test("checkout multítem cobra home express con el servicio correcto", async () => {
+    const fetchImpl = makeShippingFetch([
+      { deliveredType: "D", productType: "EP", price: 2500 },
+    ]);
+    const { routes, supabaseMock, preferenceCreate } = loadApp({
+      fetchImpl,
+      supabase: {
+        createPendingOrderRpc: async () => ({ data: {
+          order_id: 91,
+          external_reference: "LEMONT-ORDER-EXPRESS",
+          amount: 4500,
+          currency: "ARS",
+          status: "pending",
+        }, error: null }),
+      },
+    });
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"](makePreferenceRequest({
+      items: [
+        { sku: "LEM-REM-001-S", quantity: 1 },
+        { sku: "LEM-REM-001-M", quantity: 1 },
+      ],
+      customer: validPreferenceBody.customer,
+      delivery: validPreferenceBody.delivery,
+      shippingOptionId: "micorreo:home:express",
+    }), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(supabaseMock.createPendingOrderRpc.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        p_products_subtotal: 2000,
+        p_shipping_amount: 2500,
+        p_expected_amount: 4500,
+        p_shipping_service: "express",
+      })
+    );
+    expect(preferenceCreate.mock.calls[0][0].body.items).toHaveLength(3);
+  });
+
+  test.each([
+    [undefined],
+    [""],
+    ["micorreo:agency:classic"],
+    ["micorreo:home:priority"],
+    ["provider:home:classic"],
+  ])("rechaza shippingOptionId ausente, agency o manipulado: %s", async (shippingOptionId) => {
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp();
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest({
+      ...validPreferenceBody,
+      shippingOptionId,
+    }), response);
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "Elegí una opción de envío" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(parseLogEntries(...spies)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event: "opcion de envio invalida",
+        status_code: 400,
+        error_type: "shipping_option_invalid",
+      }),
+    ]));
+  });
+
+  test("una respuesta /rates vacía devuelve 409 sin RPC ni MP", async () => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp({
+      fetchImpl: makeShippingFetch([]),
+    });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest(validPreferenceBody),
+      response
+    );
+    expect(response.statusCode).toBe(409);
+    expect(response.body).toEqual({
+      error: "La opción de envío ya no está disponible",
+    });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(parseLogEntries(...spies)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event: "opcion de envio no disponible",
+        status_code: 409,
+        error_type: "shipping_option_unavailable",
+      }),
+    ]));
+  });
+
+  test.each([
+    ["desaparecida", [{ deliveredType: "D", productType: "EP", price: 9000 }]],
+    ["ambigua", [
+      { deliveredType: "D", productType: "CP", price: 8000 },
+      { deliveredType: "D", productType: "CP", price: 8500 },
+    ]],
+  ])("responde 409 cuando la opción elegida está %s", async (label, rates) => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp({
+      fetchImpl: makeShippingFetch(rates),
+    });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest(validPreferenceBody),
+      response
+    );
+    expect(response.statusCode).toBe(409);
+    expect(response.body).toEqual({
+      error: "La opción de envío ya no está disponible",
+    });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(parseLogEntries(...spies)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event: "opcion de envio no disponible",
+        status_code: 409,
+        error_type: "shipping_option_unavailable",
+      }),
+    ]));
+  });
+
+  test("colapsa rates duplicados con el mismo precio", async () => {
+    const rates = [
+      { deliveredType: "D", productType: "CP", price: "8000" },
+      { deliveredType: "D", productType: "CP", price: 8000 },
+    ];
+    const { routes, supabaseMock, preferenceCreate } = loadApp({
+      fetchImpl: makeShippingFetch(rates),
+      supabase: {
+        createPendingOrderRpc: async () => ({ data: {
+          order_id: 92,
+          external_reference: "LEMONT-ORDER-DEDUP",
+          amount: 9000,
+          currency: "ARS",
+          status: "pending",
+        }, error: null }),
+      },
+    });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest(validPreferenceBody),
+      response
+    );
+    expect(response.statusCode).toBe(200);
+    expect(supabaseMock.createPendingOrderRpc.mock.calls[0][1].p_shipping_amount).toBe(8000);
+    expect(preferenceCreate).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ["auth 401", { tokenStatus: 401 }],
+    ["rates 429", { rateStatus: 429 }],
+    ["rates 500", { rateStatus: 500 }],
+  ])("MiCorreo %s responde 503 sin RPC ni MP", async (label, statuses) => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp({
+      fetchImpl: makeShippingFetch([], statuses),
+    });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest(validPreferenceBody),
+      response
+    );
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "No pudimos calcular el envío" });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
+  test("error de red MiCorreo responde 503 sin crear orden", async () => {
+    const fetchImpl = jest.fn(async (url) => {
+      if (url.endsWith("/token")) {
+        return makeFetchResponse(200, { token: "jwt-checkout", expires_in: 3600 });
+      }
+      throw new Error("private timeout detail");
+    });
+    const { routes, supabaseMock, preferenceCreate } = loadApp({ fetchImpl });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest(validPreferenceBody),
+      response
+    );
+    expect(response.statusCode).toBe(503);
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
+  test("configuración MiCorreo ausente responde 503 sin red, RPC ni MP", async () => {
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp({
+      env: { MICORREO_CUSTOMER_ID: undefined },
+    });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest(validPreferenceBody),
+      response
+    );
+    expect(response.statusCode).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
     expect(preferenceCreate).not.toHaveBeenCalled();
   });
@@ -2684,6 +3146,60 @@ describe("webhook de pagos", () => {
     await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
 
     expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("webhook acepta el total persistido de productos más shipping", async () => {
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENTTEST",
+          status: "approved",
+          transaction_amount: 9500,
+          currency_id: "ARS",
+          external_reference: "ORDERTEST",
+        }),
+      },
+      supabase: {
+        findOrder: async () => ({
+          data: { status: "pending", amount: "9500.00", currency: "ARS" },
+          error: null,
+        }),
+      },
+    });
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({ headers: validHeaders() }),
+      createResponse()
+    );
+
+    expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("webhook rechaza un pago distinto del total con shipping", async () => {
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENTTEST",
+          status: "approved",
+          transaction_amount: 9499.99,
+          currency_id: "ARS",
+          external_reference: "ORDERTEST",
+        }),
+      },
+      supabase: {
+        findOrder: async () => ({
+          data: { status: "pending", amount: "9500.00", currency: "ARS" },
+          error: null,
+        }),
+      },
+    });
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({ headers: validHeaders() }),
+      createResponse()
+    );
+
+    expect(supabaseMock.updateOrder).not.toHaveBeenCalled();
   });
 
   test("no marca como paid si el importe no coincide", async () => {

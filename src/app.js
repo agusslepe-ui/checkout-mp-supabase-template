@@ -1,13 +1,19 @@
 const crypto = require("crypto");
 const path = require("path");
 const express = require("express");
-const { CartError, summarizeCart, resolveCheckoutCart } = require("./cart");
+const {
+  CartError,
+  MAX_CART_ITEMS,
+  summarizeCart,
+  resolveCheckoutCart,
+} = require("./cart");
 const { getProduct } = require("./catalog");
 const { CheckoutInputError, parseCheckoutInput } = require("./checkoutInput");
 const { baseUrl, mercadoPagoAccessToken } = require("./config");
 const { log } = require("./logger");
 const { createPendingOrder, markOrderAsPaid } = require("./orders");
 const { createPreference, getPayment } = require("./payments");
+const { MAX_QUOTE_UNITS } = require("./packageProfiles");
 const {
   ShippingInputError,
   ShippingUnavailableError,
@@ -350,6 +356,44 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
+const PAYABLE_SHIPPING_OPTION_IDS = new Set([
+  "micorreo:home:classic",
+  "micorreo:home:express",
+]);
+const MAX_NUMERIC_12_2_CENTS = 999999999999;
+
+function getKnownCartTotalUnits(body, hasItems) {
+  const items = hasItems ? body.items : [{ sku: body.sku, quantity: body.quantity }];
+  if (!Array.isArray(items) || items.length < 1 || items.length > MAX_CART_ITEMS) return null;
+
+  let totalUnits = 0;
+  for (const item of items) {
+    if (!item || typeof item !== "object" || Array.isArray(item) ||
+        !getProduct(item.sku) || !Number.isSafeInteger(item.quantity) || item.quantity < 1) {
+      return null;
+    }
+    totalUnits += item.quantity;
+    if (!Number.isSafeInteger(totalUnits)) return null;
+  }
+  return totalUnits;
+}
+
+function getPreferenceTotalCents(items) {
+  let totalCents = 0;
+  for (const item of items) {
+    const unitPriceCents = Math.round(Number(item.unit_price) * 100);
+    if (!Number.isSafeInteger(unitPriceCents) || unitPriceCents < 0 ||
+        !Number.isSafeInteger(item.quantity) || item.quantity < 1) {
+      throw new Error("invalid preference item amount");
+    }
+    totalCents += unitPriceCents * item.quantity;
+    if (!Number.isSafeInteger(totalCents)) {
+      throw new Error("invalid preference total");
+    }
+  }
+  return totalCents;
+}
+
 app.post("/crear-preferencia", async (req, res) => {
   const logContext = {
     request_id: crypto.randomUUID(),
@@ -373,6 +417,10 @@ app.post("/crear-preferencia", async (req, res) => {
   if (hasItems) {
     try {
       if (hasSku || hasQuantity) throw new CartError();
+      const requestedUnits = getKnownCartTotalUnits(body, true);
+      if (requestedUnits !== null && requestedUnits > MAX_QUOTE_UNITS) {
+        return res.status(400).json({ error: "No pudimos calcular el envío" });
+      }
       cart = resolveCheckoutCart(body);
     } catch (error) {
       if (!(error instanceof CartError)) throw error;
@@ -388,6 +436,9 @@ app.post("/crear-preferencia", async (req, res) => {
     if (!product) {
       return res.status(400).json({ error: "Producto no encontrado" });
     }
+    if (Number.isSafeInteger(quantity) && quantity > MAX_QUOTE_UNITS) {
+      return res.status(400).json({ error: "No pudimos calcular el envío" });
+    }
     if (
       !Number.isInteger(quantity) ||
       quantity < 1 ||
@@ -395,6 +446,17 @@ app.post("/crear-preferencia", async (req, res) => {
     ) {
       return res.status(400).json({ error: "Cantidad inválida" });
     }
+  }
+
+  const shippingOptionId = body.shippingOptionId;
+  if (typeof shippingOptionId !== "string" ||
+      !PAYABLE_SHIPPING_OPTION_IDS.has(shippingOptionId)) {
+    log("warn", "opcion de envio invalida", {
+      ...logContext,
+      status_code: 400,
+      error_type: "shipping_option_invalid",
+    });
+    return res.status(400).json({ error: "Elegí una opción de envío" });
   }
 
   let checkoutInput;
@@ -413,59 +475,144 @@ app.post("/crear-preferencia", async (req, res) => {
     });
   }
 
+  if (!hasItems) {
+    cart = resolveCheckoutCart({ items: [{ sku, quantity }] });
+  }
+  const { currency, subtotalCents, orderItems, preferenceItems } = cart;
+  const totalUnits = orderItems.reduce((total, item) => total + item.quantity, 0);
+  if (totalUnits > MAX_QUOTE_UNITS) {
+    return res.status(400).json({ error: "No pudimos calcular el envío" });
+  }
+
+  let shippingOptions;
   try {
-    if (!hasItems) {
-      cart = resolveCheckoutCart({ items: [{ sku, quantity }] });
-    }
-    const { expectedAmount, currency, subtotalCents, orderItems, preferenceItems } = cart;
-
-    log("info", "inicio de creacion de preferencia", logContext);
-
-    let createdOrder;
-    try {
-      createdOrder = await createPendingOrder({
-        expectedAmount,
-        currency,
-        customer: {
-          firstName: checkoutInput.customer_first_name,
-          lastName: checkoutInput.customer_last_name,
-          email: checkoutInput.customer_email,
-          phone: checkoutInput.customer_phone,
-        },
-        delivery: {
-          province: checkoutInput.shipping_province,
-          locality: checkoutInput.shipping_locality,
-          postalCode: checkoutInput.shipping_postal_code,
-          street: checkoutInput.shipping_street,
-          streetNumber: checkoutInput.shipping_street_number,
-          apartment: checkoutInput.shipping_apartment,
-          notes: checkoutInput.shipping_notes,
-        },
-        items: orderItems,
-      });
-
-      if (
-        Math.round(Number(createdOrder.amount) * 100) !==
-          subtotalCents ||
-        createdOrder.currency !== currency ||
-        createdOrder.status !== "pending"
-      ) {
-        throw new Error("incompatible pending order RPC response");
-      }
-
-      log("info", "pedido persistido", {
+    shippingOptions = await getShippingQuotes({
+      ...(hasItems ? { items: body.items } : { sku, quantity }),
+      postalCodeDestination: checkoutInput.shipping_postal_code,
+    });
+  } catch (error) {
+    if (error instanceof ShippingInputError) {
+      log("warn", "cotizacion de envio rechazada", {
         ...logContext,
-        order_status: "pending",
+        status_code: 400,
+        error_type: "shipping_validation_error",
       });
-    } catch (error) {
-      logSupabasePersistError(error, logContext);
-      return res.status(500).json({
-        error: "No se pudo iniciar el pago",
-      });
+      return res.status(400).json({ error: "No pudimos calcular el envío" });
     }
 
+    const errorType = error instanceof ShippingUnavailableError
+      ? error.type
+      : "shipping_unavailable";
+    log("error", "cotizacion de envio no disponible", {
+      ...logContext,
+      status_code: 503,
+      error_type: errorType,
+    });
+    return res.status(503).json({ error: "No pudimos calcular el envío" });
+  }
+
+  const selectedShipping = shippingOptions.find((option) =>
+    option.id === shippingOptionId && option.provider === "micorreo" &&
+    option.deliveryType === "home" && ["classic", "express"].includes(option.service)
+  );
+  if (!selectedShipping) {
+    log("warn", "opcion de envio no disponible", {
+      ...logContext,
+      status_code: 409,
+      error_type: "shipping_option_unavailable",
+    });
+    return res.status(409).json({
+      error: "La opción de envío ya no está disponible",
+    });
+  }
+
+  const shippingCents = Math.round(Number(selectedShipping.price) * 100);
+  const totalCents = subtotalCents + shippingCents;
+  if (!Number.isSafeInteger(shippingCents) || shippingCents < 0 ||
+      shippingCents > MAX_NUMERIC_12_2_CENTS ||
+      !Number.isSafeInteger(totalCents) || totalCents < 1 ||
+      totalCents > MAX_NUMERIC_12_2_CENTS) {
+    return res.status(503).json({ error: "No pudimos calcular el envío" });
+  }
+
+  const productsSubtotal = subtotalCents / 100;
+  const shippingAmount = shippingCents / 100;
+  const expectedAmount = totalCents / 100;
+  const shippingSnapshot = {
+    provider: "micorreo",
+    optionId: shippingOptionId,
+    deliveryType: "home",
+    service: selectedShipping.service,
+  };
+  const paymentItems = [
+    ...preferenceItems,
+    {
+      title: "Envío",
+      quantity: 1,
+      unit_price: shippingAmount,
+      currency_id: "ARS",
+    },
+  ];
+
+  if (getPreferenceTotalCents(paymentItems) !== totalCents) {
+    log("error", "total de preferencia inconsistente", {
+      ...logContext,
+      status_code: 500,
+      error_type: "preference_total_mismatch",
+    });
+    return res.status(500).json({ error: "No se pudo iniciar el pago" });
+  }
+
+  log("info", "inicio de creacion de preferencia", logContext);
+
+  let createdOrder;
+  try {
+    createdOrder = await createPendingOrder({
+      expectedAmount,
+      productsSubtotal,
+      shippingAmount,
+      shipping: shippingSnapshot,
+      currency,
+      customer: {
+        firstName: checkoutInput.customer_first_name,
+        lastName: checkoutInput.customer_last_name,
+        email: checkoutInput.customer_email,
+        phone: checkoutInput.customer_phone,
+      },
+      delivery: {
+        province: checkoutInput.shipping_province,
+        locality: checkoutInput.shipping_locality,
+        postalCode: checkoutInput.shipping_postal_code,
+        street: checkoutInput.shipping_street,
+        streetNumber: checkoutInput.shipping_street_number,
+        apartment: checkoutInput.shipping_apartment,
+        notes: checkoutInput.shipping_notes,
+      },
+      items: orderItems,
+    });
+
+    if (
+      Math.round(Number(createdOrder.amount) * 100) !== totalCents ||
+      createdOrder.currency !== currency ||
+      createdOrder.status !== "pending"
+    ) {
+      throw new Error("incompatible pending order RPC response");
+    }
+
+    log("info", "pedido persistido", {
+      ...logContext,
+      order_status: "pending",
+    });
+  } catch (error) {
+    logSupabasePersistError(error, logContext);
+    return res.status(500).json({
+      error: "No se pudo iniciar el pago",
+    });
+  }
+
+  try {
     const result = await createPreference({
-      items: preferenceItems,
+      items: paymentItems,
       external_reference: createdOrder.external_reference,
       notification_url: `${baseUrl}/webhook?source_news=webhooks`,
       back_urls: {
@@ -478,7 +625,7 @@ app.post("/crear-preferencia", async (req, res) => {
 
     log("info", "preferencia creada", logContext);
 
-    res.json({
+    return res.json({
       preference_id: result.id,
       init_point: result.init_point,
       sandbox_init_point: result.sandbox_init_point,
@@ -490,7 +637,7 @@ app.post("/crear-preferencia", async (req, res) => {
       error_type: "mercado_pago_error",
     });
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "No se pudo crear la preferencia",
     });
   }

@@ -120,24 +120,40 @@ function normalizeRates(response) {
     S: { type: "agency", label: "Retiro en sucursal" },
   };
 
-  return response.rates.flatMap((rate) => {
+  const normalizedById = new Map();
+  const ambiguousIds = new Set();
+
+  for (const rate of response.rates) {
     const option = labels[rate?.deliveredType];
     const service = { CP: "classic", EP: "express" }[rate?.productType];
     if (!Object.prototype.hasOwnProperty.call(labels, rate?.deliveredType) ||
-        !["CP", "EP"].includes(rate?.productType)) return [];
-    if (!["number", "string"].includes(typeof rate?.price) || String(rate.price).trim() === "") return [];
+        !["CP", "EP"].includes(rate?.productType)) continue;
+    if (!["number", "string"].includes(typeof rate?.price) || String(rate.price).trim() === "") continue;
     const price = Number(rate?.price);
-    if (!option || !Number.isFinite(price) || price < 0) return [];
-    return [{
-      id: `micorreo:${option.type}:${service}`,
+    const priceCents = Math.round(price * 100);
+    if (!option || !Number.isSafeInteger(priceCents) || priceCents < 0) continue;
+
+    const id = `micorreo:${option.type}:${service}`;
+    const normalized = {
+      id,
       provider: "micorreo",
       type: option.type,
       deliveryType: option.type,
       service,
       label: `${option.label} — ${service === "classic" ? "Clásico" : "Express"}`,
-      price,
-    }];
-  });
+      price: priceCents / 100,
+    };
+    const previous = normalizedById.get(id);
+
+    if (!previous) {
+      normalizedById.set(id, normalized);
+    } else if (Math.round(previous.price * 100) !== priceCents) {
+      ambiguousIds.add(id);
+    }
+  }
+
+  for (const id of ambiguousIds) normalizedById.delete(id);
+  return [...normalizedById.values()];
 }
 
 module.exports = {

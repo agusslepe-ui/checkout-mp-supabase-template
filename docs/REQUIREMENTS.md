@@ -1,8 +1,14 @@
 # Requisitos
 
+## Actualización T-020 — IMPLEMENTADA LOCALMENTE / AUDITORÍA CORREGIDA / PENDIENTE DE CUTOVER
+
+`POST /crear-preferencia` requiere `shippingOptionId` tanto para `items[]` como para legacy. El backend recotiza MiCorreo con el carrito y CP de entrega, acepta solo home Classic/Express, toma la tarifa vigente y persiste subtotal, envío y total. Si la opción desaparece responde 409; fallos de MiCorreo responden 503 sin crear orden; 5+ unidades responden 400 sin cotizar.
+
+Mercado Pago cobra productos + un ítem `Envío`, sin `shipments`. Agency continúa visible solo como información. El frontend muestra Subtotal/Envío/Total, exige selección home y la invalida al cambiar CP o carrito. La migración 005 existe localmente y no fue aplicada. T-020 no está completada y DEC-025 no está aceptada.
+
 ## Actualización T-019 — COMPLETADA (DEC-024 ACEPTADA)
 
-La cotización informativa admite contrato dual items[] o sku+quantity y 1–4 unidades totales, con perfiles editables TEMPORAL/QA (300 g / 5 × 25 × 35 cm para cada cantidad). Cantidades totales 5+ se rechazan sin MiCorreo. CP origen productivo acordado 5465 desde entorno. Domicilio/sucursal y Clásico/Express solo cuando los devuelve MiCorreo; sin elegir agencia, sin persistencia ni envío en el pago. Suite vigente 211/211. `POST /rates` PROD verificado (`micorreo_rates_ok options=4`, destino QA 5400). Las medidas actuales **no** están aprobadas para producción. Etapa C pendiente.
+En el cierre histórico de T-019, la cotización informativa admitía contrato dual items[] o sku+quantity y 1–4 unidades totales, con perfiles editables TEMPORAL/QA (300 g / 5 × 25 × 35 cm para cada cantidad). Cantidades totales 5+ se rechazaban sin MiCorreo. CP origen productivo acordado 5465 desde entorno. Domicilio/sucursal y Clásico/Express solo cuando los devolvía MiCorreo; sin elegir agencia, sin persistencia ni envío en el pago. La suite de ese cierre fue 211/211. `POST /rates` PROD verificado (`micorreo_rates_ok options=4`, destino QA 5400). Las medidas actuales **no** están aprobadas para producción. Etapa C estaba pendiente en ese cierre; hoy T-020 está implementada localmente y pendiente de cutover.
 
 ## Objetivo
 
@@ -41,7 +47,7 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 ## Datos de entrada
 
 - Configuración: credencial de Mercado Pago, URL pública, URL de Supabase y clave de servicio.
-- Inicio de compra: `{ items: [{ sku, quantity }], customer, delivery }` o legacy `{ sku, quantity, customer, delivery }`. Ambos requieren cliente/entrega válidos. Mezcla de contratos: HTTP 400 `{ "error": "Carrito inválido" }`.
+- Inicio de compra: `{ items: [{ sku, quantity }], customer, delivery, shippingOptionId }` o legacy `{ sku, quantity, customer, delivery, shippingOptionId }`. Ambos requieren cliente/entrega y opción home válidos. Mezcla de contratos: HTTP 400 `{ "error": "Carrito inválido" }`.
 - Resumen: `POST /carrito/resumen` recibe `{ items }`, valida y devuelve importes del backend sin persistir.
 - Carrito local: `lemont.cart`, versión 1, solo SKU y cantidad; sin PII ni datos comerciales.
 - Webhook: tipo de evento y `payment_id`, recibidos en query string o cuerpo JSON.
@@ -51,7 +57,7 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 
 - Preferencia: identificador y URLs de checkout.
 - Webhook: confirmación JSON de recepción.
-- Pedido en Supabase: referencia, producto, cantidad, importe, moneda, estado e identificadores de Mercado Pago.
+- Pedido en Supabase: referencia, items, subtotal de productos, shipping snapshot, total, moneda, estado e identificadores de Mercado Pago.
 - Interfaz: mensajes de preparación, redirección, error y páginas de retorno.
 - Logs operativos de desarrollo.
 
@@ -59,12 +65,12 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 
 - El servidor usa el puerto fijo `3003`.
 - Remera LEMONT: `LEM-REM-001-S`, `LEM-REM-001-M`, `LEM-REM-001-L`, `LEM-REM-001-XL`; ARS 1.000 temporal, `maxQuantity: 4` transitorio (no stock). Máximo 50 entradas originales antes de agrupar.
-- Cotización informativa solo 1 SKU × quantity 1; no se suma al pago.
+- Shipping cobrable solo para 1–4 unidades totales y entrega home; perfiles 300 g / 5 × 25 × 35 cm exclusivamente TEMPORAL/QA.
 - La integración requiere una URL pública HTTPS para webhooks y retornos confiables.
 - La clave `service_role` de Supabase solo puede usarse en backend.
 - La confirmación del pago depende de la disponibilidad de Mercado Pago y Supabase.
-- Hay 158 tests automatizados en Jest. Frontend vanilla + ES modules: QA manual, sin tests DOM a propósito. No hay contrato de disponibilidad definido.
-- Existen migraciones versionadas 001–004, aplicadas; no se requiere una nueva para T-016.
+- Hay 242 tests automatizados en Jest. Frontend vanilla + ES modules con pruebas DOM mínimas aisladas. No hay contrato de disponibilidad definido.
+- Existen migraciones versionadas 001–004 aplicadas y una migración 005 local pendiente de aplicación controlada.
 
 ## El sistema no debe
 

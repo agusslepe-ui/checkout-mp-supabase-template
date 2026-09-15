@@ -1,4 +1,10 @@
-export function inicializarCotizacionEnvio({ form, sku, quantity, items }) {
+export function inicializarCotizacionEnvio({
+  form,
+  sku,
+  quantity,
+  items,
+  onSelectionChange = () => {},
+}) {
   const button = form.querySelector("[data-shipping-button]");
   const statusElement = form.querySelector("[data-shipping-status]");
   const optionsElement = form.querySelector("[data-shipping-options]");
@@ -25,6 +31,7 @@ export function inicializarCotizacionEnvio({ form, sku, quantity, items }) {
     button.textContent = "Calculando…";
     statusElement.textContent = "";
     optionsElement.replaceChildren();
+    onSelectionChange(null);
     const current = ++revision;
     controller?.abort();
     controller = new AbortController();
@@ -40,7 +47,7 @@ export function inicializarCotizacionEnvio({ form, sku, quantity, items }) {
       if (current !== revision) return;
       if (!response.ok || !Array.isArray(body.options)) throw new Error("shipping_unavailable");
 
-      renderQuotes(body.options, optionsElement, statusElement);
+      renderQuotes(body.options, optionsElement, statusElement, onSelectionChange);
     } catch (error) {
       if (current !== revision) return;
       statusElement.textContent = "No pudimos calcular el envío. Intentá nuevamente.";
@@ -61,6 +68,7 @@ export function inicializarCotizacionEnvio({ form, sku, quantity, items }) {
     resetButton();
     optionsElement.replaceChildren();
     statusElement.textContent = "";
+    onSelectionChange(null);
   }
   return () => {
     clearQuotes();
@@ -69,7 +77,7 @@ export function inicializarCotizacionEnvio({ form, sku, quantity, items }) {
   };
 }
 
-function renderQuotes(options, container, statusElement) {
+function renderQuotes(options, container, statusElement, onSelectionChange) {
   if (options.length === 0) {
     statusElement.textContent = "No encontramos opciones de envío para ese código postal.";
     return;
@@ -82,17 +90,34 @@ function renderQuotes(options, container, statusElement) {
     label.textContent = option.label;
     const price = document.createElement("span");
     price.textContent = formatPrice(option.price);
-    article.append(label, price);
+    const isPayableHome = option.deliveryType === "home" &&
+      ["micorreo:home:classic", "micorreo:home:express"].includes(option.id);
 
-    if (option.type === "agency") {
+    if (isPayableHome) {
+      const choice = document.createElement("label");
+      choice.className = "shipping-option__choice";
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "shippingOption";
+      input.value = option.id;
+      input.addEventListener("change", () => {
+        onSelectionChange({ id: option.id, price: option.price });
+      });
+      choice.append(input, label);
+      article.append(choice, price);
+    } else {
+      article.append(label, price);
+    }
+
+    if (option.deliveryType === "agency" || option.type === "agency") {
       const note = document.createElement("small");
-      note.textContent = "La selección de sucursal estará disponible en una próxima etapa.";
+      note.textContent = "Opción informativa: la selección de sucursal estará disponible en una próxima etapa.";
       article.append(note);
     }
     container.append(article);
   }
 
-  statusElement.textContent = "Cotización informativa. Todavía no se suma al total de la compra.";
+  statusElement.textContent = "Elegí una opción de envío a domicilio para continuar.";
 }
 
 function formatPrice(value) {

@@ -1,5 +1,22 @@
 # Decisiones técnicas
 
+## DEC-025 — Cobro autoritativo del envío
+
+**Fecha:** 2026-09-15.
+**Estado:** PROPUESTA / IMPLEMENTADA LOCALMENTE / AUDITORÍA APROBADA CON OBSERVACIONES.
+**Tarea:** T-020. No marcar ACEPTADA hasta migración controlada y QA aprobado.
+
+- Persistencia aditiva en `orders`: `products_subtotal`, `shipping_amount`, `shipping_provider`, `shipping_option_id`, `shipping_delivery_type` y `shipping_service`. No se crea `order_shipping`.
+- `orders.amount` es el total final: `products_subtotal + shipping_amount`; el subtotal coincide con `SUM(order_items.line_total)`.
+- El navegador envía solo `shippingOptionId`; backend resuelve otra vez el carrito, recotiza MiCorreo y toma la tarifa vigente. Precios y totales del cliente se ignoran.
+- Solo `micorreo:home:classic` y `micorreo:home:express` son cobrables. Agency permanece informativa y no se persiste ni se envía a Mercado Pago.
+- Si la opción desaparece, checkout responde 409. Fallos de MiCorreo responden 503 sin crear orden. Carritos de 5+ unidades responden 400 sin cotizar ni crear orden/preferencia.
+- Rates con el mismo ID/precio se colapsan; con el mismo ID y precios distintos se descartan por ambigüedad.
+- Mercado Pago recibe los productos y un único ítem adicional `Envío`; no se usa `shipments`.
+- La migración `005_add_order_shipping_snapshot.sql` y la nueva firma RPC se crearon localmente, pero no se aplicaron.
+- Los perfiles 1–4 continúan en 300 g / 5 × 25 × 35 cm, exclusivamente TEMPORAL/QA. No habilitan lanzamiento comercial.
+- T-017/DEC-022, `/shipping/import`, agencias, tracking y stock permanecen fuera de alcance.
+
 ## DEC-024 — Perfiles de paquete + cotización informativa multítem
 
 **Estado:** ACEPTADA.
@@ -16,7 +33,7 @@
 - Etapa B = saber costo; Etapa C = cobrar costo. Mercado Pago, webhook, HMAC, RPC, migraciones, `orders.amount` y `preference.items` intactos.
 - Prueba real `POST /rates` PROD (2026-09-15): `micorreo_rates_ok options=4`. Origen CP 5465 (Rodeo, San Juan). Destino QA CP 5400. No se imprimió JWT, password, Basic Auth, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Mercado Pago intacto. Envío no cobrado.
 - Los perfiles 1–4 siguen TEMPORAL/QA. Las medidas actuales **no** están aprobadas para producción.
-- Etapa C (cobrar el envío) sigue PENDIENTE.
+- En el cierre histórico de T-019, Etapa C (cobrar el envío) seguía PENDIENTE. El estado vigente está en DEC-025/T-020: implementada localmente, auditada con observaciones y aún sin cutover.
 
 ## DEC-023 — ShippingService / ShippingProvider / MiCorreoProvider
 
