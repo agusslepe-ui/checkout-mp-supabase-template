@@ -18,6 +18,7 @@ const {
   ShippingInputError,
   ShippingUnavailableError,
   getShippingQuotes,
+  listShippingAgencies,
 } = require("./shipping");
 const {
   getWebhookSignatureDiagnostics,
@@ -213,6 +214,33 @@ app.post("/cotizar-envio", async (req, res) => {
   }
 });
 
+app.post("/sucursales-envio", async (req, res) => {
+  const logContext = {
+    request_id: crypto.randomUUID(),
+    route: "/sucursales-envio",
+    method: "POST",
+  };
+
+  try {
+    const agencies = await listShippingAgencies(req.body || {});
+    log("info", "agency_lookup_ok", { ...logContext, status_code: 200 });
+    return res.json({ agencies });
+  } catch (error) {
+    const isInputError = error instanceof ShippingInputError;
+    const errorType = error instanceof ShippingUnavailableError
+      ? error.type
+      : isInputError ? "agency_validation_error" : "shipping_unavailable";
+    log(isInputError ? "warn" : "error", "agency_lookup_failed", {
+      ...logContext,
+      status_code: isInputError ? 400 : 503,
+      error_type: errorType,
+    });
+    return res.status(isInputError ? 400 : 503).json({
+      error: "No pudimos obtener las sucursales",
+    });
+  }
+});
+
 app.post("/webhook", async (req, res) => {
   const signatureHeader = req.headers["x-signature"];
   const logContext = {
@@ -359,6 +387,8 @@ if (process.env.NODE_ENV !== "production") {
 const PAYABLE_SHIPPING_OPTION_IDS = new Set([
   "micorreo:home:classic",
   "micorreo:home:express",
+  "micorreo:agency:classic",
+  "micorreo:agency:express",
 ]);
 const MAX_NUMERIC_12_2_CENTS = 999999999999;
 
@@ -458,6 +488,10 @@ app.post("/crear-preferencia", async (req, res) => {
     });
     return res.status(400).json({ error: "Elegí una opción de envío" });
   }
+  const isAgencyShipping = shippingOptionId.startsWith("micorreo:agency:");
+  const shippingAgencyCode = typeof body.shippingAgencyCode === "string"
+    ? body.shippingAgencyCode.trim()
+    : "";
 
   let checkoutInput;
   try {
@@ -473,6 +507,14 @@ app.post("/crear-preferencia", async (req, res) => {
     return res.status(400).json({
       error: "Revisá los datos del comprador y la entrega",
     });
+  }
+  if (isAgencyShipping && !shippingAgencyCode) {
+    log("warn", "agency_selection_invalid", {
+      ...logContext,
+      status_code: 400,
+      error_type: "agency_code_required",
+    });
+    return res.status(400).json({ error: "Elegí una sucursal" });
   }
 
   if (!hasItems) {
@@ -513,7 +555,8 @@ app.post("/crear-preferencia", async (req, res) => {
 
   const selectedShipping = shippingOptions.find((option) =>
     option.id === shippingOptionId && option.provider === "micorreo" &&
-    option.deliveryType === "home" && ["classic", "express"].includes(option.service)
+    option.deliveryType === (isAgencyShipping ? "agency" : "home") &&
+    ["classic", "express"].includes(option.service)
   );
   if (!selectedShipping) {
     log("warn", "opcion de envio no disponible", {
@@ -524,6 +567,37 @@ app.post("/crear-preferencia", async (req, res) => {
     return res.status(409).json({
       error: "La opción de envío ya no está disponible",
     });
+  }
+
+  let selectedAgency = null;
+  if (isAgencyShipping) {
+    let agencies;
+    try {
+      agencies = await listShippingAgencies({
+        province: checkoutInput.shipping_province,
+      });
+    } catch (error) {
+      const errorType = error instanceof ShippingUnavailableError
+        ? error.type
+        : "shipping_unavailable";
+      log("error", "agency_lookup_failed", {
+        ...logContext,
+        status_code: 503,
+        error_type: errorType,
+      });
+      return res.status(503).json({ error: "No pudimos obtener las sucursales" });
+    }
+
+    selectedAgency = agencies.find((agency) => agency.code === shippingAgencyCode) || null;
+    if (!selectedAgency) {
+      log("warn", "agency_selection_invalid", {
+        ...logContext,
+        status_code: 409,
+        error_type: "agency_unavailable",
+      });
+      return res.status(409).json({ error: "La sucursal ya no está disponible" });
+    }
+    log("info", "agency_lookup_ok", { ...logContext, status_code: 200 });
   }
 
   const shippingCents = Math.round(Number(selectedShipping.price) * 100);
@@ -541,8 +615,9 @@ app.post("/crear-preferencia", async (req, res) => {
   const shippingSnapshot = {
     provider: "micorreo",
     optionId: shippingOptionId,
-    deliveryType: "home",
+    deliveryType: selectedShipping.deliveryType,
     service: selectedShipping.service,
+    agency: selectedAgency,
   };
   const paymentItems = [
     ...preferenceItems,

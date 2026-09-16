@@ -9,14 +9,18 @@ const PURCHASE_QUANTITY = 1;
 const PAYABLE_SHIPPING_OPTIONS = new Set([
   "micorreo:home:classic",
   "micorreo:home:express",
+  "micorreo:agency:classic",
+  "micorreo:agency:express",
 ]);
 const CONTROLLED_SHIPPING_ERRORS = new Set([
   "Elegí una opción de envío",
   "No pudimos calcular el envío",
+  "Elegí una sucursal",
+  "La sucursal ya no está disponible",
 ]);
 
 async function getControlledShippingError(response) {
-  if (response.status !== 400) return null;
+  if (![400, 409].includes(response.status)) return null;
 
   try {
     const body = await response.json();
@@ -27,9 +31,13 @@ async function getControlledShippingError(response) {
 }
 
 async function crearPreferencia(input) {
-  const { sku, quantity, customer, delivery, shippingOptionId } = input;
+  const { sku, quantity, customer, delivery, shippingOptionId, shippingAgencyCode } = input;
   if (!PAYABLE_SHIPPING_OPTIONS.has(shippingOptionId)) {
     throw new Error("invalid_shipping");
+  }
+  if (shippingOptionId.startsWith("micorreo:agency:") &&
+      (typeof shippingAgencyCode !== "string" || !shippingAgencyCode.trim())) {
+    throw new Error("invalid_agency");
   }
   const hasItems = Object.prototype.hasOwnProperty.call(input, "items");
   let body;
@@ -42,10 +50,14 @@ async function crearPreferencia(input) {
       customer,
       delivery,
       shippingOptionId,
+      ...(shippingOptionId.startsWith("micorreo:agency:") ? { shippingAgencyCode } : {}),
     };
   } else {
     if (!PURCHASE_SKUS.has(sku) || quantity !== PURCHASE_QUANTITY) throw new Error("invalid_product");
-    body = { sku, quantity, customer, delivery, shippingOptionId };
+    body = {
+      sku, quantity, customer, delivery, shippingOptionId,
+      ...(shippingOptionId.startsWith("micorreo:agency:") ? { shippingAgencyCode } : {}),
+    };
   }
 
   const response = await fetch(CHECKOUT_ENDPOINT, {
@@ -57,8 +69,12 @@ async function crearPreferencia(input) {
   });
 
   if (!response.ok) {
-    if (response.status === 409) throw new Error("shipping_changed");
     const controlledShippingError = await getControlledShippingError(response);
+    if (response.status === 409) {
+      throw new Error(controlledShippingError === "La sucursal ya no está disponible"
+        ? "agency_changed"
+        : "shipping_changed");
+    }
     if (controlledShippingError) throw new Error(controlledShippingError);
     throw new Error(response.status === 400
       ? (hasItems ? "invalid_cart" : "invalid_product")
@@ -92,7 +108,7 @@ export async function iniciarCheckout(input) {
     if (statusElement) statusElement.textContent = "Redirigiendo a Mercado Pago…";
     window.location.assign(checkoutUrl);
   } catch (error) {
-    if (error.message === "shipping_changed" &&
+    if (["shipping_changed", "agency_changed"].includes(error.message) &&
         typeof input.onShippingInvalidated === "function") {
       input.onShippingInvalidated();
     }
@@ -102,14 +118,19 @@ export async function iniciarCheckout(input) {
         : error.message === "invalid_product"
         ? "Este producto no está disponible para comprar."
         : error.message === "invalid_shipping"
-          ? "Elegí una opción de envío a domicilio."
+          ? "Elegí una opción de envío."
+          : error.message === "invalid_agency"
+            ? "Elegí una sucursal."
           : error.message === "shipping_changed"
             ? "La opción de envío cambió. Volvé a calcular y elegir el envío."
+          : error.message === "agency_changed"
+            ? "La sucursal ya no está disponible. Volvé a elegir una sucursal."
         : error.message === "invalid_cart"
           ? "No pudimos validar el carrito. Volvé al carrito para revisarlo."
           : "No pudimos iniciar el pago. Intentá nuevamente.";
     }
-    button.disabled = ["invalid_shipping", "shipping_changed"].includes(error.message);
+    button.disabled = ["invalid_shipping", "invalid_agency", "shipping_changed", "agency_changed"]
+      .includes(error.message);
     button.removeAttribute("aria-busy");
     button.textContent = originalLabel;
   }

@@ -7,7 +7,7 @@ function node() {
   const listeners = new Map();
   const attributes = new Map();
   return {
-    children: [], textContent: "", value: "5400", disabled: false,
+    children: [], textContent: "", value: "", disabled: false,
     set innerHTML(value) { throw new Error("API data must use textContent"); },
     append(...children) { this.children.push(...children); },
     replaceChildren(...children) { this.children = children; },
@@ -21,17 +21,19 @@ function node() {
   };
 }
 function setup(selection, fetchImpl, onSelectionChange = jest.fn()) {
-  const button = node(), status = node(), options = node(), postalCode = node();
+  const button = node(), status = node(), options = node(), postalCode = node(), province = node();
+  postalCode.value = "5400";
+  province.value = "AR-J";
   const fetch = jest.fn(fetchImpl || (async () => ({ ok: true, json: async () => ({ options: [] }) })));
   const context = vm.createContext({ fetch, AbortController, Intl, document: { createElement: node } });
   const source = fs.readFileSync(path.join(__dirname, "../public/js/envio.js"), "utf8");
   vm.runInContext(source.replace("export function", "function"), context);
   const dispose = context.inicializarCotizacionEnvio({
-    form: { elements: { postalCode }, querySelector: (selector) => ({
+    form: { elements: { postalCode, province }, querySelector: (selector) => ({
       "[data-shipping-button]": button, "[data-shipping-status]": status, "[data-shipping-options]": options,
     })[selector] }, ...selection, onSelectionChange,
   });
-  return { button, status, options, postalCode, fetch, dispose, onSelectionChange };
+  return { button, status, options, postalCode, province, fetch, dispose, onSelectionChange };
 }
 
 test.each([
@@ -68,19 +70,6 @@ test.each(["postalCode", "dispose"])("envio descarta respuesta tardia tras %s", 
   }
 });
 
-test("envio muestra sucursal/Express como opción informativa no seleccionable", async () => {
-  const label = "<img src=x onerror=alert(1)> — Express";
-  const ui = setup({ items: [{ sku: "LEM-REM-001-S", quantity: 2, price: 999 }] }, async () => ({
-    ok: true, json: async () => ({ options: [{ type: "agency", label, price: 12 }] }),
-  }));
-  await ui.button.emit("click");
-  expect(JSON.parse(ui.fetch.mock.calls[0][1].body).items[0]).not.toHaveProperty("price");
-  expect(ui.options.children[0].children[0].textContent).toBe(label);
-  expect(ui.options.children[0].children[2].textContent).toContain("próxima etapa");
-  expect(ui.status.textContent).toContain("Elegí una opción");
-  expect(ui.options.children[0].children[0].children).toHaveLength(0);
-});
-
 test("selecciona home por ID e invalida la selección al cambiar el CP", async () => {
   const ui = setup({ items: [{ sku: "LEM-REM-001-S", quantity: 1 }] }, async () => ({
     ok: true,
@@ -102,10 +91,107 @@ test("selecciona home por ID e invalida la selección al cambiar el CP", async (
   expect(ui.onSelectionChange).toHaveBeenLastCalledWith({
     id: "micorreo:home:classic",
     price: 8500,
+    agencyCode: null,
   });
 
   ui.postalCode.emit("input");
   expect(ui.onSelectionChange).toHaveBeenLastCalledWith(null);
+});
+
+test("agency es seleccionable, lista segura, filtra localmente y entrega solo code", async () => {
+  const unsafeName = "<img src=x onerror=alert(1)> Sucursal";
+  const ui = setup({ items: [{ sku: "LEM-REM-001-S", quantity: 1 }] }, async (url) => {
+    if (url === "/cotizar-envio") return {
+      ok: true, json: async () => ({ options: [{
+        id: "micorreo:agency:classic", type: "agency", deliveryType: "agency",
+        label: "Retiro en sucursal — Clásico", price: 500,
+      }] }),
+    };
+    return { ok: true, json: async () => ({ agencies: [{
+      code: "J0001", name: unsafeName, streetName: "Mitre", streetNumber: "123",
+      locality: "San Juan", city: "Capital", postalCode: "J5400ABC",
+    }] }) };
+  });
+
+  await ui.button.emit("click");
+  const article = ui.options.children[0];
+  const shippingRadio = article.children[0].children[0];
+  await shippingRadio.emit("change");
+  expect(ui.fetch.mock.calls[1][0]).toBe("/sucursales-envio");
+  expect(JSON.parse(ui.fetch.mock.calls[1][1].body)).toEqual({ province: "AR-J" });
+  expect(ui.onSelectionChange).toHaveBeenLastCalledWith({
+    id: "micorreo:agency:classic", price: 500, agencyCode: null,
+  });
+  const panel = article.children[2];
+  const search = panel.children[2];
+  const list = panel.children[3];
+  const agencyChoice = list.children[0];
+  expect(agencyChoice.children[1].children[0].textContent).toBe(unsafeName);
+  await agencyChoice.children[0].emit("change");
+  expect(ui.onSelectionChange).toHaveBeenLastCalledWith({
+    id: "micorreo:agency:classic", price: 500, agencyCode: "J0001",
+  });
+  search.value = "inexistente";
+  search.emit("input");
+  expect(list.children).toHaveLength(0);
+  expect(panel.children[1].textContent).toContain("No encontramos");
+});
+
+test("lista vacía muestra mensaje seguro y no habilita agency", async () => {
+  const ui = setup({ sku: "LEM-REM-001-S", quantity: 1 }, async (url) => url === "/cotizar-envio"
+    ? { ok: true, json: async () => ({ options: [{
+      id: "micorreo:agency:express", type: "agency", deliveryType: "agency",
+      label: "Retiro en sucursal — Express", price: 700,
+    }] }) }
+    : { ok: true, json: async () => ({ agencies: [] }) });
+  await ui.button.emit("click");
+  await ui.options.children[0].children[0].children[0].emit("change");
+  expect(ui.options.children[0].children[2].children[1].textContent)
+    .toBe("No hay sucursales disponibles para esa provincia.");
+  expect(ui.onSelectionChange).toHaveBeenLastCalledWith({
+    id: "micorreo:agency:express", price: 700, agencyCode: null,
+  });
+});
+
+test("cambiar provincia aborta agencies y una respuesta tardía no revive selección", async () => {
+  let resolveAgencies;
+  const ui = setup({ sku: "LEM-REM-001-S", quantity: 1 }, async (url) => {
+    if (url === "/cotizar-envio") return { ok: true, json: async () => ({ options: [{
+      id: "micorreo:agency:classic", type: "agency", deliveryType: "agency",
+      label: "Agency", price: 500,
+    }] }) };
+    return new Promise((resolve) => { resolveAgencies = resolve; });
+  });
+  await ui.button.emit("click");
+  const pending = ui.options.children[0].children[0].children[0].emit("change");
+  ui.province.value = "AR-B";
+  ui.province.emit("change");
+  expect(ui.fetch.mock.calls[1][1].signal.aborted).toBe(true);
+  resolveAgencies({ ok: true, json: async () => ({ agencies: [{ code: "OLD" }] }) });
+  await pending;
+  expect(ui.options.children).toHaveLength(0);
+  expect(ui.onSelectionChange).toHaveBeenLastCalledWith(null);
+});
+
+test("cambiar de agency a HOME limpia el code y habilita la selección home", async () => {
+  const ui = setup({ sku: "LEM-REM-001-S", quantity: 1 }, async (url) => {
+    if (url === "/cotizar-envio") return { ok: true, json: async () => ({ options: [
+      { id: "micorreo:agency:classic", type: "agency", deliveryType: "agency", label: "Agency", price: 500 },
+      { id: "micorreo:home:express", type: "home", deliveryType: "home", label: "Home", price: 700 },
+    ] }) };
+    return { ok: true, json: async () => ({ agencies: [{
+      code: "J0001", name: "Centro", streetName: "Mitre", streetNumber: "123",
+      locality: "San Juan", city: "Capital", postalCode: "J5400ABC",
+    }] }) };
+  });
+  await ui.button.emit("click");
+  await ui.options.children[0].children[0].children[0].emit("change");
+  await ui.options.children[0].children[2].children[3].children[0].children[0].emit("change");
+  expect(ui.onSelectionChange).toHaveBeenLastCalledWith(expect.objectContaining({ agencyCode: "J0001" }));
+  await ui.options.children[1].children[0].children[0].emit("change");
+  expect(ui.onSelectionChange).toHaveBeenLastCalledWith({
+    id: "micorreo:home:express", price: 700, agencyCode: null,
+  });
 });
 
 function setupCheckout(response = {
@@ -149,7 +235,35 @@ test("checkout envía solo shippingOptionId y omite precios/totales del navegado
   expect(assign).toHaveBeenCalledWith("https://checkout.test/init");
 });
 
-test("checkout bloquea opciones agency o shipping ausente", async () => {
+test("checkout agency envía solo shippingAgencyCode como identidad", async () => {
+  const { context, fetch } = setupCheckout();
+  const button = node();
+  button.textContent = "Iniciar pago";
+  await context.iniciarCheckout({
+    sku: "LEM-REM-001-S", quantity: 1, customer: {}, delivery: {},
+    shippingOptionId: "micorreo:agency:classic", shippingAgencyCode: "J0001",
+    shippingAgencyName: "Manipulada", shippingAgencyAddress: "Manipulada",
+    button, statusElement: node(),
+  });
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+    sku: "LEM-REM-001-S", quantity: 1, customer: {}, delivery: {},
+    shippingOptionId: "micorreo:agency:classic", shippingAgencyCode: "J0001",
+  });
+});
+
+test("checkout HOME ignora shippingAgencyCode extra", async () => {
+  const { context, fetch } = setupCheckout();
+  const button = node();
+  button.textContent = "Iniciar pago";
+  await context.iniciarCheckout({
+    sku: "LEM-REM-001-S", quantity: 1, customer: {}, delivery: {},
+    shippingOptionId: "micorreo:home:classic", shippingAgencyCode: "J0001",
+    button, statusElement: node(),
+  });
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).not.toHaveProperty("shippingAgencyCode");
+});
+
+test("checkout bloquea shipping ausente y agency sin sucursal", async () => {
   for (const shippingOptionId of [undefined, "micorreo:agency:classic"]) {
     const { context, fetch } = setupCheckout();
     const button = node();
@@ -165,7 +279,7 @@ test("checkout bloquea opciones agency o shipping ausente", async () => {
       statusElement,
     });
     expect(fetch).not.toHaveBeenCalled();
-    expect(statusElement.textContent).toContain("Elegí una opción de envío");
+    expect(statusElement.textContent).toContain(shippingOptionId ? "Elegí una sucursal" : "Elegí una opción de envío");
   }
 });
 
@@ -194,6 +308,26 @@ test("checkout 409 invalida la selección y exige volver a cotizar", async () =>
   expect(onShippingInvalidated).toHaveBeenCalledTimes(1);
   expect(button.disabled).toBe(true);
   expect(statusElement.textContent).toContain("Volvé a calcular");
+});
+
+test("checkout 409 de agency invalida la selección con mensaje controlado", async () => {
+  const { context } = setupCheckout({
+    ok: false,
+    status: 409,
+    json: async () => ({ error: "La sucursal ya no está disponible" }),
+  });
+  const button = node();
+  button.textContent = "Iniciar pago";
+  const statusElement = node();
+  const onShippingInvalidated = jest.fn();
+  await context.iniciarCheckout({
+    sku: "LEM-REM-001-S", quantity: 1, customer: {}, delivery: {},
+    shippingOptionId: "micorreo:agency:classic", shippingAgencyCode: "J0001",
+    onShippingInvalidated, button, statusElement,
+  });
+  expect(onShippingInvalidated).toHaveBeenCalledTimes(1);
+  expect(button.disabled).toBe(true);
+  expect(statusElement.textContent).toContain("sucursal ya no está disponible");
 });
 
 test.each([
@@ -240,7 +374,8 @@ test("checkout no muestra errores 400 arbitrarios del backend", async () => {
 test("entrega exige shipping y muestra Subtotal, Envío y Total", () => {
   const source = fs.readFileSync(path.join(__dirname, "../public/js/entrega.js"), "utf8");
   expect(source).toContain("data-delivery-submit disabled");
-  expect(source).toContain("submitButton.disabled = !cartReady || !selectedShippingOptionId");
+  expect(source).toContain("(needsAgency && !selectedShippingAgencyCode)");
+  expect(source).toContain("shippingAgencyCode: selectedShippingAgencyCode");
   expect(source).toContain('["Subtotal", "data-order-subtotal"]');
   expect(source).toContain('["Envío", "data-order-shipping"]');
   expect(source).toContain('["Total", "data-order-total"]');

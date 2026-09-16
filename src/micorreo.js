@@ -22,36 +22,50 @@ class MicorreoError extends ShippingProviderError {
 }
 
 async function quoteRates(payload) {
-  let token = await authenticate();
-  let response = await request("/rates", {
+  return requestWithBearer("/rates", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  }, "micorreo_rate_error", "micorreo_invalid_response");
+}
+
+async function listAgencies({ customerId, provinceCode }) {
+  const query = new URLSearchParams({ customerId, provinceCode });
+  return requestWithBearer(`/agencies?${query.toString()}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  }, "micorreo_agency_error", "micorreo_invalid_agencies_response");
+}
+
+async function requestWithBearer(pathname, options, responseErrorType, jsonErrorType) {
+  let token = await authenticate();
+  let response = await request(pathname, {
+    ...options,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${token}`,
+    },
   });
 
   if (response.status === 401) {
     // Un 401 tardio no debe invalidar una renovacion de otra cotizacion.
     if (cachedToken === token) clearToken();
     token = await authenticate();
-    response = await request("/rates", {
-      method: "POST",
+    response = await request(pathname, {
+      ...options,
       headers: {
+        ...options.headers,
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload),
     });
   }
 
   if (!response.ok) {
     if (response.status === 401 && cachedToken === token) clearToken();
-    throw new MicorreoError("micorreo_rate_error", response.status);
+    throw new MicorreoError(responseErrorType, response.status);
   }
 
-  return parseJson(response, "micorreo_invalid_response");
+  return parseJson(response, jsonErrorType);
 }
 
 async function authenticate() {
@@ -156,6 +170,6 @@ function clearToken() {
 }
 
 /** @type {import("./shippingProvider").ShippingProvider} */
-const MiCorreoProvider = Object.freeze({ authenticate, quoteRates });
+const MiCorreoProvider = Object.freeze({ authenticate, quoteRates, listAgencies });
 
-module.exports = { MicorreoError, MiCorreoProvider, authenticate, quoteRates };
+module.exports = { MicorreoError, MiCorreoProvider, authenticate, quoteRates, listAgencies };

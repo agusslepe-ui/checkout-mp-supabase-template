@@ -1,6 +1,22 @@
 # Diseño técnico
 
-## T-020 / DEC-025 — diseño implementado localmente, auditoría corregida, pendiente de cutover
+## T-021 / DEC-026 — implementada localmente, pendiente de auditoría
+
+```text
+POST /sucursales-envio { province: AR-J }
+  → ShippingService → provinceCode J + customerId backend
+  → MiCorreoProvider.listAgencies → GET /agencies
+  → ACTIVE + pickupAvailability → respuesta pública normalizada
+
+checkout AGENCY { shippingOptionId, shippingAgencyCode }
+  → resolver carrito → recotizar /rates → validar opción actual
+  → listar agencias por delivery.province → validar code actual
+  → snapshot autoritativo → RPC → preferencia productos + Envío
+```
+
+HOME no llama `/agencies`, ignora cualquier code extra y persiste agency null. La migración 006 reemplaza allowlists/constraints y la firma T-020 sin overload; conserva `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` solo para `service_role`. No fue aplicada. `/shipping/import`, webhook, HMAC y Mercado Pago permanecen sin cambios.
+
+## T-020 / DEC-025 — diseño desplegado; paid QA pendiente separado
 
 ```text
 checkout { items|legacy, customer, delivery, shippingOptionId }
@@ -19,9 +35,9 @@ El browser solo elige `shippingOptionId`. No decide tarifa, subtotal, total, mon
 
 Node trabaja en centavos: `totalCents = subtotalCents + shippingCents`. La RPC valida `products_subtotal` contra los items, el snapshot home y `p_expected_amount` contra subtotal + envío. `orders.amount` pasa a ser el total final. El webhook no cambia: compara `Payment.get` contra ese snapshot total y la moneda persistida.
 
-La migración 005 agrega seis columnas nullable y checks de cohesión/allowlist/aritmética, elimina la firma anterior y crea una única firma nueva `SECURITY INVOKER`, con `search_path` fijo y `EXECUTE` solo para `service_role`. No fue aplicada.
+La migración 005 agrega seis columnas nullable y checks de cohesión/allowlist/aritmética, elimina la firma anterior y crea una única firma nueva `SECURITY INVOKER`, con `search_path` fijo y `EXECUTE` solo para `service_role`. Fue aplicada como parte del despliegue T-020 informado al iniciar T-021.
 
-Frontend mantiene la tarifa solo en memoria para mostrar Subtotal/Envío/Total; envía únicamente el ID y la invalida al cambiar CP/carrito o ante 409. Los perfiles continúan TEMPORAL/QA. T-017, `/shipping/import`, agencias, tracking y stock quedan fuera.
+Frontend mantiene la tarifa solo en memoria para mostrar Subtotal/Envío/Total; envía únicamente el ID y la invalida al cambiar CP/carrito o ante 409. En T-020, agencias quedaban fuera; T-021 las incorpora sin `/shipping/import`, tracking ni stock. Los perfiles continúan TEMPORAL/QA.
 
 ## T-019 / DEC-024 — antecedente (COMPLETADA / ACEPTADA)
 
@@ -130,7 +146,8 @@ Antes de procesar, el webhook valida HMAC-SHA256. No recalcula precios del catá
 |---|---|---|
 | GET | `/` | Frontend estático principal |
 | POST | `/carrito/resumen` | Resumen autoritativo sin persistencia |
-| POST | `/cotizar-envio` | Cotización informativa, solo 1 SKU × quantity 1 |
+| POST | `/cotizar-envio` | Cotización autoritativa para 1–4 unidades totales |
+| POST | `/sucursales-envio` | Agencias MiCorreo normalizadas por provincia |
 | POST | `/crear-preferencia` | Crear pedido y preferencia de pago |
 | POST | `/webhook` | Recibir eventos de Mercado Pago |
 | GET | `/webhook` | Diagnóstico temporal, solo con `NODE_ENV !== "production"` |
@@ -140,13 +157,13 @@ Antes de procesar, el webhook valida HMAC-SHA256. No recalcula precios del catá
 
 ## Persistencia
 
-La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. `001_create_orders.sql` define la tabla, `002_add_order_product_variant.sql` agrega SKU/talle, `003_add_order_customer_delivery.sql` agrega cliente/destino y `004_create_order_items.sql` agrega `order_items` y la RPC de creación atómica. Las columnas aditivas de pedidos históricos son nullable y no fueron completadas. Los pedidos nuevos guardan cliente, destino y uno o más items; durante la transición, el primer item también completa las columnas legacy de producto en `orders`. La transición `pending → paid` permanece atómica e idempotente mediante `UPDATE WHERE status = 'pending'` (T-003, DEC-010).
+La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. Las migraciones 001–004 definen pedidos, variantes, cliente/entrega, `order_items` y la RPC atómica; la 005 aplicada agrega subtotal, envío y snapshot HOME. La 006 local no aplicada agrega el snapshot nullable de agencia y reemplaza la firma RPC sin overload. Las columnas aditivas de pedidos históricos son nullable y no fueron completadas. Los pedidos nuevos guardan cliente, destino y uno o más items; durante la transición, el primer item también completa las columnas legacy de producto en `orders`. La transición `pending → paid` permanece atómica e idempotente mediante `UPDATE WHERE status = 'pending'` (T-003, DEC-010).
 
 ## Flujo de compra con entrega
 
 Carrito continúa a `entrega.html` sin query de producto. Un carrito vacío bloquea la compra; un resumen inválido muestra error genérico y permite volver a editar/eliminar. El aside contiene N líneas del backend, renderizadas con DOM seguro. Comprar ahora conserva `entrega.html?id=…&sku=…&quantity=1` y sus validaciones legacy.
 
-Cliente y domicilio viven en el formulario, nunca en localStorage ni en la URL. El frontend no controla precio, moneda, total, estado ni `external_reference`. La cotización solo se inicializa para exactamente 1 SKU × quantity 1; para varias líneas/unidades informa la limitación y no llama al endpoint.
+Cliente y domicilio viven en el formulario, nunca en localStorage ni en la URL. El frontend no controla precio, moneda, total, estado ni `external_reference`. La cotización admite el carrito resuelto de 1–4 unidades totales. Si se elige AGENCY, el frontend lista sucursales por provincia y exige una antes de habilitar el pago; backend vuelve a validar rate y code.
 
 ## Cotización logística local — Etapa 6A
 

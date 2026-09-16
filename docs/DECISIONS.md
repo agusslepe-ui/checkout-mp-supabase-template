@@ -1,5 +1,20 @@
 # Decisiones técnicas
 
+## DEC-026 — Selección autoritativa de agencia
+
+**Fecha:** 2026-09-15.
+**Estado:** PROPUESTA / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.
+**Tarea:** T-021. No marcar ACEPTADA hasta auditoría y QA posteriores.
+
+- API exclusiva MiCorreo `GET /agencies`, autenticada con el JWT/cache existente. Query autoritativa: customerId backend + provinceCode derivado de `delivery.province`; sin CP ni services.
+- `response[].code` es la identidad. El browser recibe agencias normalizadas y envía solo `shippingAgencyCode`.
+- Solo agencias ACTIVE; si `services.pickupAvailability` existe debe ser true. Lista vacía es resultado válido.
+- HOME no consulta agencias, ignora code extra y persiste snapshot null. AGENCY Classic/Express exige code y revalida rate + agencia antes de RPC.
+- Snapshot: code, name, streetName, streetNumber, locality y postalCode provenientes de MiCorreo. No manager/email/phone/coordenadas/customerId/hours/raw.
+- Migración 006 local: columnas nullable, checks HOME/AGENCY y firma RPC única. No aplicada.
+- Total, preferencia MP, external_reference, webhook y HMAC no cambian. `/shipping/import` queda futuro y usará agency code.
+- Perfiles continúan TEMPORAL/QA; la tienda no queda lista para público.
+
 ## DEC-025 — Cobro autoritativo del envío
 
 **Fecha:** 2026-09-15.
@@ -13,9 +28,9 @@
 - Si la opción desaparece, checkout responde 409. Fallos de MiCorreo responden 503 sin crear orden. Carritos de 5+ unidades responden 400 sin cotizar ni crear orden/preferencia.
 - Rates con el mismo ID/precio se colapsan; con el mismo ID y precios distintos se descartan por ambigüedad.
 - Mercado Pago recibe los productos y un único ítem adicional `Envío`; no se usa `shipments`.
-- La migración `005_add_order_shipping_snapshot.sql` y la nueva firma RPC se crearon localmente, pero no se aplicaron.
+- La migración `005_add_order_shipping_snapshot.sql` y la firma RPC fueron desplegadas como parte de T-020 según el estado informado al iniciar T-021. El paid QA completo sigue separado.
 - Los perfiles 1–4 continúan en 300 g / 5 × 25 × 35 cm, exclusivamente TEMPORAL/QA. No habilitan lanzamiento comercial.
-- T-017/DEC-022, `/shipping/import`, agencias, tracking y stock permanecen fuera de alcance.
+- En T-020, T-017/DEC-022, `/shipping/import`, agencias, tracking y stock permanecían fuera de alcance. T-021 agrega selección de agencia, sin implementar import/tracking/stock.
 
 ## DEC-024 — Perfiles de paquete + cotización informativa multítem
 
@@ -33,7 +48,7 @@
 - Etapa B = saber costo; Etapa C = cobrar costo. Mercado Pago, webhook, HMAC, RPC, migraciones, `orders.amount` y `preference.items` intactos.
 - Prueba real `POST /rates` PROD (2026-09-15): `micorreo_rates_ok options=4`. Origen CP 5465 (Rodeo, San Juan). Destino QA CP 5400. No se imprimió JWT, password, Basic Auth, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Mercado Pago intacto. Envío no cobrado.
 - Los perfiles 1–4 siguen TEMPORAL/QA. Las medidas actuales **no** están aprobadas para producción.
-- En el cierre histórico de T-019, Etapa C (cobrar el envío) seguía PENDIENTE. El estado vigente está en DEC-025/T-020: implementada localmente, auditada con observaciones y aún sin cutover.
+- En el cierre histórico de T-019, Etapa C (cobrar el envío) seguía PENDIENTE. T-020 está desplegada según el handoff de T-021; DEC-025 conserva su cierre formal pendiente por separado.
 
 ## DEC-023 — ShippingService / ShippingProvider / MiCorreoProvider
 

@@ -40,6 +40,55 @@ function makeShippingFetch(rates, { tokenStatus = 200, rateStatus = 200 } = {}) 
   });
 }
 
+function makeShippingAndAgencyFetch(
+  rates,
+  agencies,
+  { tokenStatus = 200, rateStatus = 200, agencyStatus = 200 } = {}
+) {
+  return jest.fn(async (url) => {
+    if (url.endsWith("/token")) {
+      return makeFetchResponse(tokenStatus, tokenStatus === 200
+        ? { token: "jwt-checkout", expires_in: 3600 }
+        : { message: "private auth detail" });
+    }
+    if (url.endsWith("/rates")) {
+      return makeFetchResponse(rateStatus, rateStatus === 200
+        ? { rates }
+        : { message: "private rate detail" });
+    }
+    if (url.startsWith("https://micorreo.test/v1/agencies?")) {
+      return makeFetchResponse(agencyStatus, agencyStatus === 200
+        ? agencies
+        : { message: "private agency detail" });
+    }
+    throw new Error("Unexpected external request in test");
+  });
+}
+
+const activeAgency = {
+  code: "J0001",
+  name: "Sucursal Centro",
+  manager: "No exponer",
+  email: "private@example.test",
+  phone: "0000",
+  status: "ACTIVE",
+  services: { pickupAvailability: true, packageReception: true },
+  location: {
+    latitude: -31,
+    longitude: -68,
+    address: {
+      streetName: "Mitre",
+      streetNumber: "123",
+      locality: "San Juan",
+      city: "Capital",
+      province: "San Juan",
+      provinceCode: "J",
+      postalCode: "J5400ABC",
+    },
+  },
+  hours: [{ day: "monday" }],
+};
+
 function createResponse() {
   return {
     statusCode: 200,
@@ -205,10 +254,13 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl, cart = 
       if (url === "https://micorreo.test/v1/token") {
         return makeFetchResponse(200, { token: "jwt-test", expires_in: 3600 });
       }
-      if (url === "https://micorreo.test/v1/rates") {
+    if (url === "https://micorreo.test/v1/rates") {
         return makeFetchResponse(200, {
           rates: [{ deliveredType: "D", productType: "CP", price: 0 }],
         });
+      }
+      if (url.startsWith("https://micorreo.test/v1/agencies?")) {
+        return makeFetchResponse(200, []);
       }
       throw new Error("Unexpected external request in test");
     })
@@ -365,6 +417,103 @@ describe("migración 005 de shipping snapshot", () => {
     expect(sql).toMatch(/grant execute on function[\s\S]*to service_role;/i);
     expect(sql).toContain("calculated_products_subtotal <> p_products_subtotal");
     expect(sql).toContain("calculated_amount := calculated_products_subtotal + p_shipping_amount");
+  });
+});
+
+describe("migración 006 de agencia", () => {
+  const sql = fs.readFileSync(
+    path.join(__dirname, "../supabase/migrations/006_add_order_shipping_agency.sql"),
+    "utf8"
+  );
+
+  test("agrega snapshot nullable y permite home/agency sin modificar total", () => {
+    for (const column of [
+      "shipping_agency_code text", "shipping_agency_name text",
+      "shipping_agency_street_name text", "shipping_agency_street_number text",
+      "shipping_agency_locality text", "shipping_agency_postal_code text",
+    ]) expect(sql).toContain(column);
+    expect(sql).toContain("shipping_delivery_type in ('home', 'agency')");
+    expect(sql).toContain("'micorreo:agency:classic'");
+    expect(sql).toContain("'micorreo:agency:express'");
+    expect(sql).toContain("orders_shipping_agency_cohesion_check");
+    expect(sql).toContain("when shipping_delivery_type is null then num_nonnulls(");
+    expect(sql).toContain("when shipping_delivery_type = 'home' then num_nonnulls(");
+    expect(sql).toContain("when shipping_delivery_type = 'agency' then");
+    expect(sql).toContain("else false");
+    expect(sql).toContain("calculated_amount := calculated_products_subtotal + p_shipping_amount");
+    expect(sql).not.toMatch(/create\s+table\s+(?:public\.)?order_shipping/i);
+  });
+
+  test("reemplaza firma T-020, persiste agency y mantiene privilegio mínimo", () => {
+    expect(sql).toMatch(/drop function if exists public\.create_pending_order_with_items\([\s\S]*?jsonb\s*\);/i);
+    expect(sql).toContain("p_shipping_agency_code text");
+    expect(sql).toContain("security invoker");
+    expect(sql).toContain("set search_path = pg_catalog, public");
+    expect(sql).toMatch(/revoke execute on function[\s\S]*from public, anon, authenticated;/i);
+    expect(sql).toMatch(/grant execute on function[\s\S]*to service_role;/i);
+    expect(sql).toContain("p_shipping_delivery_type");
+    expect(sql).toContain("shipping_agency_code,");
+  });
+});
+
+describe("sucursales de envío", () => {
+  let spies;
+  beforeEach(() => {
+    spies = ["log", "warn", "error"].map((method) =>
+      jest.spyOn(console, method).mockImplementation(() => {})
+    );
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  test("mapea AR-J a J, ignora CP/browser customerId y normaliza respuesta", async () => {
+    const { routes, fetchMock } = loadApp({
+      fetchImpl: makeShippingAndAgencyFetch([], [activeAgency]),
+    });
+    const response = createResponse();
+    await routes.post["/sucursales-envio"]({
+      body: { province: "AR-J", postalCode: "9999", provinceCode: "X", customerId: "browser" },
+    }, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ agencies: [{
+      code: "J0001", name: "Sucursal Centro", streetName: "Mitre",
+      streetNumber: "123", locality: "San Juan", city: "Capital",
+      postalCode: "J5400ABC",
+    }] });
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "https://micorreo.test/v1/agencies?customerId=qa-customer&provinceCode=J"
+    );
+    expect(JSON.stringify(response.body)).not.toMatch(/manager|email|phone|latitude|longitude|hours|customerId/i);
+  });
+
+  test.each([undefined, "", "J", "AR-XX", "AR-I"])(
+    "provincia inválida %# devuelve 400 sin MiCorreo", async (province) => {
+      const { routes, fetchMock } = loadApp();
+      const response = createResponse();
+      await routes.post["/sucursales-envio"]({ body: { province } }, response);
+      expect(response.statusCode).toBe(400);
+      expect(response.body).toEqual({ error: "No pudimos obtener las sucursales" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
+
+  test("lista vacía es 200", async () => {
+    const { routes } = loadApp({ fetchImpl: makeShippingAndAgencyFetch([], []) });
+    const response = createResponse();
+    await routes.post["/sucursales-envio"]({ body: { province: "AR-B" } }, response);
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({ agencies: [] });
+  });
+
+  test.each([402, 429, 500])("MiCorreo agencies %s devuelve 503 genérico", async (agencyStatus) => {
+    const { routes } = loadApp({
+      fetchImpl: makeShippingAndAgencyFetch([], [], { agencyStatus }),
+    });
+    const response = createResponse();
+    await routes.post["/sucursales-envio"]({ body: { province: "AR-J" } }, response);
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "No pudimos obtener las sucursales" });
+    expect(serializedLogOutput(...spies)).not.toMatch(/AR-J|qa-customer|private agency/i);
   });
 });
 
@@ -741,6 +890,12 @@ describe("creación de preferencias", () => {
       p_shipping_option_id: "micorreo:home:classic",
       p_shipping_delivery_type: "home",
       p_shipping_service: "classic",
+      p_shipping_agency_code: null,
+      p_shipping_agency_name: null,
+      p_shipping_agency_street_name: null,
+      p_shipping_agency_street_number: null,
+      p_shipping_agency_locality: null,
+      p_shipping_agency_postal_code: null,
       p_currency: "ARS",
       p_customer_first_name: "Ana María",
       p_customer_last_name: "O'Connor",
@@ -1142,6 +1297,24 @@ describe("checkout multítem", () => {
     expect(preferenceCreate).not.toHaveBeenCalled();
   });
 
+  test("fallo de /agencies durante checkout devuelve 503 sin RPC ni MP", async () => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp({
+      fetchImpl: makeShippingAndAgencyFetch([
+        { deliveredType: "S", productType: "CP", price: 2500 },
+      ], [], { agencyStatus: 429 }),
+    });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest({
+      ...validPreferenceBody,
+      shippingOptionId: "micorreo:agency:classic",
+      shippingAgencyCode: "J0001",
+    }), response);
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual({ error: "No pudimos obtener las sucursales" });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
   test("recotiza home classic, persiste snapshot y cobra productos más envío", async () => {
     const fetchImpl = makeShippingFetch([
       { deliveredType: "D", productType: "CP", price: "8500.00" },
@@ -1329,10 +1502,124 @@ describe("checkout multítem", () => {
     expect(preferenceCreate.mock.calls[0][0].body.items).toHaveLength(3);
   });
 
+  test("HOME ignora shippingAgencyCode, no consulta agencies y persiste nulls", async () => {
+    const { routes, supabaseMock, fetchMock } = loadApp();
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest({
+      ...validPreferenceBody,
+      shippingAgencyCode: "J0001",
+      shippingAgencyName: "Manipulada",
+    }), response);
+    expect(response.statusCode).toBe(200);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes("/agencies"))).toBe(false);
+    expect(supabaseMock.createPendingOrderRpc.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        p_shipping_delivery_type: "home",
+        p_shipping_agency_code: null,
+        p_shipping_agency_name: null,
+        p_shipping_agency_street_name: null,
+        p_shipping_agency_street_number: null,
+        p_shipping_agency_locality: null,
+        p_shipping_agency_postal_code: null,
+      })
+    );
+  });
+
+  test.each([
+    ["classic", "CP", "micorreo:agency:classic"],
+    ["express", "EP", "micorreo:agency:express"],
+  ])("AGENCY %s recotiza, revalida y persiste snapshot autoritativo", async (
+    service, productType, shippingOptionId
+  ) => {
+    const fetchImpl = makeShippingAndAgencyFetch([
+      { deliveredType: "S", productType, price: 2500 },
+    ], [activeAgency]);
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp({
+      fetchImpl,
+      supabase: {
+        createPendingOrderRpc: async () => ({ data: {
+          order_id: 94,
+          external_reference: `LEMONT-ORDER-AGENCY-${service}`,
+          amount: 3500,
+          currency: "ARS",
+          status: "pending",
+        }, error: null }),
+      },
+    });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest({
+      ...validPreferenceBody,
+      shippingOptionId,
+      shippingAgencyCode: "J0001",
+      shippingAgencyName: "Nombre browser",
+      shippingAgencyStreetName: "Calle browser",
+      shippingAgencyPostalCode: "0000",
+    }), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(supabaseMock.createPendingOrderRpc.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        p_expected_amount: 3500,
+        p_products_subtotal: 1000,
+        p_shipping_amount: 2500,
+        p_shipping_option_id: shippingOptionId,
+        p_shipping_delivery_type: "agency",
+        p_shipping_service: service,
+        p_shipping_agency_code: "J0001",
+        p_shipping_agency_name: "Sucursal Centro",
+        p_shipping_agency_street_name: "Mitre",
+        p_shipping_agency_street_number: "123",
+        p_shipping_agency_locality: "San Juan",
+        p_shipping_agency_postal_code: "J5400ABC",
+      })
+    );
+    expect(preferenceCreate.mock.calls[0][0].body.items).toEqual([
+      { title: "Remera LEMONT - Talle S", quantity: 1, unit_price: 1000, currency_id: "ARS" },
+      { title: "Envío", quantity: 1, unit_price: 2500, currency_id: "ARS" },
+    ]);
+    expect(preferenceCreate.mock.calls[0][0].body).not.toHaveProperty("shipments");
+    expect(fetchMock.mock.calls.some(([url]) => url.includes("/shipping/import"))).toBe(false);
+  });
+
+  test("AGENCY sin code devuelve 400 antes de MiCorreo, RPC y MP", async () => {
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp();
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest({
+      ...validPreferenceBody,
+      shippingOptionId: "micorreo:agency:classic",
+    }), response);
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "Elegí una sucursal" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["inexistente", [activeAgency], "J9999"],
+    ["inactiva", [{ ...activeAgency, status: "INACTIVE" }], "J0001"],
+    ["sin pickup", [{ ...activeAgency, services: { pickupAvailability: false } }], "J0001"],
+  ])("AGENCY %s devuelve 409 sin RPC ni MP", async (label, agencies, shippingAgencyCode) => {
+    const { routes, supabaseMock, preferenceCreate } = loadApp({
+      fetchImpl: makeShippingAndAgencyFetch([
+        { deliveredType: "S", productType: "CP", price: 2500 },
+      ], agencies),
+    });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](makePreferenceRequest({
+      ...validPreferenceBody,
+      shippingOptionId: "micorreo:agency:classic",
+      shippingAgencyCode,
+    }), response);
+    expect(response.statusCode).toBe(409);
+    expect(response.body).toEqual({ error: "La sucursal ya no está disponible" });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+  });
+
   test.each([
     [undefined],
     [""],
-    ["micorreo:agency:classic"],
     ["micorreo:home:priority"],
     ["provider:home:classic"],
   ])("rechaza shippingOptionId ausente, agency o manipulado: %s", async (shippingOptionId) => {
@@ -2047,7 +2334,7 @@ describe("cotización de envío", () => {
       SHIPPING_ORIGIN_POSTAL_CODE: undefined,
     } });
     expect(Object.keys(routes.post).sort()).toEqual([
-      "/carrito/resumen", "/cotizar-envio", "/crear-preferencia", "/webhook",
+      "/carrito/resumen", "/cotizar-envio", "/crear-preferencia", "/sucursales-envio", "/webhook",
     ]);
     expect(Object.keys(routes.get).sort()).toEqual([
       "/failure", "/pending", "/success", "/webhook",

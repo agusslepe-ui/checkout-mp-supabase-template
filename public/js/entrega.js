@@ -19,6 +19,7 @@ let checkoutSubtotal = null;
 let checkoutCurrency = "ARS";
 let selectedShippingOptionId = null;
 let selectedShippingAmount = null;
+let selectedShippingAgencyCode = null;
 
 if (cartMode) {
   if (!cartStore.getItems().length) renderInvalidSelection();
@@ -76,7 +77,7 @@ function renderDeliveryForm() {
 
           <section class="shipping-quote" aria-labelledby="shipping-title">
             <h2 id="shipping-title">Envío</h2>
-            <p>Calculá las opciones disponibles y elegí un envío a domicilio para pagar.</p>
+            <p>Calculá las opciones disponibles y elegí entrega a domicilio o retiro en sucursal.</p>
             <button class="button button--secondary" type="button" data-shipping-button>Calcular envío</button>
             <div class="shipping-options" data-shipping-options></div>
             <p class="form-status" data-shipping-status aria-live="polite"></p>
@@ -117,6 +118,7 @@ function initializeForm() {
   const statusElement = form.querySelector("[data-delivery-status]");
   const onShippingSelectionChange = (selection) => {
     selectedShippingOptionId = selection?.id || null;
+    selectedShippingAgencyCode = selection?.agencyCode || null;
     selectedShippingAmount = Number.isFinite(Number(selection?.price))
       ? Number(selection.price)
       : null;
@@ -124,7 +126,9 @@ function initializeForm() {
     refreshSubmitState();
   };
   const refreshSubmitState = () => {
-    submitButton.disabled = !cartReady || !selectedShippingOptionId;
+    const needsAgency = selectedShippingOptionId?.startsWith("micorreo:agency:");
+    submitButton.disabled = !cartReady || !selectedShippingOptionId ||
+      (needsAgency && !selectedShippingAgencyCode);
   };
 
   if (cartMode) {
@@ -161,7 +165,12 @@ function initializeForm() {
       return;
     }
     if (!selectedShippingOptionId) {
-      statusElement.textContent = "Elegí una opción de envío a domicilio para continuar.";
+      statusElement.textContent = "Elegí una opción de envío para continuar.";
+      return;
+    }
+    if (selectedShippingOptionId.startsWith("micorreo:agency:") &&
+        !selectedShippingAgencyCode) {
+      statusElement.textContent = "Elegí una sucursal para continuar.";
       return;
     }
     const fields = [...form.querySelectorAll("input, select, textarea")];
@@ -195,6 +204,7 @@ function initializeForm() {
       customer,
       delivery,
       shippingOptionId: selectedShippingOptionId,
+      shippingAgencyCode: selectedShippingAgencyCode,
       onShippingInvalidated: () => {
         onShippingSelectionChange(null);
         form.querySelector("[data-shipping-options]")?.replaceChildren();

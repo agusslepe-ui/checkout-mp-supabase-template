@@ -1,14 +1,22 @@
 # Contexto actual del proyecto
 
+## Actualización vigente T-021 / DEC-026
+
+**T-021 EN PROGRESO / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA. DEC-026 PROPUESTA / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.** No marcar T-021 COMPLETADA ni DEC-026 ACEPTADA.
+
+MiCorreo `GET /agencies` se consume exclusivamente desde backend usando provincia (`AR-J → J`) y customerId privado. `/sucursales-envio` devuelve campos normalizados. AGENCY exige `shippingAgencyCode`, revalida rate/agencia y prepara snapshot autoritativo; HOME no llama agencies. Migración 006 creada y no aplicada. Suite local: **276/276**.
+
+Sin `/shipping/import`, pagos reales, cambios de webhook/HMAC, tracking o stock. Perfiles 300 g / 5 × 25 × 35 cm siguen TEMPORAL/QA; tienda no lista para público.
+
 ## Actualización vigente T-020 / DEC-025
 
-**T-020 IMPLEMENTADA LOCALMENTE / AUDITORÍA CORREGIDA / PENDIENTE DE CUTOVER. DEC-025 PROPUESTA / IMPLEMENTADA LOCALMENTE / AUDITORÍA APROBADA CON OBSERVACIONES.** No marcar T-020 COMPLETADA ni DEC-025 ACEPTADA.
+**T-020 IMPLEMENTADA Y DESPLEGADA según handoff T-021; paid QA completo pendiente por separado. DEC-025 no se cierra desde T-021.**
 
-Checkout exige `shippingOptionId`, recotiza MiCorreo y cobra la tarifa actual. Solo home Classic/Express es cobrable; agency es informativa. `orders.amount = products_subtotal + shipping_amount`, y Mercado Pago recibe productos + un ítem `Envío`, sin `shipments`. La migración 005 existe localmente y no fue aplicada. Suite local: **242/242**.
+Checkout T-020 exige `shippingOptionId`, recotiza MiCorreo y cobra la tarifa actual. HOME Classic/Express, subtotal + shipping + total e ítem `Envío` fueron confirmados operativamente. La migración 005 forma parte del despliegue informado. La suite previa a T-021 era **242/242**.
 
 El webhook/HMAC sigue intacto y compara el pago contra `orders.amount`/`currency`. Sin `/shipping/import`, agencias, tracking, stock ni T-017. Perfiles 1–4: 300 g / 5 × 25 × 35 cm TEMPORAL/QA; producción comercial continúa bloqueada.
 
-Próximo: cutover controlado → aplicación autorizada de migración → QA integrado. No deploy ni pruebas reales en esta implementación.
+Próximo T-021: auditoría → aplicación controlada de migración 006 → QA. El paid QA completo de T-020 sigue separado.
 
 ## Actualización vigente T-019 / DEC-024
 
@@ -16,9 +24,9 @@ Próximo: cutover controlado → aplicación autorizada de migración → QA int
 
 Cotización dual items o legacy, resolver común, tope 4 unidades totales, perfiles editables TEMPORAL/QA 1–4 (todos 300/5/25/35), frontend multítem y normalización CP/EP + D/S. Sin selección de agencia ni costo incluido en el pago. Origen CP 5465 — Rodeo, San Juan.
 
-En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío**; el estado vigente es T-020 local pendiente de cutover.
+En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío**; hoy T-020 está desplegada según el handoff y T-021 está implementada localmente.
 
-> Resumen compacto para agentes. Última actualización: 2026-09-15 (T-020 corregida post-auditoría y pendiente de cutover; tests 242/242).
+> Resumen compacto para agentes. Última actualización: 2026-09-15 (T-021 implementada localmente y pendiente de auditoría; tests 276/276).
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -46,14 +54,14 @@ En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD
 - La migración 004 y la RPC fueron validadas manualmente en Supabase real: un pedido y su item, total, moneda, estado, columnas legacy, relación y `ON DELETE CASCADE`.
 - El runtime local actualizado crea la preferencia, `orders` y `order_items`, y redirige a Checkout Pro.
 - El webhook permanece sin cambios: HMAC, validación de importe/moneda, idempotencia y transición atómica `pending → paid` siguen vigentes.
-- Último resultado comprobado de tests: **242/242** (T-020 corregida). T-019 cerró en 211/211; T-018 en 178/178; T-016 en 158/158.
+- Último resultado comprobado de tests: **276/276** (T-021 local). T-020 tenía 242/242; T-019 cerró en 211/211; T-018 en 178/178; T-016 en 158/158.
 - Incidente QA resuelto: pedidos nuevos aparecieron con `customer_*` y `shipping_*` en `NULL`. Se comprobó una sola RPC activa, firma/permisos correctos y definición/`INSERT` activos correctos. La causa fue una instancia antigua iniciada con `npm start`; tras reiniciar Node quedó cargado el runtime actualizado.
 
 ### PENDIENTE
 
 - **DEC-022** está propuesta (no aceptada). **T-017** está bloqueada. Idempotencia durable fuera de T-016.
 - `maxQuantity: 4` está aplicado en `src/catalog.js` como techo **temporal**. **No sustituye stock real.** El stock real será una evolución futura.
-- T-020 corrigió las observaciones de auditoría; la migración 005 todavía debe aplicarse de forma controlada antes del QA integrado. DEC-025 no está aceptada.
+- T-021 está implementada localmente; falta auditoría, aplicación controlada de la migración 006 y QA. DEC-026 no está aceptada. El paid QA y cierre de T-020 permanecen separados; DEC-025 tampoco está aceptada.
 - Vulnerabilidades npm (2 moderate + 2 high) informadas durante `npm ci`. No se ejecutó `npm audit fix`. Auditarlas en una tarea separada; no forman parte de T-016 Paso 1.
 - Correo Argentino: `POST /token` PROD (`micorreo_auth_ok`) y `POST /rates` PROD (`micorreo_rates_ok options=4`) verificados. `/shipping/import` **no** fue llamado. Las medidas `300 g / 5 × 25 × 35 cm` siguen TEMPORAL/QA y **no** están aprobadas para producción.
 - Etapa D (crear envío post-pago) permanece pendiente y fuera de T-020.
@@ -62,7 +70,7 @@ En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD
 
 ### PRÓXIMO PASO
 
-**Preparar el cutover controlado de T-020.** Aplicar la migración 005 solo con autorización explícita y luego ejecutar QA. Las medidas reales de producción siguen pendientes y bloquean el lanzamiento comercial.
+**Auditar T-021.** Solo después y con autorización explícita, aplicar la migración 006 y ejecutar QA controlado. Las medidas reales de producción siguen pendientes y bloquean el lanzamiento comercial.
 
 **Regla operativa obligatoria:** después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.
 
@@ -196,12 +204,12 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 - **Identificadores**: PostgreSQL genera `LEMONT-ORDER-<UUID>` dentro de `create_pending_order_with_items`; Node reutiliza exactamente esa referencia en Mercado Pago.
 - **Logs**: JSON estructurado por helper propio `log()`, con `request_id`, niveles y lista explícita de campos prohibidos.
 - **Base de datos**: Supabase, tablas `orders` y `order_items`; creación atómica mediante RPC con `service_role` solo desde backend. RLS habilitada y sin ejecución pública de la RPC.
-- **Migraciones SQL**: 001–004 aplicadas. La 005 agrega shipping snapshot y reemplaza la RPC; está creada localmente y NO aplicada.
+- **Migraciones SQL**: 001–005 aplicadas según el handoff de T-021. La 006 agrega snapshot de agencia y reemplaza la firma RPC; está creada localmente y NO aplicada.
 - **Datos de entrega**: `003_add_order_customer_delivery.sql` aplicada y verificada; agrega doce columnas nullable sin completar pedidos históricos.
 - **Catálogo**: `src/catalog.js` es fuente autoritativa del producto, precio unitario, moneda y cantidad máxima. `maxQuantity: 4` es temporal y no es stock. El cliente no controla importe ni moneda.
 - **Carrito:** Paso 1 COMPLETADO — `src/cart.js` y `POST /carrito/resumen`. Paso 2 COMPLETADO — checkout `{ items, customer, delivery }` y legacy. Paso 3 COMPLETADO — `public/carrito.html`, `cartStore` (`lemont.cart`, solo SKU + quantity), contador por unidades, D1-A, D2-A. El frontend no es autoridad de precios.
-- **Tests locales**: último resultado comprobado **242/242**, 4 suites, 0 fallos. T-019 cerró en 211/211; T-018 en 178/178; T-016 en 158/158.
-- **Envío**: T-020 implementado localmente. Checkout recotiza y suma home Classic/Express al total; agency es informativa. Perfiles TEMPORAL/QA. La migración aún no fue aplicada.
+- **Tests locales**: último resultado comprobado **276/276**, 4 suites, 0 fallos. T-020 tenía 242/242; T-019 cerró en 211/211; T-018 en 178/178; T-016 en 158/158.
+- **Envío**: T-020/HOME está desplegado según el handoff. T-021 permite AGENCY Classic/Express con code y snapshot autoritativo solo localmente. Perfiles TEMPORAL/QA. Migración 006 no aplicada.
 - **Límite del carrito**: 50 entradas originales antes de agrupar; SKUs duplicados se agrupan; después se valida la cantidad acumulada por SKU contra `maxQuantity`.
 - **Dependencias**: npm ci reportó 4 vulnerabilidades (2 moderate, 2 high). No se ejecutó `npm audit fix` ni se modificaron paquetes. Remediación pendiente en una tarea separada; no forma parte de T-016 Paso 1.
 - **Diagnóstico**: `GET /webhook` disponible solo fuera de producción (`NODE_ENV !== "production"`). `POST /webhook` disponible en todos los entornos.
@@ -230,7 +238,8 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | `supabase/migrations/002_add_order_product_variant.sql` | Agrega `product_sku` y `product_size` nullable. Aplicada y verificada sin alterar registros históricos. |
 | `supabase/migrations/003_add_order_customer_delivery.sql` | Agrega datos de cliente y destino como columnas nullable. Aplicada y verificada sin alterar registros históricos. |
 | `supabase/migrations/004_create_order_items.sql` | Crea `order_items` y la RPC atómica estricta. Aplicada y validada manualmente en Supabase real. |
-| `supabase/migrations/005_add_order_shipping_snapshot.sql` | Agrega shipping snapshot y total, y reemplaza la RPC. Creada localmente; NO aplicada. |
+| `supabase/migrations/005_add_order_shipping_snapshot.sql` | Agrega shipping snapshot y total, y reemplaza la RPC. Aplicada según el handoff de T-021. |
+| `supabase/migrations/006_add_order_shipping_agency.sql` | Agrega snapshot de agencia y reemplaza la firma RPC. Creada localmente; NO aplicada. |
 | `Dockerfile` | Build de staging con Node.js 22; instala con `npm ci`, expone `3003` y ejecuta `npm start`. |
 | `.dockerignore` | Excluye `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales del contexto Docker. |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). Incluye `LOG_LEVEL=info`. |

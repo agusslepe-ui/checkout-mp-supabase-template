@@ -1,8 +1,20 @@
 # Tareas
 
+## T-021 — Selección real de sucursal MiCorreo
+
+**Estado:** EN PROGRESO / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA. **No COMPLETADA.**
+**Decisión:** DEC-026 PROPUESTA / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.
+**Verificación local:** 276/276 tests; migración 006 creada y no aplicada.
+
+- Provider/service implementan `listAgencies`; endpoint `/sucursales-envio` usa provincia y devuelve campos públicos mínimos.
+- Frontend permite las cuatro opciones, lista/busca agencias, envía solo code e invalida selección ante cambios o respuestas tardías.
+- Checkout HOME intacto. AGENCY requiere code, revalida tarifa/sucursal y persiste snapshot autoritativo mediante la RPC 006.
+- Sin cambios a Mercado Pago, webhook/HMAC, perfiles, `/shipping/import`, tracking o stock.
+- Pendiente: auditoría, aplicación controlada de 006 y QA. No habilita producción comercial.
+
 ## T-020 — Shipping incluido en checkout y total
 
-**Estado:** IMPLEMENTADA LOCALMENTE / AUDITORÍA CORREGIDA / PENDIENTE DE CUTOVER. **No COMPLETADA.**
+**Estado operativo informado al iniciar T-021:** IMPLEMENTADA Y DESPLEGADA; paid QA completo pendiente como tarea separada. No cerrar documentalmente desde T-021.
 **Decisión:** DEC-025 PROPUESTA / IMPLEMENTADA LOCALMENTE / AUDITORÍA APROBADA CON OBSERVACIONES; no aceptada formalmente.
 **Verificación local:** 242/242 tests; `git diff --check` sin errores (solo avisos informativos LF/CRLF).
 
@@ -10,9 +22,9 @@
 - Node calcula subtotal, envío y total en centavos; la RPC valida subtotal contra items, valida snapshot y persiste el total atómicamente.
 - Mercado Pago recibe productos + ítem `Envío`, sin `shipments`.
 - Frontend exige selección home, muestra Subtotal/Envío/Total e invalida la selección al cambiar CP, carrito o recibir 409. Agency es informativa.
-- Migración 005 creada localmente y **NO aplicada**. Órdenes históricas permanecen con snapshot nulo.
+- Migración 005 aplicada como parte del despliegue T-020 informado por el usuario. Órdenes históricas conservan snapshot nulo.
 - Correcciones post-auditoría: validación del total de preferencia antes de la RPC, mensajes 400 controlados, logs genéricos y regresiones de decimal, 3+2, rates vacíos y cero efectos laterales.
-- Pendiente para cierre: cutover, aplicación controlada de migración y QA aprobado. Perfiles reales y validación comercial siguen bloqueando producción.
+- Pendiente para el cierre formal separado de T-020: paid QA y aprobación documental. Perfiles reales y validación comercial siguen bloqueando producción.
 
 ## T-019 — MiCorreo Etapa B: cotización real multítem
 
@@ -24,7 +36,7 @@
 - Auditoría técnica: APROBADO CON OBSERVACIONES. Suite **211/211**, 4 suites.
 - Prueba real `POST /rates` PROD: `micorreo_rates_ok options=4`. Origen CP 5465 (Rodeo, San Juan). Destino QA CP 5400. No se imprimió JWT, password, Basic Auth, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Mercado Pago intacto. Envío no cobrado.
 - Los perfiles 1–4 siguen TEMPORAL/QA. Las medidas actuales **no** están aprobadas para producción.
-- Antecedente histórico de T-019: en ese cierre la siguiente etapa, Etapa C, todavía no estaba implementada. El estado vigente es T-020 local, pendiente de cutover.
+- Antecedente histórico de T-019: en ese cierre la siguiente etapa, Etapa C, todavía no estaba implementada. El estado vigente de T-020 es desplegada según el handoff; T-021 está implementada localmente y pendiente de auditoría.
 
 ## T-018 — MiCorreo Etapa A: autenticación + ShippingProvider
 
@@ -50,8 +62,9 @@
 - Columnas legacy conservadas temporalmente desde el primer item.
 - Webhook, HMAC, idempotencia y transición `pending → paid` sin cambios.
 - Incidente QA de columnas `customer_*`/`shipping_*` en `NULL` resuelto: se estaba ejecutando una instancia Node antigua. La RPC activa, firma, permisos e `INSERT` fueron verificados como correctos.
-- Último resultado comprobado de tests: **242/242** (T-020 corregida post-auditoría). El recuento 211/211 queda como antecedente de T-019; 178/178 de T-018; 158/158 de T-016.
-- **T-020 IMPLEMENTADA LOCALMENTE / AUDITORÍA CORREGIDA / PENDIENTE DE CUTOVER.** Migración 005 aún no aplicada; falta QA integrado. DEC-025 no está ACEPTADA.
+- Último resultado comprobado de tests: **276/276** (T-021 local). El recuento 242/242 queda como antecedente de T-020; 211/211 de T-019; 178/178 de T-018; 158/158 de T-016.
+- **T-021 EN PROGRESO / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.** Migración 006 no aplicada. DEC-026 no está ACEPTADA.
+- **T-020 IMPLEMENTADA Y DESPLEGADA** según el handoff de T-021; paid QA completo pendiente por separado. Migración 005 aplicada. DEC-025 no está ACEPTADA.
 - **DEC-024 ACEPTADA** / **T-019 COMPLETADA** (cierre formal 2026-09-15): cotización informativa multítem, 1–4 unidades totales, perfiles TEMPORAL/QA. `POST /rates` PROD → `micorreo_rates_ok options=4`. Origen 5465, destino QA 5400. Envío fuera del pago.
 - **DEC-023 ACEPTADA** (cierre formal 2026-09-15). **T-018 COMPLETADA:** autenticación + provider. Prueba real `POST /token` PROD → `micorreo_auth_ok`.
 - Auditoría 2026-09-11: el checkout HTTP era de un solo SKU; desde el Paso 2 acepta múltiples ítems usando la RPC existente.
@@ -64,7 +77,7 @@
 ### PENDIENTE
 
 - **DEC-022** propuesta; **T-017** bloqueada. Idempotencia durable fuera de T-016.
-- **Cutover de T-020:** pendiente. Etapa C ya está implementada y probada localmente, pero la migración 005 no fue aplicada y falta QA integrado; el webhook sigue comparando contra el total persistido sin cambios de lógica.
+- **T-021:** pendiente auditoría, aplicación controlada de la migración 006 y QA. El webhook sigue comparando contra el total persistido sin cambios de lógica.
 - Etapa D (creación de envío post-pago) pendiente. No llamar `/shipping/import`.
 - Reemplazar medidas QA (`300 g / 5 × 25 × 35 cm`) por dimensiones/peso reales **antes de usar tarifas en producción**. Los perfiles 1–4 siguen TEMPORAL/QA.
 - Rotar credenciales privadas comprometidas y restaurar precio comercial antes del lanzamiento público.
@@ -74,7 +87,7 @@
 
 ### PRÓXIMO PASO
 
-**Cutover controlado de T-020.** Revisar el diff, aplicar la migración 005 solo con autorización explícita y ejecutar QA integrado. Antes del lanzamiento comercial hay que aprobar medidas reales de producción. DEC-022/T-017, stock, deuda npm y Etapa D quedan fuera de este cierre.
+**Auditar T-021.** Después, aplicar la migración 006 solo con autorización explícita y ejecutar QA controlado. El paid QA de T-020 continúa como tarea separada. Antes del lanzamiento comercial hay que aprobar medidas reales de producción. DEC-022/T-017, stock, deuda npm y Etapa D quedan fuera de este cierre.
 
 ### Regla operativa
 

@@ -1,14 +1,20 @@
 # Requisitos
 
-## Actualización T-020 — IMPLEMENTADA LOCALMENTE / AUDITORÍA CORREGIDA / PENDIENTE DE CUTOVER
+## Actualización T-021 — IMPLEMENTADA LOCALMENTE / PENDIENTE DE AUDITORÍA
+
+`POST /sucursales-envio` recibe solo `province` ISO `AR-*`; backend deriva `provinceCode`, agrega `customerId` privado y usa MiCorreo `GET /agencies`. La respuesta pública incluye code, nombre y domicilio normalizados; exige ACTIVE y, cuando existe, `pickupAvailability: true`.
+
+Checkout acepta HOME sin agencia o AGENCY con `shippingAgencyCode`. Para AGENCY recotiza `/rates`, vuelve a listar agencias y persiste exclusivamente el snapshot de la respuesta autoritativa. El total sigue siendo productos + shipping; Mercado Pago y webhook no cambian. Migración 006 local no aplicada. Suite: 276/276.
+
+## Actualización T-020 — IMPLEMENTADA Y DESPLEGADA / PAID QA PENDIENTE SEPARADO
 
 `POST /crear-preferencia` requiere `shippingOptionId` tanto para `items[]` como para legacy. El backend recotiza MiCorreo con el carrito y CP de entrega, acepta solo home Classic/Express, toma la tarifa vigente y persiste subtotal, envío y total. Si la opción desaparece responde 409; fallos de MiCorreo responden 503 sin crear orden; 5+ unidades responden 400 sin cotizar.
 
-Mercado Pago cobra productos + un ítem `Envío`, sin `shipments`. Agency continúa visible solo como información. El frontend muestra Subtotal/Envío/Total, exige selección home y la invalida al cambiar CP o carrito. La migración 005 existe localmente y no fue aplicada. T-020 no está completada y DEC-025 no está aceptada.
+Mercado Pago cobra productos + un ítem `Envío`, sin `shipments`. T-020 desplegó HOME y la migración 005; AGENCY seleccionable pertenece a T-021. Su paid QA completo y cierre documental siguen separados.
 
 ## Actualización T-019 — COMPLETADA (DEC-024 ACEPTADA)
 
-En el cierre histórico de T-019, la cotización informativa admitía contrato dual items[] o sku+quantity y 1–4 unidades totales, con perfiles editables TEMPORAL/QA (300 g / 5 × 25 × 35 cm para cada cantidad). Cantidades totales 5+ se rechazaban sin MiCorreo. CP origen productivo acordado 5465 desde entorno. Domicilio/sucursal y Clásico/Express solo cuando los devolvía MiCorreo; sin elegir agencia, sin persistencia ni envío en el pago. La suite de ese cierre fue 211/211. `POST /rates` PROD verificado (`micorreo_rates_ok options=4`, destino QA 5400). Las medidas actuales **no** están aprobadas para producción. Etapa C estaba pendiente en ese cierre; hoy T-020 está implementada localmente y pendiente de cutover.
+En el cierre histórico de T-019, la cotización informativa admitía contrato dual items[] o sku+quantity y 1–4 unidades totales, con perfiles editables TEMPORAL/QA (300 g / 5 × 25 × 35 cm para cada cantidad). Cantidades totales 5+ se rechazaban sin MiCorreo. CP origen productivo acordado 5465 desde entorno. Domicilio/sucursal y Clásico/Express solo cuando los devolvía MiCorreo; sin elegir agencia, sin persistencia ni envío en el pago. La suite de ese cierre fue 211/211. `POST /rates` PROD verificado (`micorreo_rates_ok options=4`, destino QA 5400). Las medidas actuales **no** están aprobadas para producción. Etapa C estaba pendiente en ese cierre; hoy T-020 está desplegada según el handoff y T-021 está implementada localmente.
 
 ## Objetivo
 
@@ -47,7 +53,7 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 ## Datos de entrada
 
 - Configuración: credencial de Mercado Pago, URL pública, URL de Supabase y clave de servicio.
-- Inicio de compra: `{ items: [{ sku, quantity }], customer, delivery, shippingOptionId }` o legacy `{ sku, quantity, customer, delivery, shippingOptionId }`. Ambos requieren cliente/entrega y opción home válidos. Mezcla de contratos: HTTP 400 `{ "error": "Carrito inválido" }`.
+- Inicio de compra: `{ items: [{ sku, quantity }], customer, delivery, shippingOptionId, shippingAgencyCode? }` o legacy `{ sku, quantity, customer, delivery, shippingOptionId, shippingAgencyCode? }`. Ambos requieren cliente/entrega y opción válida; AGENCY exige un code vigente y HOME ignora cualquier code extra. Mezcla de contratos: HTTP 400 `{ "error": "Carrito inválido" }`.
 - Resumen: `POST /carrito/resumen` recibe `{ items }`, valida y devuelve importes del backend sin persistir.
 - Carrito local: `lemont.cart`, versión 1, solo SKU y cantidad; sin PII ni datos comerciales.
 - Webhook: tipo de evento y `payment_id`, recibidos en query string o cuerpo JSON.
@@ -65,12 +71,12 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 
 - El servidor usa el puerto fijo `3003`.
 - Remera LEMONT: `LEM-REM-001-S`, `LEM-REM-001-M`, `LEM-REM-001-L`, `LEM-REM-001-XL`; ARS 1.000 temporal, `maxQuantity: 4` transitorio (no stock). Máximo 50 entradas originales antes de agrupar.
-- Shipping cobrable solo para 1–4 unidades totales y entrega home; perfiles 300 g / 5 × 25 × 35 cm exclusivamente TEMPORAL/QA.
+- Shipping cobrable solo para 1–4 unidades totales y entrega HOME o AGENCY Classic/Express; AGENCY exige sucursal vigente. Perfiles 300 g / 5 × 25 × 35 cm exclusivamente TEMPORAL/QA.
 - La integración requiere una URL pública HTTPS para webhooks y retornos confiables.
 - La clave `service_role` de Supabase solo puede usarse en backend.
 - La confirmación del pago depende de la disponibilidad de Mercado Pago y Supabase.
-- Hay 242 tests automatizados en Jest. Frontend vanilla + ES modules con pruebas DOM mínimas aisladas. No hay contrato de disponibilidad definido.
-- Existen migraciones versionadas 001–004 aplicadas y una migración 005 local pendiente de aplicación controlada.
+- Hay 276 tests automatizados en Jest. Frontend vanilla + ES modules con pruebas DOM mínimas aisladas. No hay contrato de disponibilidad definido.
+- Existen migraciones versionadas 001–005 aplicadas según el handoff de T-021 y una migración 006 local pendiente de auditoría y aplicación controlada.
 
 ## El sistema no debe
 

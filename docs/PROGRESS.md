@@ -1,5 +1,14 @@
 # Progreso
 
+## 2026-09-15 — T-021 implementada localmente / pendiente de auditoría
+
+- `GET /agencies` integrado mediante provider/service existentes; endpoint público por provincia y respuesta normalizada.
+- AGENCY Classic/Express cobrables solo con code revalidado; snapshot autoritativo preparado para RPC. HOME no llama agencies.
+- UX con radios/tarjetas, búsqueda local, pay gate e invalidación por provincia/CP/carrito/opción y respuestas tardías.
+- Nueva migración 006, no aplicada. Sin modificar 001–005 ni implementar `/shipping/import`.
+- Verificación: **276/276 tests**, 4 suites, sin red real. Estado: T-021 no completada; DEC-026 no aceptada.
+- T-020 figura como desplegada según handoff; su paid QA completo continúa separado y no se cierra desde T-021.
+
 ## 2026-09-15 — T-020 correcciones post-auditoría
 
 - Auditoría Grok: APROBADA CON OBSERVACIONES. Se corrigieron orden de validación pre-RPC, mensajes 400 controlados de shipping, logs genéricos y documentación vigente/histórica.
@@ -58,7 +67,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-15. T-020 corregida post-auditoría y pendiente de cutover; DEC-025 no aceptada. Tests: 242/242.
+Última revisión documental: 2026-09-15. T-021 implementada localmente y pendiente de auditoría; DEC-026 no aceptada. Migración 006 no aplicada. Tests: 276/276.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 
@@ -89,13 +98,14 @@ Cierre formal tras auditoría (APROBADO CON OBSERVACIONES, solo documentales) y 
 
 ## Estado actual
 
-- **T-020 IMPLEMENTADA LOCALMENTE / AUDITORÍA CORREGIDA / PENDIENTE DE CUTOVER.** **DEC-025 PROPUESTA / IMPLEMENTADA LOCALMENTE / AUDITORÍA APROBADA CON OBSERVACIONES.** Migración 005 no aplicada; falta QA integrado.
+- **T-021 EN PROGRESO / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.** **DEC-026 PROPUESTA / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.** Migración 006 no aplicada.
+- **T-020 IMPLEMENTADA Y DESPLEGADA** según el handoff de T-021; paid QA completo pendiente por separado. **DEC-025** no aceptada.
 - **DEC-024 ACEPTADA.** **T-019 COMPLETADA** (2026-09-15).
 - Prueba real `POST /rates` PROD: `micorreo_rates_ok options=4`. Origen 5465, destino QA 5400. JWT/secretos no impresos. Sin `/shipping/import`, sin envío creado, sin cobro de shipping.
 - Perfiles 1–4 TEMPORAL/QA; medidas **no** aprobadas para producción. La referencia a Etapa C pendiente corresponde al cierre histórico de T-019.
 - **DEC-023 ACEPTADA.** **T-018 COMPLETADA** (2026-09-15).
 - Prueba real `POST /token` PROD: `micorreo_auth_ok`. JWT no impreso ni persistido.
-- Suite vigente: **242/242**, 4 suites.
+- Suite vigente: **276/276**, 4 suites.
 - **T-016 COMPLETADA**, Pasos 1–4 COMPLETADOS.
 - Paso 1 COMPLETADO (en `main`).
 - Paso 2 COMPLETADO (auditado y aprobado el 2026-09-12).

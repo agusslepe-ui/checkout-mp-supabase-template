@@ -1,10 +1,16 @@
 # Mercado Pago Checkout Pro + Supabase
 
-## T-020 — IMPLEMENTADO LOCALMENTE + AUDITORÍA CORREGIDA + PENDIENTE DE CUTOVER
+## T-021 — selección de sucursal IMPLEMENTADA LOCALMENTE / PENDIENTE DE AUDITORÍA
 
-`POST /crear-preferencia` exige `shippingOptionId`, vuelve a cotizar MiCorreo y cobra el precio actual. Solo domicilio Classic/Express es cobrable; sucursal continúa informativa. El backend persiste `products_subtotal`, `shipping_amount`, shipping snapshot y `amount` total mediante la RPC nueva. Mercado Pago recibe productos + un ítem `Envío`, sin `shipments`.
+`POST /sucursales-envio` recibe `{ province: "AR-J" }`; el backend traduce la provincia, consulta MiCorreo `GET /agencies` y devuelve solo sucursales ACTIVE normalizadas. Checkout AGENCY exige `shippingAgencyCode`, vuelve a validar rate y sucursal, y prepara un snapshot autoritativo. HOME sigue sin consultar ni persistir agencia.
 
-La migración `005_add_order_shipping_snapshot.sql` fue creada pero **NO aplicada**. Suite local: **242/242**. T-020 no está completada y DEC-025 no está aceptada: la auditoría fue aprobada con observaciones y sus correcciones quedaron implementadas; faltan cutover controlado, aplicación de migración y QA. Los perfiles 300 g / 5 × 25 × 35 cm son TEMPORAL/QA; la tienda no está lista para público.
+La migración `006_add_order_shipping_agency.sql` fue creada pero **NO aplicada**. Suite local: **276/276**. DEC-026 continúa PROPUESTA y T-021 no está COMPLETADA. Sin `/shipping/import`; perfiles TEMPORAL/QA y tienda no lista para público.
+
+## T-020 — IMPLEMENTADA Y DESPLEGADA / PAID QA PENDIENTE SEPARADO
+
+`POST /crear-preferencia` exige `shippingOptionId`, vuelve a cotizar MiCorreo y cobra el precio actual. HOME Classic/Express está desplegado; `/rates`, subtotal, shipping, total e ítem `Envío` fueron confirmados en QA operativo. El paid QA completo de T-020 sigue siendo una tarea separada.
+
+La migración 005 forma parte del despliegue T-020 informado por el usuario. Su cierre documental y paid QA no se mezclan con T-021. Los perfiles 300 g / 5 × 25 × 35 cm continúan TEMPORAL/QA.
 
 ## T-019 — cotización multítem COMPLETADA (DEC-024 ACEPTADA)
 
@@ -28,7 +34,7 @@ Aplicación mínima de comercio electrónico para probar un pago de una Remera L
 
 - Node.js y npm compatibles con las dependencias del proyecto.
 - Una cuenta y credencial de prueba de Mercado Pago.
-- Un proyecto Supabase con `orders`, `order_items` y la RPC de las migraciones 001–004.
+- Un proyecto Supabase con `orders`, `order_items` y las migraciones 001–005 aplicadas. La 006 debe aplicarse de forma controlada después de la auditoría de T-021.
 - Una URL pública HTTPS para recibir webhooks; en desarrollo puede utilizarse ngrok.
 
 ## Instalación
@@ -63,7 +69,7 @@ LOG_LEVEL=info
 
 ## Base de datos
 
-Las migraciones `supabase/migrations/001` a `004` aplicadas definen `orders`, variantes, cliente/entrega y `order_items`. La migración 005 local agrega el shipping snapshot y reemplaza `create_pending_order_with_items`; todavía no fue aplicada. La RPC crea atómicamente una orden `pending` y sus líneas, valida subtotal + envío = total y genera `external_reference`; Node reutiliza esa referencia en Mercado Pago. No ejecutar cambios de esquema sin autorización.
+Las migraciones `supabase/migrations/001` a `005` están aplicadas según el handoff de T-021: definen `orders`, variantes, cliente/entrega, `order_items` y el snapshot de shipping HOME. La migración 006 agrega el snapshot de agencia y reemplaza la firma de `create_pending_order_with_items`; está creada localmente y **no fue aplicada**. La RPC crea atómicamente una orden `pending` y sus líneas, valida subtotal + envío = total y genera `external_reference`; Node reutiliza esa referencia en Mercado Pago. No ejecutar cambios de esquema sin autorización.
 
 ## Ejecución
 
@@ -146,7 +152,7 @@ El ejemplo usa datos ficticios y requiere un entorno de prueba autorizado. Sin `
 
 ## Limitaciones actuales
 
-Remera LEMONT tiene variantes S/M/L/XL, precio ARS 1.000 temporal y `maxQuantity: 4` transitorio: no es stock. T-020 incluye shipping home en el total localmente, pero la migración no fue aplicada y faltan cutover/QA. No hay stock real ni idempotencia durable del checkout (DEC-022 propuesta); agency permanece solo informativa.
+Remera LEMONT tiene variantes S/M/L/XL, precio ARS 1.000 temporal y `maxQuantity: 4` transitorio: no es stock. T-020/HOME está desplegada según el handoff; T-021/AGENCY está implementada solo localmente y la migración 006 no fue aplicada. Faltan auditoría, aplicación controlada y QA. No hay stock real ni idempotencia durable del checkout (DEC-022 propuesta).
 
 T-016 COMPLETADA (Pasos 1–4). `npm.cmd test`: **158/158**, 1 suite; frontend del carrito validado por QA manual, sin tests DOM a propósito.
 

@@ -1,13 +1,23 @@
 # Seguridad
 
-## T-020 / DEC-025 — implementada localmente / auditoría corregida / pendiente de cutover
+## T-021 / DEC-026 — implementada localmente / pendiente de auditoría
+
+- Browser envía provincia ISO al endpoint y solo `shippingAgencyCode` al checkout; nunca customerId, price ni snapshot.
+- Backend revalida `/rates` y `/agencies` antes de la RPC. Solo ACTIVE y pickup usable; lista vacía es 200.
+- Respuesta pública omite manager, email, phone, JWT, customerId, coordenadas, hours y wrapper crudo.
+- Logs permitidos: `agency_lookup_ok`, `agency_lookup_failed`, `agency_selection_invalid`; sin code, provincia, CP, cliente ni body.
+- Frontend renderiza datos del provider con `createElement`/`textContent` y descarta respuestas tardías con AbortController + revisiones.
+- Migración 006 local no aplicada; snapshot nullable para historia/HOME, completo y coherente para AGENCY. RPC invoker y privilegios restringidos.
+- 276/276 tests con red, Supabase y Mercado Pago simulados. Sin `.env`, SQL real ni llamadas externas.
+
+## T-020 / DEC-025 — desplegada / paid QA pendiente separado
 
 - El navegador envía únicamente `shippingOptionId`; precio de envío, subtotal, total, moneda, provider, service, customerId, origen y dimensiones permanecen bajo autoridad del backend.
 - Checkout vuelve a resolver el carrito y a consultar `/rates`. Solo home Classic/Express es cobrable. Agency, IDs manipulados y opciones ambiguas no crean órdenes.
 - Carritos de 5+ unidades fallan antes de MiCorreo, RPC y Mercado Pago. Fallos de MiCorreo fallan antes de persistir; una opción desaparecida responde 409.
 - Node calcula en centavos. La RPC valida `p_items`, calcula `SUM(quantity * unit_price)`, lo compara con `p_products_subtotal` y valida `p_expected_amount = p_products_subtotal + p_shipping_amount` antes de insertar `orders` y `order_items`; no suma filas ya insertadas de `order_items`.
 - Mercado Pago recibe productos + un ítem `Envío`, nunca `shipments`. El webhook/HMAC no fue modificado y compara exclusivamente contra `orders.amount` y `orders.currency`.
-- La migración 005 mantiene snapshots históricos en null, restringe valores cobrables y conserva RPC `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` solo para `service_role`. No fue aplicada.
+- La migración 005 mantiene snapshots históricos en null, restringe valores cobrables y conserva RPC `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` solo para `service_role`. Fue aplicada en el despliegue T-020 informado.
 - Tests 242/242 con dotenv, Supabase, Mercado Pago y red simulados. No se leyeron secretos ni se hicieron llamadas reales.
 - Riesgos pendientes: orden pending huérfana si MP falla, doble checkout sin idempotencia durable, perfiles TEMPORAL/QA, credenciales por rotar y falta de stock real. Producción comercial bloqueada.
 

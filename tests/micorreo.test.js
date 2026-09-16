@@ -166,4 +166,122 @@ describe("T-018 autenticacion interna y provider", () => {
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  test("listAgencies usa GET, Bearer y solo customerId + provinceCode", async () => {
+    const { listAgencies, MiCorreoProvider } = load();
+    global.fetch
+      .mockResolvedValueOnce(response(200, {
+        token: "fixture-token", expires: "2026-09-14T13:00:00Z",
+      }))
+      .mockResolvedValueOnce(response(200, []));
+
+    await expect(listAgencies({
+      customerId: "fixture-customer", provinceCode: "J",
+    })).resolves.toEqual([]);
+    expect(MiCorreoProvider.listAgencies).toBe(listAgencies);
+    const [url, options] = global.fetch.mock.calls[1];
+    expect(url).toBe(`${config.micorreoBaseUrl}/agencies?customerId=fixture-customer&provinceCode=J`);
+    expect(options.method).toBe("GET");
+    expect(options.body).toBeUndefined();
+    expect(options.headers).toEqual({
+      Accept: "application/json", Authorization: "Bearer fixture-token",
+    });
+  });
+
+  test("listAgencies renueva una vez ante 401", async () => {
+    const { listAgencies } = load();
+    global.fetch
+      .mockResolvedValueOnce(response(200, {
+        token: "old", expires: "2026-09-14T13:00:00Z",
+      }))
+      .mockResolvedValueOnce(response(401, {}))
+      .mockResolvedValueOnce(response(200, {
+        token: "new", expires: "2026-09-14T13:00:00Z",
+      }))
+      .mockResolvedValueOnce(response(200, []));
+    await expect(listAgencies({ customerId: "customer", provinceCode: "J" }))
+      .resolves.toEqual([]);
+    expect(global.fetch).toHaveBeenCalledTimes(4);
+  });
+
+  test.each([402, 429, 500])("listAgencies clasifica HTTP %s sin exponer body", async (status) => {
+    const { listAgencies } = load();
+    global.fetch
+      .mockResolvedValueOnce(response(200, {
+        token: "fixture-token", expires: "2026-09-14T13:00:00Z",
+      }))
+      .mockResolvedValueOnce(response(status, { message: "private" }));
+    await expect(listAgencies({ customerId: "customer", provinceCode: "J" }))
+      .rejects.toMatchObject({ type: "micorreo_agency_error", status });
+  });
+
+  test("listAgencies rechaza JSON inválido", async () => {
+    const { listAgencies } = load();
+    global.fetch
+      .mockResolvedValueOnce(response(200, {
+        token: "fixture-token", expires: "2026-09-14T13:00:00Z",
+      }))
+      .mockResolvedValueOnce({ status: 200, ok: true, json: jest.fn().mockRejectedValue(new Error("raw")) });
+    await expect(listAgencies({ customerId: "customer", provinceCode: "J" }))
+      .rejects.toMatchObject({ type: "micorreo_invalid_agencies_response" });
+  });
+
+  test("listAgencies convierte network/timeout en error genérico", async () => {
+    jest.useFakeTimers();
+    const { listAgencies } = load();
+    global.fetch
+      .mockResolvedValueOnce(response(200, {
+        token: "fixture-token", expires: "2026-09-14T13:00:00Z",
+      }))
+      .mockImplementationOnce((url, { signal }) => new Promise((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("private timeout")));
+      }));
+    const result = expect(listAgencies({ customerId: "customer", provinceCode: "J" }))
+      .rejects.toMatchObject({ type: "micorreo_network_error" });
+    await jest.advanceTimersByTimeAsync(8000);
+    await result;
+  });
+
+  test("listAgencies convierte un error de red inmediato en error genérico", async () => {
+    const { listAgencies } = load();
+    global.fetch
+      .mockResolvedValueOnce(response(200, {
+        token: "fixture-token", expires: "2026-09-14T13:00:00Z",
+      }))
+      .mockRejectedValueOnce(new Error("private network detail"));
+    await expect(listAgencies({ customerId: "customer", provinceCode: "J" }))
+      .rejects.toMatchObject({ type: "micorreo_network_error" });
+  });
+
+  test("ShippingService mapea provincia y filtra snapshot público", async () => {
+    load();
+    const { createShippingService } = require("../src/shipping");
+    const provider = {
+      authenticate: jest.fn(), quoteRates: jest.fn(),
+      listAgencies: jest.fn().mockResolvedValue([
+        {
+          code: "J0001", name: "Centro", status: "ACTIVE",
+          manager: "private", email: "private@example.test", phone: "000",
+          services: { pickupAvailability: true },
+          location: { latitude: 1, longitude: 2, address: {
+            streetName: "Mitre", streetNumber: "123", locality: "San Juan",
+            city: "Capital", postalCode: "J5400ABC",
+          } },
+        },
+        { code: "J0002", name: "Inactiva", status: "INACTIVE" },
+        { code: "J0003", name: "Sin retiro", status: "ACTIVE", services: { pickupAvailability: false } },
+      ]),
+    };
+    const agencies = await createShippingService(provider).listShippingAgencies({
+      province: "ar-j", provinceCode: "X", postalCode: "9999", customerId: "browser",
+    });
+    expect(provider.listAgencies).toHaveBeenCalledWith({
+      customerId: config.micorreoCustomerId, provinceCode: "J",
+    });
+    expect(agencies).toEqual([{
+      code: "J0001", name: "Centro", streetName: "Mitre", streetNumber: "123",
+      locality: "San Juan", city: "Capital", postalCode: "J5400ABC",
+    }]);
+    expect(JSON.stringify(agencies)).not.toMatch(/manager|email|phone|latitude|longitude|customer/i);
+  });
 });

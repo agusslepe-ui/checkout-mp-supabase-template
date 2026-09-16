@@ -10,6 +10,13 @@ const {
 const { MiCorreoProvider } = require("./micorreo");
 const { ShippingProviderError } = require("./shippingProvider");
 
+const ARGENTINA_PROVINCES = new Set([
+  "AR-A", "AR-B", "AR-C", "AR-D", "AR-E", "AR-F",
+  "AR-G", "AR-H", "AR-J", "AR-K", "AR-L", "AR-M",
+  "AR-N", "AR-P", "AR-Q", "AR-R", "AR-S", "AR-T",
+  "AR-U", "AR-V", "AR-W", "AR-X", "AR-Y", "AR-Z",
+]);
+
 class ShippingInputError extends Error {
   constructor() {
     super("invalid shipping input");
@@ -70,11 +77,38 @@ function createShippingService(provider = MiCorreoProvider) {
       throw error;
     }
   }
-  return { getShippingQuotes };
+  async function listShippingAgencies(input) {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new ShippingInputError();
+    }
+    const province = normalizeProvince(input.province);
+    ensureAgencyConfiguration();
+
+    try {
+      const response = await provider.listAgencies({
+        customerId: micorreoCustomerId,
+        provinceCode: province.slice(3),
+      });
+      return normalizeAgencies(response);
+    } catch (error) {
+      if (error instanceof ShippingProviderError) {
+        throw new ShippingUnavailableError(error.type);
+      }
+      throw error;
+    }
+  }
+  return { getShippingQuotes, listShippingAgencies };
 }
 
 const ShippingService = createShippingService();
-const { getShippingQuotes } = ShippingService;
+const { getShippingQuotes, listShippingAgencies } = ShippingService;
+
+function normalizeProvince(value) {
+  if (typeof value !== "string") throw new ShippingInputError();
+  const province = value.trim().toUpperCase();
+  if (!ARGENTINA_PROVINCES.has(province)) throw new ShippingInputError();
+  return province;
+}
 
 function normalizePostalCode(value) {
   if (typeof value !== "string") throw new ShippingInputError();
@@ -156,10 +190,58 @@ function normalizeRates(response) {
   return [...normalizedById.values()];
 }
 
+function ensureAgencyConfiguration() {
+  const values = [micorreoBaseUrl, micorreoUser, micorreoPassword, micorreoCustomerId];
+  if (values.some((value) => typeof value !== "string" || value.trim() === "")) {
+    throw new ShippingUnavailableError();
+  }
+}
+
+function normalizeAgencies(response) {
+  if (!Array.isArray(response)) {
+    throw new ShippingUnavailableError("micorreo_invalid_agencies_response");
+  }
+
+  const agencies = [];
+  for (const agency of response) {
+    const pickupIsPresent = agency?.services &&
+      Object.prototype.hasOwnProperty.call(agency.services, "pickupAvailability");
+    if (agency?.status !== "ACTIVE" ||
+        (pickupIsPresent && agency.services.pickupAvailability !== true)) continue;
+
+    const address = agency?.location?.address;
+    if (!address || typeof address !== "object") continue;
+    const normalized = {
+      code: normalizePublicText(agency?.code, 64),
+      name: normalizePublicText(agency?.name, 120),
+      streetName: normalizePublicText(address.streetName, 120),
+      streetNumber: normalizePublicText(address.streetNumber, 30),
+      locality: normalizePublicText(address.locality, 120),
+      city: normalizePublicText(address.city, 120),
+      postalCode: normalizePublicText(address.postalCode, 16),
+    };
+    if ([normalized.code, normalized.name, normalized.streetName,
+      normalized.streetNumber, normalized.locality, normalized.postalCode]
+      .some((value) => !value)) continue;
+
+    agencies.push({
+      ...normalized,
+    });
+  }
+  return agencies;
+}
+
+function normalizePublicText(value, maxLength) {
+  if (typeof value !== "string") return "";
+  const text = value.trim();
+  return text.length <= maxLength ? text : text.slice(0, maxLength);
+}
+
 module.exports = {
   ShippingInputError,
   ShippingUnavailableError,
   getShippingQuotes,
+  listShippingAgencies,
   createShippingService,
   ShippingService,
 };
