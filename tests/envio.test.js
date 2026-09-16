@@ -1,6 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
+const { webcrypto } = require("crypto");
+
+const CHECKOUT_ATTEMPT_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 // DOM mínimo y fetch aislado: no se inicia servidor ni navegador/red real.
 function node() {
@@ -201,9 +204,27 @@ function setupCheckout(response = {
 }) {
   const fetch = jest.fn(async () => response);
   const assign = jest.fn();
-  const context = vm.createContext({ fetch, window: { location: { assign } }, Set, Error, JSON });
+  const values = new Map();
+  const sessionStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+  const crypto = { subtle: webcrypto.subtle, randomUUID: () => CHECKOUT_ATTEMPT_ID };
+  const context = vm.createContext({
+    fetch, window: { location: { assign } }, sessionStorage, crypto,
+    TextEncoder, Uint8Array, Set, Error, JSON,
+  });
+  const attemptSource = fs.readFileSync(
+    path.join(__dirname, "../public/js/checkoutAttemptClient.js"), "utf8"
+  );
+  vm.runInContext(attemptSource, context);
   const source = fs.readFileSync(path.join(__dirname, "../public/js/checkout.js"), "utf8");
-  vm.runInContext(source.replace("export async function", "async function"), context);
+  vm.runInContext(
+    source.replace('import "./checkoutAttemptClient.js";', "")
+      .replace("export async function", "async function"),
+    context
+  );
   return { context, fetch, assign };
 }
 
@@ -231,6 +252,7 @@ test("checkout envía solo shippingOptionId y omite precios/totales del navegado
     customer: { firstName: "Ana" },
     delivery: { postalCode: "5400" },
     shippingOptionId: "micorreo:home:classic",
+    checkoutAttemptId: CHECKOUT_ATTEMPT_ID,
   });
   expect(assign).toHaveBeenCalledWith("https://checkout.test/init");
 });
@@ -248,6 +270,7 @@ test("checkout agency envía solo shippingAgencyCode como identidad", async () =
   expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
     sku: "LEM-REM-001-S", quantity: 1, customer: {}, delivery: {},
     shippingOptionId: "micorreo:agency:classic", shippingAgencyCode: "J0001",
+    checkoutAttemptId: CHECKOUT_ATTEMPT_ID,
   });
 });
 

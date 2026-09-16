@@ -5,11 +5,12 @@
 **Estado:** EN PROGRESO. **Decisión:** DEC-022 ACEPTADA (2026-09-16).
 
 - **T-017.1 — Infraestructura durable:** COMPLETADA / AUDITADA. Agrega dominio UUID y migración 007 para `checkout_attempts` + RPC de 27 parámetros. SQL no aplicado. Sin deploy.
-- **T-017.2 — Integración backend durable:** COMPLETADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES (2026-09-16). Conecta `orders.js` con la RPC futura de 27 parámetros; implementa matching contra snapshot, carrera `23505` acotada, claim atómico, lease de 30 s, estados `reserved`/`creating_preference`/`ready`/`unknown`, reutilización READY y recuperación Mercado Pago por `external_reference` sin recotizar MiCorreo en retries existentes.
-- **T-017.3 — Integración frontend `checkoutAttemptId`:** PENDIENTE.
+- **T-017.2 — Integración backend durable:** COMPLETADA / AUDITADA. Conecta `orders.js` con la RPC futura de 27 parámetros; implementa matching contra snapshot, carrera `23505` acotada, claim atómico, lease de 30 s, estados `reserved`/`creating_preference`/`ready`/`unknown`, reutilización READY y recuperación Mercado Pago por `external_reference` sin recotizar MiCorreo en retries existentes.
+- **T-017.3 — Integración frontend `checkoutAttemptId`:** COMPLETADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES (2026-09-16). Genera UUID con Web Crypto, conserva el intento por digest SHA-256 en `sessionStorage`, diferencia los 409 y mantiene el UUID ante fallos temporales.
 - **T-017.4 — QA, recuperación ambigua y cierre:** PENDIENTE.
-- Webhook/HMAC, `markOrderAsPaid` y frontend permanecen intactos. Producción sigue en RPC de 26 parámetros.
-- **Verificación T-017.2:** 345/345 tests, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. SQL 007 no aplicado; sin deploy ni red real. No desplegar hasta coordinar 007 + runtime 27 + T-017.3.
+- Webhook/HMAC y `markOrderAsPaid` permanecen intactos. Producción sigue en runtime T-021/RPC de 26 parámetros; T-017.3 no fue desplegada.
+- **Verificación T-017.2:** 345/345 tests, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. SQL 007 no aplicado; sin deploy ni red real. El cutover queda para T-017.4.
+- **Verificación T-017.3:** 369/369 tests, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos. Web Crypto/sessionStorage/fetch simulados, sin red real. Migración 007 no aplicada. T-017.4 debe coordinar cutover y QA.
 
 ## T-021 — Selección real de sucursal MiCorreo
 
@@ -87,7 +88,7 @@
 
 ### PENDIENTE
 
-- **DEC-022 ACEPTADA; T-017 EN PROGRESO.** T-017.1 completada/auditada; T-017.2 completada localmente/auditada/APROBADA CON OBSERVACIONES; T-017.3–T-017.4 pendientes. Migración 007 no aplicada.
+- **DEC-022 ACEPTADA; T-017 EN PROGRESO.** T-017.1 completada/auditada; T-017.2 completada/auditada; T-017.3 completada localmente/auditada/APROBADA CON OBSERVACIONES; T-017.4 pendiente. Migración 007 no aplicada.
 - **T-021:** pendiente auditoría, aplicación controlada de la migración 006 y QA. El webhook sigue comparando contra el total persistido sin cambios de lógica.
 - Etapa D (creación de envío post-pago) pendiente. No llamar `/shipping/import`.
 - Reemplazar medidas QA (`300 g / 5 × 25 × 35 cm`) por dimensiones/peso reales **antes de usar tarifas en producción**. Los perfiles 1–4 siguen TEMPORAL/QA.
@@ -1243,8 +1244,8 @@ Evitar que un mismo intento lógico de compra cree múltiples pedidos `pending` 
 #### Fases
 
 - T-017.1: infraestructura durable — completada / auditada.
-- T-017.2: integración backend, concurrencia, retry y recuperación — completada localmente / auditada / APROBADA CON OBSERVACIONES.
-- T-017.3: generación y envío frontend de `checkoutAttemptId` — pendiente.
+- T-017.2: integración backend, concurrencia, retry y recuperación — completada / auditada.
+- T-017.3: generación y envío frontend de `checkoutAttemptId` — completada localmente / auditada / APROBADA CON OBSERVACIONES.
 - T-017.4: QA y cierre — pendiente.
 
 #### Estado de T-017.1
@@ -1257,10 +1258,30 @@ El backend requiere UUID, compara el retry con `orders` + `order_items`, reutili
 
 La recuperación usa `Preference.search` por `external_reference` y, si el summary no contiene URL utilizable, `Preference.get({ preferenceId: ... })`, conforme al contrato del SDK 3.1.0. El uso inicial incorrecto de `{ id: ... }` fue corregido y re-auditado.
 
-La migración 007 local incorpora coherencia de estados, permisos UPDATE solo sobre columnas mutables y `claim_checkout_attempt`. Verificación final: **345/345 tests**, 8 suites, 0 fallos. La 007 no fue aplicada y no hubo deploy. El runtime local de 27 parámetros es incompatible con producción (RPC 26) hasta el cutover coordinado junto con T-017.3.
+La migración 007 local incorpora coherencia de estados, permisos UPDATE solo sobre columnas mutables y `claim_checkout_attempt`. Verificación final de esa fase: **345/345 tests**, 8 suites, 0 fallos. La 007 no fue aplicada y no hubo deploy. El runtime local de 27 parámetros es incompatible con producción (RPC 26) hasta el cutover coordinado de T-017.4.
 
 Observaciones no bloqueantes para T-017.3/T-017.4: el `23505` tiene fallback por nombre de constraint en `message/details`; existe riesgo teórico de lease vencida + búsqueda aún no indexada que permita una segunda preference; `Preference.search` puede modificar opciones de timeout del cliente SDK compartido; el matching de SKU no agrega `trim`; el claim concurrente está cubierto por mocks/lógica y no por SQL real; T-017.4 debe incluir recuperación y concurrencia reales/controladas.
 
-#### Resultado esperado (cuando se implemente)
+#### Estado de T-017.3
+
+El navegador construye el body lógico, normaliza una identidad equivalente al matching backend, calcula SHA-256 con Web Crypto y obtiene/reutiliza un UUID generado exclusivamente por `crypto.randomUUID()`. `sessionStorage` usa `lemont.checkoutAttempt.v1` y persiste solo versión, UUID y digest; no guarda PII ni envía el digest al backend.
+
+Errores de red, 500/503 y `checkout_busy` conservan el UUID. `checkout_mismatch` y el 400 exacto de attempt inválido eliminan solo ese record. El frontend distingue `shipping_changed`, `agency_changed`, `checkout_busy`, `checkout_mismatch` y `checkout_unavailable`; un 409 desconocido ya no se clasifica como shipping. No hay retry automático. T-017.3 no es productiva hasta T-017.4.
+
+Auditoría final: **APROBADA CON OBSERVACIONES**. Verificación: **369/369 tests**, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos.
+
+Observaciones no bloqueantes trasladadas a T-017.4:
+
+1. El frontend no colapsa espacios internos de email y `streetNumber` exactamente como backend; inputs raros equivalentes pueden generar otro UUID.
+2. El frontend ordena SKU por comparación ASCII y backend usa `localeCompare`; para los SKU actuales coinciden.
+3. No existe un test nominal explícito de HTTP 500, aunque comparte camino con 503.
+4. No existe un test explícito de `sessionStorage` lanzando `SecurityError`/`QuotaError`.
+5. Los tests frontend usan VM y no validan la carga ESM real del navegador.
+6. El record permanece tras el redirect exitoso; T-017.4 debe probar browser back, reutilización READY, order ya paid y comportamiento después de un pago real.
+7. T-017.4 debe probar doble click/concurrencia real, storage real y Web Crypto real en navegador.
+
+Producción sigue en T-021/RPC 26, sin migración 007 aplicada, sin frontend T-017.3 desplegado y sin idempotencia durable activa. T-017.4 debe coordinar migración 007 + runtime backend RPC 27 + frontend T-017.3 + deploy + QA real.
+
+#### Resultado esperado del cutover T-017.4
 
 Un reintento o doble envío del mismo intento lógico no genera un segundo pedido cobrable ni una segunda preferencia.

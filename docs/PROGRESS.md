@@ -1,5 +1,19 @@
 # Progreso
 
+## 2026-09-16 — T-017.3 completada localmente / auditada / APROBADA CON OBSERVACIONES
+
+- Nuevo helper frontend `checkoutAttemptClient.js`: identidad canónica, SHA-256 nativo, validación del record y UUID exclusivo de `crypto.randomUUID()`.
+- `sessionStorage` usa `lemont.checkoutAttempt.v1` y guarda únicamente `{ version: 1, checkoutAttemptId, intentDigest }`; no persiste carrito, PII ni notas en claro.
+- El mismo digest reutiliza UUID. Cambios lógicos de productos, customer, delivery, shipping option o agency generan otro; HOME ignora agency code.
+- El request agrega solo `checkoutAttemptId`; nunca envía `intentDigest` ni acepta un UUID desde el input externo.
+- Red/500/503/busy conservan el record; mismatch y attempt inválido lo eliminan. Shipping/agency mantienen invalidación; 409 desconocido no se trata como shipping. Sin retry automático.
+- Botón conserva estados busy/redirect y vuelve a habilitarse para busy/mismatch. Sin Web Crypto no hay fetch y se muestra error controlado.
+- Auditoría final: **APROBADA CON OBSERVACIONES**.
+- Verificación final: **369/369 tests**, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos. Mocks solamente; sin red real.
+- Observaciones no bloqueantes para T-017.4: normalización de espacios internos de email/`streetNumber` no idéntica al backend; orden ASCII de SKU frente a `localeCompare`; sin test nominal explícito de HTTP 500 ni de `SecurityError`/`QuotaError` de storage; VM sin validar ESM real; y record conservado tras redirect pendiente de QA con browser back, READY, order paid y post-pago real.
+- T-017.4 debe incluir doble click/concurrencia real, storage real y Web Crypto real en navegador.
+- T-017 continúa EN PROGRESO. T-017.3 queda cerrada localmente y T-017.4 pendiente. Migración 007 no aplicada; sin deploy, commit ni push. Producción continúa T-021/RPC 26, sin idempotencia durable activa.
+
 ## 2026-09-16 — T-017.2 completada localmente / auditada / APROBADA CON OBSERVACIONES
 
 - Backend de `POST /crear-preferencia` exige y normaliza `checkoutAttemptId`; no genera claves.
@@ -11,7 +25,7 @@
 - La preferencia se reconstruye desde el snapshot persistido, incluido `Envío`; el total debe coincidir en centavos con `orders.amount`.
 - Migración 007 modificada localmente: coherencia de estados, permisos UPDATE por columnas mutables y función de claim. **NO aplicada**.
 - Verificación final: **345/345 tests**, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. Sin red real, `.env`, SQL aplicado, deploy, commit ni push.
-- Producción continúa con runtime T-021 y RPC 26. T-017.2 no es desplegable hasta coordinar 007 + runtime 27 + frontend T-017.3. T-017.3 y T-017.4 pendientes.
+- Producción continúa con runtime T-021 y RPC 26. T-017.2 no es desplegable hasta coordinar 007 + runtime 27 + frontend T-017.3. En ese cierre T-017.3 y T-017.4 estaban pendientes; el estado vigente de T-017.3 consta en el bloque superior.
 - Observaciones no bloqueantes trasladadas a T-017.3/T-017.4: fallback de `23505` por constraint en `message/details`; riesgo teórico de lease vencida con búsqueda MP aún no indexada; posible modificación del timeout del cliente SDK compartido por `Preference.search`; SKU matching sin `trim` adicional; concurrencia del claim cubierta por mocks/lógica, no SQL real; QA real/controlado de recovery y concurrencia requerido en T-017.4.
 
 ## 2026-09-16 — T-017.1 auditada / APROBADA CON OBSERVACIONES
@@ -99,7 +113,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-16. T-017.2 COMPLETADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. DEC-022 ACEPTADA. T-017 EN PROGRESO. Migración 007 no aplicada. Producción sigue en runtime T-021/RPC 26. Tests: 345/345.
+Última revisión documental: 2026-09-16. T-017.3 COMPLETADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. DEC-022 ACEPTADA. T-017 EN PROGRESO; T-017.4 PENDIENTE. Migración 007 no aplicada. Producción sigue en runtime T-021/RPC 26, sin idempotencia durable activa. Tests: 369/369.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 

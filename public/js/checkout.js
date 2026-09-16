@@ -1,4 +1,7 @@
+import "./checkoutAttemptClient.js";
+
 const CHECKOUT_ENDPOINT = "/crear-preferencia";
+const checkoutAttemptClient = globalThis.LemontCheckoutAttempt;
 const PURCHASE_SKUS = new Set([
   "LEM-REM-001-S",
   "LEM-REM-001-M",
@@ -19,12 +22,12 @@ const CONTROLLED_SHIPPING_ERRORS = new Set([
   "La sucursal ya no está disponible",
 ]);
 
-async function getControlledShippingError(response) {
+async function getBackendError(response) {
   if (![400, 409].includes(response.status)) return null;
 
   try {
     const body = await response.json();
-    return CONTROLLED_SHIPPING_ERRORS.has(body?.error) ? body.error : null;
+    return typeof body?.error === "string" ? body.error : null;
   } catch {
     return null;
   }
@@ -60,6 +63,15 @@ async function crearPreferencia(input) {
     };
   }
 
+  let checkoutAttemptId;
+  try {
+    const intentDigest = await checkoutAttemptClient.createIntentDigest(body);
+    checkoutAttemptId = checkoutAttemptClient.getOrCreateCheckoutAttempt(intentDigest);
+  } catch {
+    throw new Error("checkout_attempt_unavailable");
+  }
+  body.checkoutAttemptId = checkoutAttemptId;
+
   const response = await fetch(CHECKOUT_ENDPOINT, {
     method: "POST",
     headers: {
@@ -69,13 +81,28 @@ async function crearPreferencia(input) {
   });
 
   if (!response.ok) {
-    const controlledShippingError = await getControlledShippingError(response);
+    const backendError = await getBackendError(response);
     if (response.status === 409) {
-      throw new Error(controlledShippingError === "La sucursal ya no está disponible"
-        ? "agency_changed"
-        : "shipping_changed");
+      if (backendError === "La opción de envío ya no está disponible") {
+        throw new Error("shipping_changed");
+      }
+      if (backendError === "La sucursal ya no está disponible") {
+        throw new Error("agency_changed");
+      }
+      if (backendError === "El checkout está siendo preparado. Intentá nuevamente") {
+        throw new Error("checkout_busy");
+      }
+      if (backendError === "El intento de pago no coincide con la compra original") {
+        checkoutAttemptClient.clearCheckoutAttempt();
+        throw new Error("checkout_mismatch");
+      }
+      throw new Error("checkout_unavailable");
     }
-    if (controlledShippingError) throw new Error(controlledShippingError);
+    if (response.status === 400 && backendError === "Intento de pago inválido") {
+      checkoutAttemptClient.clearCheckoutAttempt();
+      throw new Error("checkout_attempt_invalid");
+    }
+    if (CONTROLLED_SHIPPING_ERRORS.has(backendError)) throw new Error(backendError);
     throw new Error(response.status === 400
       ? (hasItems ? "invalid_cart" : "invalid_product")
       : "checkout_unavailable");
@@ -93,7 +120,6 @@ async function crearPreferencia(input) {
 
 export async function iniciarCheckout(input) {
   const { button, statusElement } = input;
-  // Mitigación visual, no idempotencia durable.
   if (button.disabled) return;
   const originalLabel = button.textContent;
 
@@ -125,6 +151,10 @@ export async function iniciarCheckout(input) {
             ? "La opción de envío cambió. Volvé a calcular y elegir el envío."
           : error.message === "agency_changed"
             ? "La sucursal ya no está disponible. Volvé a elegir una sucursal."
+          : error.message === "checkout_busy"
+            ? "El pago se está preparando. Intentá nuevamente en unos segundos."
+          : error.message === "checkout_mismatch"
+            ? "Los datos de la compra cambiaron. Intentá nuevamente."
         : error.message === "invalid_cart"
           ? "No pudimos validar el carrito. Volvé al carrito para revisarlo."
           : "No pudimos iniciar el pago. Intentá nuevamente.";

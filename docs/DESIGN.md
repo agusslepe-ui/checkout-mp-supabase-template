@@ -1,5 +1,26 @@
 # Diseño técnico
 
+## T-017.3 — identidad durable en frontend local
+
+```text
+body lógico del checkout
+  → identidad normalizada y serialización determinista
+  → SHA-256 con Web Crypto
+  → sessionStorage lemont.checkoutAttempt.v1
+  → reutilizar UUID si digest coincide | crypto.randomUUID() si cambia
+  → POST /crear-preferencia con checkoutAttemptId (sin intentDigest)
+```
+
+Productos duplicados se agrupan y ordenan por SKU. Customer/delivery se normalizan aproximadamente como backend; agency code solo forma identidad para AGENCY. El record contiene exactamente versión, UUID y digest, por lo que la PII no queda en texto claro.
+
+Red, 500/503 y checkout busy conservan el UUID. Mismatch o attempt inválido limpian solo el record. Éxito conserva el record antes de redirigir. No hay retry automático. La ausencia de Web Crypto bloquea el fetch de forma controlada.
+
+Los HTTP 409 se clasifican por código: `shipping_changed`, `agency_changed`, `checkout_busy`, `checkout_mismatch` y `checkout_unavailable`. Un 409 genérico ya no se interpreta como cambio de envío.
+
+T-017.3 está completada localmente, auditada y APROBADA CON OBSERVACIONES. La migración 007 no está aplicada, el frontend no está desplegado y producción conserva T-021/RPC 26 sin idempotencia durable activa; T-017.4 debe coordinar migración 007 + runtime backend RPC 27 + frontend T-017.3 + deploy + QA real.
+
+Observaciones no bloqueantes de T-017.3 para T-017.4: el frontend no colapsa espacios internos de email/`streetNumber` exactamente como backend; el sort de SKU es ASCII frente a `localeCompare`; no hay caso nominal explícito de HTTP 500 ni de excepciones `SecurityError`/`QuotaError` del storage; los tests VM no validan carga ESM real; y el record que permanece tras redirect requiere QA de browser back, READY reutilizada, order ya paid y post-pago real. También deben probarse doble click/concurrencia, storage y Web Crypto reales en navegador.
+
 ## T-017.2 / DEC-022 — integración backend durable local
 
 ```text
@@ -20,7 +41,7 @@ El claim es una función SQL con un único UPDATE condicional: admite `reserved`
 
 UNKNOWN y leases vencidas consultan primero `Preference.search` por `external_reference`: cero resultados permite crear; uno exacto/utilizable se persiste READY; más de uno queda ambiguo y no se elige. Si el summary único necesita completarse, el SDK 3.1.0 recibe `Preference.get({ preferenceId: ... })`. La preferencia se reconstruye desde `orders` + `order_items`, incluido el envío, y su total se valida en centavos contra `orders.amount`.
 
-La migración 007 local contiene la RPC futura 27, coherencia de estados, claim atómico y UPDATE solo sobre columnas mutables. **No está aplicada**; producción conserva runtime T-021/RPC 26 y el frontend aún no envía `checkoutAttemptId`. T-017.2 está completada localmente, auditada y APROBADA CON OBSERVACIONES; no es desplegable de forma aislada. T-017.3 debe generar/reutilizar el UUID y T-017.4 coordinar 007 + runtime 27 + frontend compatible y ejecutar QA.
+La migración 007 local contiene la RPC futura 27, coherencia de estados, claim atómico y UPDATE solo sobre columnas mutables. **No está aplicada**; producción conserva runtime T-021/RPC 26 y su frontend desplegado aún no envía `checkoutAttemptId`. T-017.2 está completada y auditada; T-017.3 ya genera/reutiliza el UUID localmente. T-017.4 debe coordinar 007 + runtime 27 + frontend compatible y ejecutar QA.
 
 Observaciones no bloqueantes de diseño para las fases restantes: el reconocimiento `23505` conserva fallback por nombre de constraint en `message/details`; una lease vencida combinada con una búsqueda todavía no indexada tiene riesgo teórico de segunda preference; `Preference.search` puede modificar opciones de timeout del cliente SDK compartido; el matching de SKU no agrega `trim`; y el claim concurrente aún no tiene prueba SQL real. T-017.4 debe probar recovery y concurrencia de forma real/controlada.
 

@@ -1,6 +1,18 @@
 # Seguridad
 
-## T-017.2 / DEC-022 — completada localmente / auditada / APROBADA CON OBSERVACIONES
+## T-017.3 — UUID y digest frontend local
+
+- `checkoutAttemptId` se genera únicamente con `crypto.randomUUID()`; no se acepta desde parámetros externos ni se usa `Math.random`.
+- El digest usa SHA-256 de una identidad canónica mediante Web Crypto. Solo decide reutilización local; no reemplaza el matching autoritativo backend.
+- `sessionStorage` persiste exactamente versión, UUID y digest bajo `lemont.checkoutAttempt.v1`; no contiene nombre, email, teléfono, domicilio, carrito ni notas en claro.
+- Ni UUID, digest, PII ni body completo se registran. `intentDigest` nunca se envía al backend.
+- Records corruptos/inválidos se descartan. Mismatch elimina solo el attempt; errores temporales lo conservan para recovery.
+- Sin Web Crypto no se envía el checkout. No existe retry automático.
+- T-017.3 está completada localmente, auditada y APROBADA CON OBSERVACIONES. Verificación final: **369/369 tests**, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos.
+- Observaciones no bloqueantes para T-017.4: normalización de espacios internos rara no idéntica al backend; sort ASCII de SKU frente a `localeCompare`; falta de casos explícitos para HTTP 500 y excepciones de storage; tests VM sin ESM/Web Crypto/storage reales; y persistencia post-redirect pendiente de QA con browser back, READY, order paid, post-pago y doble click/concurrencia real.
+- La 007 no está aplicada, T-017.3 no está desplegada y producción continúa con T-021/RPC 26, sin idempotencia durable activa. T-017.4 debe coordinar 007 + runtime 27 + frontend + deploy + QA real.
+
+## T-017.2 / DEC-022 — completada / auditada
 
 - `checkoutAttemptId` es un UUID de idempotencia, no un secreto; el dominio exige formato canónico y normaliza lowercase.
 - `checkout_attempts` no duplica cliente, domicilio ni otra PII. RLS está habilitada y no se crean policies para `anon`/`authenticated`.
@@ -12,7 +24,7 @@
 - El recovery usa `Preference.search` y completa un resultado mediante `Preference.get({ preferenceId: ... })`; el contrato incorrecto detectado en la auditoría inicial fue corregido antes de la aprobación final.
 - Respuestas y logs no exponen PII, lease token, SQL, access token ni respuestas crudas de Mercado Pago. La recuperación devuelve solo id, referencia exacta y URL HTTPS validada.
 - Verificación final: **345/345 tests**, 8 suites, 0 fallos; mocks solamente. Migración 007 no aplicada, sin deploy; producción sigue en runtime T-021/RPC 26 y el frontend no envía `checkoutAttemptId`.
-- El código T-017.2 no es desplegable hasta coordinar 007 + runtime 27 + frontend T-017.3.
+- El código T-017.2 y el frontend T-017.3 no son desplegables por separado; T-017.4 debe coordinar 007 + runtime 27 + frontend compatible.
 - Observaciones no bloqueantes: fallback de constraint en texto para `23505`; ventana teórica entre lease vencida e indexación de búsqueda; timeout potencialmente compartido del SDK; SKU sin `trim` adicional; claim concurrente sin prueba SQL real. Recovery y concurrencia reales/controlados quedan obligatorios para T-017.4.
 
 ## T-021 / DEC-026 — implementada localmente / pendiente de auditoría
