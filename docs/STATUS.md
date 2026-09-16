@@ -30,7 +30,7 @@ El detalle del cierre está en `docs/T021_DEC026_CLOSURE_2026-09-16.md`.
 
 ## Pendientes principales
 
-- T-017.2–T-017.4: integración backend, frontend, recuperación y QA de la idempotencia durable.
+- T-017.2 está completada localmente, auditada y aprobada con observaciones. T-017.3–T-017.4 (frontend, cutover/QA y cierre) siguen pendientes.
 - Etapa D: crear el envío post-pago con MiCorreo `/shipping/import`; no implementada todavía.
 - Tracking/etiquetas: no implementados; el PDF oficial disponible no documenta esos endpoints.
 - Stock real por SKU; `maxQuantity: 4` sigue siendo un límite temporal y no inventario.
@@ -49,9 +49,10 @@ GitHub sigue siendo la fuente de verdad del código. El cierre T-021/DEC-026 de 
 
 - **DEC-022 — Idempotencia durable del checkout: ACEPTADA** el 2026-09-16.
 - **T-017: EN PROGRESO.**
-- **T-017.1: IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES.** Sin hallazgos críticos.
-- Se prepararon `checkout_attempts`, el dominio de validación UUID y una RPC futura de 27 parámetros en la migración 007.
-- Verificación local T-017.1: **294/294 tests**, 5 suites.
-- La migración 007 **NO está aplicada**. No hubo deploy de T-017. Producción sigue usando la RPC de **26 parámetros**.
-- T-017.2, T-017.3 y T-017.4 permanecen pendientes.
-- Observaciones no bloqueantes para T-017.2: actualizar `updated_at` en cada UPDATE; definir coherencia de `ready` con `mercadopago_preference_id`/`checkout_url`; definir coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` debe reutilizar el attempt existente; cutover 26→27 coordinado.
+- **T-017.1: COMPLETADA / AUDITADA.**
+- **T-017.2: COMPLETADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES (2026-09-16).** Backend exige `checkoutAttemptId`, reutiliza el snapshot persistido, aplica lease de 30 segundos, recupera preferencias por `external_reference` y persiste `ready`/`unknown` sin recotizar retries existentes.
+- La migración 007 local fue endurecida con coherencia de estados, UPDATE por columnas mutables y RPC atómica `claim_checkout_attempt`; además mantiene la RPC futura de 27 parámetros. **NO está aplicada**.
+- El bloqueo inicial del recovery fue corregido: después de `Preference.search` por `external_reference`, el SDK 3.1.0 recibe `Preference.get({ preferenceId: ... })` cuando necesita completar el resultado.
+- Verificación final T-017.2: **345/345 tests**, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos.
+- No hubo deploy de T-017. Producción sigue usando el runtime T-021 y la RPC de **26 parámetros**.
+- T-017.3 y T-017.4 permanecen pendientes. El código T-017.2 **no es desplegable** hasta coordinar migración 007 + runtime RPC 27 + frontend generando `checkoutAttemptId`.

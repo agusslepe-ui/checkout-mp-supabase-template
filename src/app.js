@@ -12,7 +12,19 @@ const { CheckoutInputError, parseCheckoutInput } = require("./checkoutInput");
 const { baseUrl, mercadoPagoAccessToken } = require("./config");
 const { log } = require("./logger");
 const { createPendingOrder, markOrderAsPaid } = require("./orders");
-const { createPreference, getPayment } = require("./payments");
+const { getPayment } = require("./payments");
+const {
+  CheckoutAttemptIdError,
+  CheckoutAttemptRequestError,
+  normalizeCheckoutAttemptId,
+  buildCheckoutRequestIdentity,
+} = require("./checkoutAttempt");
+const { findCheckoutAttempt } = require("./checkoutAttempts");
+const {
+  CheckoutFlowError,
+  processCheckoutAttempt,
+  isCheckoutAttemptUniqueViolation,
+} = require("./checkoutFlow");
 const { MAX_QUOTE_UNITS } = require("./packageProfiles");
 const {
   ShippingInputError,
@@ -424,6 +436,27 @@ function getPreferenceTotalCents(items) {
   return totalCents;
 }
 
+async function sendCheckoutAttemptResult({ res, attempt, identity, logContext }) {
+  try {
+    const result = await processCheckoutAttempt({ attempt, identity, baseUrl });
+    log("info", "checkout idempotente resuelto", {
+      ...logContext,
+      status_code: 200,
+    });
+    return res.json(result);
+  } catch (error) {
+    const isControlled = error instanceof CheckoutFlowError;
+    log(isControlled && error.status === 409 ? "warn" : "error", "checkout idempotente fallido", {
+      ...logContext,
+      status_code: isControlled ? error.status : 500,
+      error_type: isControlled ? error.type : "checkout_idempotency_error",
+    });
+    return res.status(isControlled ? error.status : 500).json({
+      error: isControlled ? error.publicMessage : "No se pudo iniciar el pago",
+    });
+  }
+}
+
 app.post("/crear-preferencia", async (req, res) => {
   const logContext = {
     request_id: crypto.randomUUID(),
@@ -438,43 +471,59 @@ app.post("/crear-preferencia", async (req, res) => {
   }
 
   const body = req.body || {};
+  let checkoutAttemptId;
+  try {
+    checkoutAttemptId = normalizeCheckoutAttemptId(body.checkoutAttemptId);
+  } catch (error) {
+    if (!(error instanceof CheckoutAttemptIdError)) throw error;
+    return res.status(400).json({ error: "Intento de pago inválido" });
+  }
   const hasItems = Object.prototype.hasOwnProperty.call(body, "items");
   const hasSku = Object.prototype.hasOwnProperty.call(body, "sku");
   const hasQuantity = Object.prototype.hasOwnProperty.call(body, "quantity");
   const { sku, quantity } = body;
   let cart;
 
-  if (hasItems) {
-    try {
-      if (hasSku || hasQuantity) throw new CartError();
-      const requestedUnits = getKnownCartTotalUnits(body, true);
-      if (requestedUnits !== null && requestedUnits > MAX_QUOTE_UNITS) {
+  let existingAttempt;
+  try {
+    existingAttempt = await findCheckoutAttempt(checkoutAttemptId);
+  } catch {
+    return res.status(500).json({ error: "No se pudo iniciar el pago" });
+  }
+
+  // Existing attempts are resolved from their immutable snapshot. Only a new
+  // attempt consults the mutable catalog and keeps the historical validation
+  // order for cart errors.
+  if (!existingAttempt) {
+    if (hasItems) {
+      try {
+        if (hasSku || hasQuantity) throw new CartError();
+        const requestedUnits = getKnownCartTotalUnits(body, true);
+        if (requestedUnits !== null && requestedUnits > MAX_QUOTE_UNITS) {
+          return res.status(400).json({ error: "No pudimos calcular el envío" });
+        }
+        cart = resolveCheckoutCart(body);
+      } catch (error) {
+        if (!(error instanceof CartError)) throw error;
+        log("warn", "carrito invalido", {
+          ...logContext,
+          status_code: 400,
+          error_type: "cart_validation_error",
+        });
+        return res.status(400).json({ error: "Carrito inválido" });
+      }
+    } else {
+      const product = getProduct(sku);
+      if (!product) {
+        return res.status(400).json({ error: "Producto no encontrado" });
+      }
+      if (Number.isSafeInteger(quantity) && quantity > MAX_QUOTE_UNITS) {
         return res.status(400).json({ error: "No pudimos calcular el envío" });
       }
-      cart = resolveCheckoutCart(body);
-    } catch (error) {
-      if (!(error instanceof CartError)) throw error;
-      log("warn", "carrito invalido", {
-        ...logContext,
-        status_code: 400,
-        error_type: "cart_validation_error",
-      });
-      return res.status(400).json({ error: "Carrito inválido" });
-    }
-  } else {
-    const product = getProduct(sku);
-    if (!product) {
-      return res.status(400).json({ error: "Producto no encontrado" });
-    }
-    if (Number.isSafeInteger(quantity) && quantity > MAX_QUOTE_UNITS) {
-      return res.status(400).json({ error: "No pudimos calcular el envío" });
-    }
-    if (
-      !Number.isInteger(quantity) ||
-      quantity < 1 ||
-      quantity > product.maxQuantity
-    ) {
-      return res.status(400).json({ error: "Cantidad inválida" });
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > product.maxQuantity) {
+        return res.status(400).json({ error: "Cantidad inválida" });
+      }
+      cart = resolveCheckoutCart({ items: [{ sku, quantity }] });
     }
   }
 
@@ -517,9 +566,28 @@ app.post("/crear-preferencia", async (req, res) => {
     return res.status(400).json({ error: "Elegí una sucursal" });
   }
 
-  if (!hasItems) {
-    cart = resolveCheckoutCart({ items: [{ sku, quantity }] });
+  let requestIdentity;
+  try {
+    requestIdentity = buildCheckoutRequestIdentity({
+      body,
+      checkoutInput,
+      shippingOptionId,
+      shippingAgencyCode,
+    });
+  } catch (error) {
+    if (!(error instanceof CheckoutAttemptRequestError)) throw error;
+    return res.status(400).json({ error: "Carrito inválido" });
   }
+
+  if (existingAttempt) {
+    return sendCheckoutAttemptResult({
+      res,
+      attempt: existingAttempt,
+      identity: requestIdentity,
+      logContext,
+    });
+  }
+
   const { currency, subtotalCents, orderItems, preferenceItems } = cart;
   const totalUnits = orderItems.reduce((total, item) => total + item.quantity, 0);
   if (totalUnits > MAX_QUOTE_UNITS) {
@@ -643,6 +711,7 @@ app.post("/crear-preferencia", async (req, res) => {
   let createdOrder;
   try {
     createdOrder = await createPendingOrder({
+      checkoutAttemptId,
       expectedAmount,
       productsSubtotal,
       shippingAmount,
@@ -679,43 +748,42 @@ app.post("/crear-preferencia", async (req, res) => {
       order_status: "pending",
     });
   } catch (error) {
+    if (isCheckoutAttemptUniqueViolation(error)) {
+      try {
+        const winnerAttempt = await findCheckoutAttempt(checkoutAttemptId);
+        if (!winnerAttempt) throw new Error("checkout attempt winner not found");
+        return sendCheckoutAttemptResult({
+          res,
+          attempt: winnerAttempt,
+          identity: requestIdentity,
+          logContext,
+        });
+      } catch (retryError) {
+        if (retryError instanceof CheckoutFlowError) {
+          return res.status(retryError.status).json({ error: retryError.publicMessage });
+        }
+        return res.status(500).json({ error: "No se pudo iniciar el pago" });
+      }
+    }
     logSupabasePersistError(error, logContext);
     return res.status(500).json({
       error: "No se pudo iniciar el pago",
     });
   }
 
+  let persistedAttempt;
   try {
-    const result = await createPreference({
-      items: paymentItems,
-      external_reference: createdOrder.external_reference,
-      notification_url: `${baseUrl}/webhook?source_news=webhooks`,
-      back_urls: {
-        success: `${baseUrl}/success`,
-        failure: `${baseUrl}/failure`,
-        pending: `${baseUrl}/pending`,
-      },
-      auto_return: "approved",
-    });
-
-    log("info", "preferencia creada", logContext);
-
-    return res.json({
-      preference_id: result.id,
-      init_point: result.init_point,
-      sandbox_init_point: result.sandbox_init_point,
-    });
-  } catch (error) {
-    log("error", "error al crear la preferencia", {
-      ...logContext,
-      status_code: 500,
-      error_type: "mercado_pago_error",
-    });
-
-    return res.status(500).json({
-      error: "No se pudo crear la preferencia",
-    });
+    persistedAttempt = await findCheckoutAttempt(checkoutAttemptId);
+    if (!persistedAttempt) throw new Error("persisted checkout attempt not found");
+  } catch {
+    return res.status(500).json({ error: "No se pudo iniciar el pago" });
   }
+  return sendCheckoutAttemptResult({
+    res,
+    attempt: persistedAttempt,
+    identity: requestIdentity,
+    logContext,
+  });
 });
 
 app.use((err, req, res, next) => {

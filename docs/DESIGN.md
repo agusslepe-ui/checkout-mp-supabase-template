@@ -1,21 +1,28 @@
 # Diseño técnico
 
-## T-017.1 / DEC-022 — infraestructura durable local, auditada
+## T-017.2 / DEC-022 — integración backend durable local
 
 ```text
 checkoutAttemptId UUID
-  → RPC futura (27 parámetros)
-  → INSERT order
-  → INSERT order_items
-  → INSERT checkout_attempts(state = reserved)
-  → COMMIT único
+  → buscar checkout_attempts + order + order_items
+  → si no existe: RPC futura 27 crea order + items + reserved
+  → comparar identidad lógica contra snapshot persistido
+  → claim atómico con lease backend de 30 s
+  → crear o recuperar preference por external_reference
+  → ready (preference_id + checkout_url) | unknown
 ```
 
 `checkout_attempts.checkout_attempt_id` y `order_id` son UNIQUE. Dos transacciones concurrentes con el mismo UUID pueden construir trabajo provisional, pero solo una inserta el intento; la otra recibe unique violation y PostgreSQL revierte su order e items dentro de la misma llamada. No se usa `ON CONFLICT DO NOTHING`.
 
-La tabla prepara `mercadopago_preference_id`, `checkout_url` y un lease coherente para T-017.2, sin copiar PII ni snapshots comerciales. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. La migración 007 no está aplicada, no hubo deploy y Node conserva la firma productiva de 26 parámetros hasta el cutover coordinado. T-017.2/.3/.4 pendientes.
+`checkoutAttemptId` es requerido por el backend y nunca se genera allí. La comparación usa SKU/cantidad agrupados, customer y delivery normalizados, shipping option y agency code solo para AGENCY; no usa nombres/precios actuales ni recotiza retries. Un mismatch responde 409 genérico.
 
-Observaciones no bloqueantes para T-017.2: actualizar `updated_at` en cada UPDATE; exigir coherencia de `ready` con `mercadopago_preference_id`/`checkout_url`; exigir coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
+El claim es una función SQL con un único UPDATE condicional: admite `reserved`, `unknown` o `creating_preference` vencido. READY y leases activos no son reclamables. Todas las transiciones actualizan `updated_at`; READY/UNKNOWN limpian lease; los UPDATE de runtime están condicionados por attempt + estado + lease token.
+
+UNKNOWN y leases vencidas consultan primero `Preference.search` por `external_reference`: cero resultados permite crear; uno exacto/utilizable se persiste READY; más de uno queda ambiguo y no se elige. Si el summary único necesita completarse, el SDK 3.1.0 recibe `Preference.get({ preferenceId: ... })`. La preferencia se reconstruye desde `orders` + `order_items`, incluido el envío, y su total se valida en centavos contra `orders.amount`.
+
+La migración 007 local contiene la RPC futura 27, coherencia de estados, claim atómico y UPDATE solo sobre columnas mutables. **No está aplicada**; producción conserva runtime T-021/RPC 26 y el frontend aún no envía `checkoutAttemptId`. T-017.2 está completada localmente, auditada y APROBADA CON OBSERVACIONES; no es desplegable de forma aislada. T-017.3 debe generar/reutilizar el UUID y T-017.4 coordinar 007 + runtime 27 + frontend compatible y ejecutar QA.
+
+Observaciones no bloqueantes de diseño para las fases restantes: el reconocimiento `23505` conserva fallback por nombre de constraint en `message/details`; una lease vencida combinada con una búsqueda todavía no indexada tiene riesgo teórico de segunda preference; `Preference.search` puede modificar opciones de timeout del cliente SDK compartido; el matching de SKU no agrega `trim`; y el claim concurrente aún no tiene prueba SQL real. T-017.4 debe probar recovery y concurrencia de forma real/controlada.
 
 ## T-021 / DEC-026 — implementada localmente, pendiente de auditoría
 
@@ -245,7 +252,7 @@ La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `serv
 
 - Puerto fijo y catálogo versionado en backend; sin fuente administrable externa todavía.
 - La ruta `GET /webhook` queda restringida a entornos no productivos.
-- No hay idempotencia durable del checkout ni rate limiting. Los timeouts/reintentos de MiCorreo no resuelven esa deuda.
+- Producción todavía no tiene idempotencia durable del checkout ni rate limiting. T-017.2 resuelve la primera solo en código local; los timeouts/reintentos de MiCorreo no sustituyen el cutover pendiente.
 - El backend endurecido está desplegado en EasyPanel/VPS desde la rama `main` de `checkout-mp-supabase-template`, bajo `checkout.lemont01.com`; no hay infraestructura como código.
 
 ## Implementado y vigente

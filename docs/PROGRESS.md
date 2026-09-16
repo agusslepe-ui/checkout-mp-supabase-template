@@ -1,5 +1,19 @@
 # Progreso
 
+## 2026-09-16 — T-017.2 completada localmente / auditada / APROBADA CON OBSERVACIONES
+
+- Backend de `POST /crear-preferencia` exige y normaliza `checkoutAttemptId`; no genera claves.
+- Retry existente se compara solo por identidad lógica contra `orders` + `order_items`; HOME ignora agency code y AGENCY lo exige. READY responde desde persistencia sin catálogo, MiCorreo, nueva order ni Mercado Pago.
+- Nuevo repositorio `src/checkoutAttempts.js`; lease backend de 30 s; claim atómico por `claim_checkout_attempt`; transiciones holder-only con `updated_at`; `checkout_attempt_id`/`order_id` no se actualizan.
+- Carrera `23505` solo se trata como retry para `checkout_attempts_checkout_attempt_id_key`. Otros conflictos conservan el error normal.
+- UNKNOWN y lease vencida buscan primero preferencias Mercado Pago por `external_reference`; 0 permite claim+create, 1 persiste READY, múltiples mantienen UNKNOWN. Errores ambiguos de creación pasan a UNKNOWN.
+- Hallazgo bloqueante inicial corregido: el SDK 3.1.0 requiere `Preference.get({ preferenceId: ... })`, no la forma anterior con `id`. La re-auditoría final quedó APROBADA CON OBSERVACIONES.
+- La preferencia se reconstruye desde el snapshot persistido, incluido `Envío`; el total debe coincidir en centavos con `orders.amount`.
+- Migración 007 modificada localmente: coherencia de estados, permisos UPDATE por columnas mutables y función de claim. **NO aplicada**.
+- Verificación final: **345/345 tests**, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. Sin red real, `.env`, SQL aplicado, deploy, commit ni push.
+- Producción continúa con runtime T-021 y RPC 26. T-017.2 no es desplegable hasta coordinar 007 + runtime 27 + frontend T-017.3. T-017.3 y T-017.4 pendientes.
+- Observaciones no bloqueantes trasladadas a T-017.3/T-017.4: fallback de `23505` por constraint en `message/details`; riesgo teórico de lease vencida con búsqueda MP aún no indexada; posible modificación del timeout del cliente SDK compartido por `Preference.search`; SKU matching sin `trim` adicional; concurrencia del claim cubierta por mocks/lógica, no SQL real; QA real/controlado de recovery y concurrencia requerido en T-017.4.
+
 ## 2026-09-16 — T-017.1 auditada / APROBADA CON OBSERVACIONES
 
 - Cierre documental post-auditoría. Sin código, SQL, tests, `.env`, commit ni push.
@@ -85,7 +99,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-16. T-017.1 IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. DEC-022 ACEPTADA. T-017 EN PROGRESO. Migración 007 no aplicada. Producción sigue en RPC de 26 parámetros. Tests: 294/294.
+Última revisión documental: 2026-09-16. T-017.2 COMPLETADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. DEC-022 ACEPTADA. T-017 EN PROGRESO. Migración 007 no aplicada. Producción sigue en runtime T-021/RPC 26. Tests: 345/345.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 

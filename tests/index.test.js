@@ -174,7 +174,16 @@ function makeWebhookRequest({
   };
 }
 
+const VALID_CHECKOUT_ATTEMPT_ID = "550e8400-e29b-41d4-a716-446655440000";
+
 function makePreferenceRequest(body = {}) {
+  if (!Object.prototype.hasOwnProperty.call(body, "checkoutAttemptId")) {
+    Object.defineProperty(body, "checkoutAttemptId", {
+      value: VALID_CHECKOUT_ATTEMPT_ID,
+      enumerable: true,
+      configurable: true,
+    });
+  }
   return { body };
 }
 
@@ -237,7 +246,9 @@ function createQueryBuilder(supabaseMock) {
   };
 }
 
-function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl, cart = {} } = {}) {
+function loadApp({
+  env = {}, supabase = {}, mercadoPago = {}, fetchImpl, cart = {}, checkoutAttempts = {},
+} = {}) {
   jest.resetModules();
 
   for (const name of [
@@ -310,6 +321,16 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl, cart = 
         sandbox_init_point: "https://checkout.example/sandbox",
       }))
   );
+  const preferenceSearch = jest.fn(
+    mercadoPago.preferenceSearch || (async () => ({ elements: [], total: 0 }))
+  );
+  const preferenceGet = jest.fn(
+    mercadoPago.preferenceGet || (async ({ id }) => ({
+      id,
+      external_reference: "LEMONT-ORDER-RPC-TEST",
+      init_point: "https://checkout.example/init",
+    }))
+  );
   class InvalidWebhookSignatureError extends Error {
     constructor(message = "invalid webhook signature") {
       super(message);
@@ -323,24 +344,77 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl, cart = 
       })
   );
 
-  const supabaseMock = {
-    createPendingOrderRpc: jest.fn(
-      supabase.createPendingOrderRpc ||
-        (async () => ({
+  let createdAttemptSnapshot = null;
+  const createPendingOrderImplementation = supabase.createPendingOrderRpc ||
+    (async (_functionName, parameters) => ({
           data: {
             order_id: 1,
             external_reference: "LEMONT-ORDER-RPC-TEST",
-            amount: 1000,
+            amount: parameters.p_expected_amount,
             currency: "ARS",
             status: "pending",
           },
           error: null,
-        }))
-    ),
+        }));
+  const supabaseMock = {
+    createPendingOrderRpc: jest.fn(async (functionName, parameters) => {
+      const result = await createPendingOrderImplementation(functionName, parameters);
+      if (result?.data && !result.error) {
+        createdAttemptSnapshot = snapshotFromRpc(parameters, result.data);
+      }
+      return result;
+    }),
     findOrder: jest.fn(supabase.findOrder || (async () => ({ data: { status: "pending", amount: 100, currency: "ARS" }, error: null }))),
     updateOrder: jest.fn(supabase.updateOrder || (async () => ({ data: { status: "paid" }, error: null }))),
   };
   const QueryBuilder = createQueryBuilder(supabaseMock);
+  const checkoutAttemptsMock = {
+    findCheckoutAttempt: jest.fn(checkoutAttempts.findCheckoutAttempt || (async () => {
+      if (createdAttemptSnapshot) return createdAttemptSnapshot;
+      const lastResult = supabaseMock.createPendingOrderRpc.mock.results.at(-1)?.value;
+      const lastParameters = supabaseMock.createPendingOrderRpc.mock.calls.at(-1)?.[1];
+      if (!lastResult || !lastParameters) return null;
+      const result = await lastResult;
+      if (!result?.data || result.error) return null;
+      createdAttemptSnapshot = snapshotFromRpc(lastParameters, result.data);
+      return createdAttemptSnapshot;
+    })),
+    claimCheckoutAttempt: jest.fn(checkoutAttempts.claimCheckoutAttempt || (async ({
+      checkoutAttemptId, leaseToken, leaseExpiresAt,
+    }) => {
+      if (!createdAttemptSnapshot) return null;
+      createdAttemptSnapshot = {
+        ...createdAttemptSnapshot,
+        state: "creating_preference",
+        lease_token: leaseToken,
+        lease_expires_at: leaseExpiresAt,
+      };
+      return { ...createdAttemptSnapshot, checkout_attempt_id: checkoutAttemptId };
+    })),
+    markCheckoutAttemptReady: jest.fn(checkoutAttempts.markCheckoutAttemptReady || (async ({
+      checkoutAttemptId, preferenceId, checkoutUrl,
+    }) => {
+      createdAttemptSnapshot = {
+        ...createdAttemptSnapshot,
+        checkout_attempt_id: checkoutAttemptId,
+        state: "ready",
+        mercadopago_preference_id: preferenceId,
+        checkout_url: checkoutUrl,
+        lease_token: null,
+        lease_expires_at: null,
+      };
+      return createdAttemptSnapshot;
+    })),
+    markCheckoutAttemptUnknown: jest.fn(checkoutAttempts.markCheckoutAttemptUnknown || (async () => {
+      createdAttemptSnapshot = {
+        ...createdAttemptSnapshot,
+        state: "unknown",
+        lease_token: null,
+        lease_expires_at: null,
+      };
+      return createdAttemptSnapshot;
+    })),
+  };
 
   jest.doMock("dotenv", () => ({ config: jest.fn() }));
   jest.doMock("express", () => expressMock);
@@ -348,7 +422,11 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl, cart = 
     InvalidWebhookSignatureError,
     MercadoPagoConfig: jest.fn(),
     Payment: jest.fn(() => ({ get: paymentGet })),
-    Preference: jest.fn(() => ({ create: preferenceCreate })),
+    Preference: jest.fn(() => ({
+      create: preferenceCreate,
+      search: preferenceSearch,
+      get: preferenceGet,
+    })),
     WebhookSignatureValidator: {
       validate: webhookSignatureValidate,
     },
@@ -363,6 +441,7 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl, cart = 
       })),
     })),
   }));
+  jest.doMock("../src/checkoutAttempts", () => checkoutAttemptsMock);
   jest.dontMock("../src/cart");
   if (Object.keys(cart).length) {
     jest.doMock("../src/cart", () => ({
@@ -380,9 +459,94 @@ function loadApp({ env = {}, supabase = {}, mercadoPago = {}, fetchImpl, cart = 
     errorMiddlewares,
     paymentGet,
     preferenceCreate,
+    preferenceSearch,
+    preferenceGet,
     supabaseMock,
+    checkoutAttemptsMock,
     webhookSignatureValidate,
     fetchMock: global.fetch,
+  };
+}
+
+function snapshotFromRpc(parameters, data) {
+  return {
+    checkout_attempt_id: parameters.p_checkout_attempt_id,
+    order_id: data.order_id,
+    state: "reserved",
+    mercadopago_preference_id: null,
+    checkout_url: null,
+    lease_token: null,
+    lease_expires_at: null,
+    order: {
+      id: data.order_id,
+      external_reference: data.external_reference,
+      products_subtotal: parameters.p_products_subtotal,
+      shipping_amount: parameters.p_shipping_amount,
+      amount: data.amount,
+      currency: data.currency,
+      status: data.status,
+      customer_first_name: parameters.p_customer_first_name,
+      customer_last_name: parameters.p_customer_last_name,
+      customer_email: parameters.p_customer_email,
+      customer_phone: parameters.p_customer_phone,
+      shipping_province: parameters.p_shipping_province,
+      shipping_locality: parameters.p_shipping_locality,
+      shipping_postal_code: parameters.p_shipping_postal_code,
+      shipping_street: parameters.p_shipping_street,
+      shipping_street_number: parameters.p_shipping_street_number,
+      shipping_apartment: parameters.p_shipping_apartment,
+      shipping_notes: parameters.p_shipping_notes,
+      shipping_option_id: parameters.p_shipping_option_id,
+      shipping_delivery_type: parameters.p_shipping_delivery_type,
+      shipping_service: parameters.p_shipping_service,
+      shipping_agency_code: parameters.p_shipping_agency_code,
+      items: parameters.p_items,
+    },
+  };
+}
+
+function persistedAttempt(overrides = {}) {
+  const orderOverrides = overrides.order || {};
+  return {
+    checkout_attempt_id: VALID_CHECKOUT_ATTEMPT_ID,
+    order_id: 91,
+    state: "ready",
+    mercadopago_preference_id: "PREF-DURABLE",
+    checkout_url: "https://checkout.example/durable",
+    lease_token: null,
+    lease_expires_at: null,
+    ...overrides,
+    order: {
+      id: 91,
+      external_reference: "LEMONT-ORDER-DURABLE",
+      products_subtotal: 1000,
+      shipping_amount: 0,
+      amount: 1000,
+      currency: "ARS",
+      status: "pending",
+      customer_first_name: "Ana María",
+      customer_last_name: "O'Connor",
+      customer_email: "ana.cliente@example.test",
+      customer_phone: "541123456789",
+      shipping_province: "AR-B",
+      shipping_locality: "La Plata",
+      shipping_postal_code: "B1900ABC",
+      shipping_street: "Calle 12",
+      shipping_street_number: "345",
+      shipping_apartment: null,
+      shipping_notes: "Portón negro",
+      shipping_option_id: "micorreo:home:classic",
+      shipping_delivery_type: "home",
+      shipping_service: "classic",
+      shipping_agency_code: null,
+      items: [{
+        product_sku: "LEM-REM-001-S",
+        product_name: "Remera LEMONT histórica",
+        quantity: 1,
+        unit_price: 1000,
+      }],
+      ...orderOverrides,
+    },
   };
 }
 
@@ -417,6 +581,168 @@ describe("migración 005 de shipping snapshot", () => {
     expect(sql).toMatch(/grant execute on function[\s\S]*to service_role;/i);
     expect(sql).toContain("calculated_products_subtotal <> p_products_subtotal");
     expect(sql).toContain("calculated_amount := calculated_products_subtotal + p_shipping_amount");
+  });
+});
+
+describe("T-017.2 integración durable de /crear-preferencia", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test.each([
+    ["ausente", undefined],
+    ["vacío", ""],
+    ["malformado", "not-a-uuid"],
+  ])("rechaza checkoutAttemptId %s con 400 genérico", async (_label, value) => {
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp();
+    const body = { ...validPreferenceBody };
+    if (value !== undefined) body.checkoutAttemptId = value;
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"]({ body }, response);
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toEqual({ error: "Intento de pago inválido" });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("retry READY devuelve lo persistido sin RPC, MP ni MiCorreo", async () => {
+    const attempt = persistedAttempt();
+    const { routes, supabaseMock, checkoutAttemptsMock, preferenceCreate,
+      preferenceSearch, fetchMock } = loadApp({
+      checkoutAttempts: { findCheckoutAttempt: async () => attempt },
+    });
+    const response = createResponse();
+
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest({ ...validPreferenceBody }), response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual({
+      preference_id: "PREF-DURABLE",
+      init_point: "https://checkout.example/durable",
+    });
+    expect(checkoutAttemptsMock.findCheckoutAttempt).toHaveBeenCalledTimes(1);
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(preferenceSearch).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["carrito", { quantity: 2 }],
+    ["customer", { customer: { ...validPreferenceBody.customer, email: "otra@example.test" } }],
+    ["delivery", { delivery: { ...validPreferenceBody.delivery, streetNumber: "999" } }],
+    ["shipping", { shippingOptionId: "micorreo:home:express" }],
+  ])("misma key con distinto %s responde 409 sin revelar el campo", async (
+    _label, change
+  ) => {
+    const { routes, supabaseMock, preferenceCreate, fetchMock } = loadApp({
+      checkoutAttempts: { findCheckoutAttempt: async () => persistedAttempt() },
+    });
+    const response = createResponse();
+    await routes.post["/crear-preferencia"](
+      makePreferenceRequest({ ...validPreferenceBody, ...change }), response
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(response.body).toEqual({
+      error: "El intento de pago no coincide con la compra original",
+    });
+    expect(supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(preferenceCreate).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("AGENCY distinta rechaza y HOME ignora un agency code extra", async () => {
+    const agencyAttempt = persistedAttempt({
+      order: {
+        shipping_option_id: "micorreo:agency:classic",
+        shipping_delivery_type: "agency",
+        shipping_agency_code: "AG-001",
+      },
+    });
+    const agencyApp = loadApp({
+      checkoutAttempts: { findCheckoutAttempt: async () => agencyAttempt },
+    });
+    const agencyResponse = createResponse();
+    await agencyApp.routes.post["/crear-preferencia"](
+      makePreferenceRequest({
+        ...validPreferenceBody,
+        shippingOptionId: "micorreo:agency:classic",
+        shippingAgencyCode: "AG-002",
+      }),
+      agencyResponse
+    );
+    expect(agencyResponse.statusCode).toBe(409);
+    expect(agencyApp.preferenceCreate).not.toHaveBeenCalled();
+
+    const homeApp = loadApp({
+      checkoutAttempts: { findCheckoutAttempt: async () => persistedAttempt() },
+    });
+    const homeResponse = createResponse();
+    await homeApp.routes.post["/crear-preferencia"](
+      makePreferenceRequest({ ...validPreferenceBody, shippingAgencyCode: "IGNORADO" }),
+      homeResponse
+    );
+    expect(homeResponse.statusCode).toBe(200);
+    expect(homeResponse.body.preference_id).toBe("PREF-DURABLE");
+    expect(homeApp.preferenceCreate).not.toHaveBeenCalled();
+    expect(homeApp.fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("la carrera 23505 esperada encuentra y reutiliza al ganador", async () => {
+    const winner = persistedAttempt();
+    let reads = 0;
+    const app = loadApp({
+      supabase: {
+        createPendingOrderRpc: async () => {
+          throw {
+            code: "23505",
+            constraint: "checkout_attempts_checkout_attempt_id_key",
+            message: "database conflict detail",
+          };
+        },
+      },
+      checkoutAttempts: {
+        findCheckoutAttempt: async () => (++reads === 1 ? null : winner),
+      },
+    });
+    const response = createResponse();
+    await app.routes.post["/crear-preferencia"](
+      makePreferenceRequest({ ...validPreferenceBody }), response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.preference_id).toBe("PREF-DURABLE");
+    expect(app.supabaseMock.createPendingOrderRpc).toHaveBeenCalledTimes(1);
+    expect(app.checkoutAttemptsMock.findCheckoutAttempt).toHaveBeenCalledTimes(2);
+    expect(app.preferenceCreate).not.toHaveBeenCalled();
+  });
+
+  test("un 23505 ajeno sigue siendo error normal y no busca ganador", async () => {
+    const app = loadApp({
+      supabase: {
+        createPendingOrderRpc: async () => {
+          throw {
+            code: "23505",
+            constraint: "orders_external_reference_key",
+            message: "database conflict detail",
+          };
+        },
+      },
+      checkoutAttempts: { findCheckoutAttempt: async () => null },
+    });
+    const response = createResponse();
+    await app.routes.post["/crear-preferencia"](
+      makePreferenceRequest({ ...validPreferenceBody }), response
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({ error: "No se pudo iniciar el pago" });
+    expect(app.checkoutAttemptsMock.findCheckoutAttempt).toHaveBeenCalledTimes(1);
+    expect(app.preferenceCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -883,6 +1209,7 @@ describe("creación de preferencias", () => {
       supabaseMock.createPendingOrderRpc.mock.calls[0];
     expect(rpcName).toBe("create_pending_order_with_items");
     expect(rpcParameters).toEqual({
+      p_checkout_attempt_id: VALID_CHECKOUT_ATTEMPT_ID,
       p_expected_amount: 1000,
       p_products_subtotal: 1000,
       p_shipping_amount: 0,
@@ -1138,7 +1465,6 @@ describe("checkout multítem", () => {
     expect(response.body).toEqual({
       preference_id: "preference-test",
       init_point: "https://checkout.example/init",
-      sandbox_init_point: "https://checkout.example/sandbox",
     });
     expect(supabaseMock.createPendingOrderRpc).toHaveBeenCalledTimes(1);
     expect(preferenceCreate).toHaveBeenCalledTimes(1);
@@ -1275,8 +1601,8 @@ describe("checkout multítem", () => {
     else preferenceCreate.mockRejectedValueOnce(error);
     const response = createResponse();
     await routes.post["/crear-preferencia"](makePreferenceRequest(bodyFor()), response);
-    expect(response.statusCode).toBe(500);
-    expect(response.body).toEqual({ error: stage === "RPC" ? "No se pudo iniciar el pago" : "No se pudo crear la preferencia" });
+    expect(response.statusCode).toBe(stage === "RPC" ? 500 : 503);
+    expect(response.body).toEqual({ error: "No se pudo iniciar el pago" });
     expect(supabaseMock.createPendingOrderRpc).toHaveBeenCalledTimes(1);
     expect(preferenceCreate).toHaveBeenCalledTimes(stage === "RPC" ? 0 : 1);
     expect(supabaseMock.updateOrder).not.toHaveBeenCalled();

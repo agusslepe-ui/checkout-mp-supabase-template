@@ -9,6 +9,7 @@ function importesCoinciden(a, b) {
 }
 
 async function createPendingOrder({
+  checkoutAttemptId,
   expectedAmount,
   productsSubtotal,
   shippingAmount,
@@ -20,6 +21,7 @@ async function createPendingOrder({
 }) {
   const { data, error } = await supabase
     .rpc("create_pending_order_with_items", {
+      p_checkout_attempt_id: checkoutAttemptId,
       p_expected_amount: expectedAmount,
       p_products_subtotal: productsSubtotal,
       p_shipping_amount: shippingAmount,

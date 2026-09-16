@@ -17,8 +17,31 @@ create table public.checkout_attempts (
   lease_expires_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint checkout_attempts_lease_coherence_check
-    check ((lease_token is null) = (lease_expires_at is null))
+  constraint checkout_attempts_state_coherence_check
+    check (
+      (mercadopago_preference_id is null) = (checkout_url is null)
+      and case state
+        when 'reserved' then
+          mercadopago_preference_id is null
+          and lease_token is null
+          and lease_expires_at is null
+        when 'creating_preference' then
+          mercadopago_preference_id is null
+          and lease_token is not null
+          and lease_expires_at is not null
+        when 'ready' then
+          mercadopago_preference_id is not null
+          and btrim(mercadopago_preference_id) <> ''
+          and checkout_url is not null
+          and btrim(checkout_url) <> ''
+          and lease_token is null
+          and lease_expires_at is null
+        when 'unknown' then
+          lease_token is null
+          and lease_expires_at is null
+        else false
+      end
+    )
 );
 
 create unique index checkout_attempts_mercadopago_preference_id_uidx
@@ -35,7 +58,15 @@ create index checkout_attempts_lease_expires_at_idx
 alter table public.checkout_attempts enable row level security;
 
 revoke all on table public.checkout_attempts from public, anon, authenticated;
-grant select, insert, update on table public.checkout_attempts to service_role;
+grant select, insert on table public.checkout_attempts to service_role;
+grant update (
+  state,
+  mercadopago_preference_id,
+  checkout_url,
+  lease_token,
+  lease_expires_at,
+  updated_at
+) on table public.checkout_attempts to service_role;
 
 revoke all on sequence public.checkout_attempts_id_seq from public, anon, authenticated;
 grant usage on sequence public.checkout_attempts_id_seq to service_role;
@@ -398,6 +429,46 @@ grant execute on function public.create_pending_order_with_items(
   text, text, text, text, text, text, text, text, text, text, text, text,
   text, text, text, text, jsonb
 ) to service_role;
+
+create function public.claim_checkout_attempt(
+  p_checkout_attempt_id uuid,
+  p_lease_token uuid,
+  p_lease_expires_at timestamptz
+)
+returns setof public.checkout_attempts
+language sql
+security invoker
+set search_path = pg_catalog, public
+as $function$
+  update public.checkout_attempts as attempt
+  set
+    state = 'creating_preference',
+    mercadopago_preference_id = null,
+    checkout_url = null,
+    lease_token = p_lease_token,
+    lease_expires_at = p_lease_expires_at,
+    updated_at = now()
+  where attempt.checkout_attempt_id = p_checkout_attempt_id
+    and p_checkout_attempt_id is not null
+    and p_lease_token is not null
+    and p_lease_expires_at > now()
+    and (
+      attempt.state in ('reserved', 'unknown')
+      or (
+        attempt.state = 'creating_preference'
+        and attempt.lease_expires_at <= now()
+      )
+    )
+  returning attempt.*;
+$function$;
+
+comment on function public.claim_checkout_attempt(uuid, uuid, timestamptz) is
+  'Atomically claims an eligible checkout attempt for preference creation or recovery. Backend only.';
+
+revoke execute on function public.claim_checkout_attempt(uuid, uuid, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.claim_checkout_attempt(uuid, uuid, timestamptz)
+  to service_role;
 
 notify pgrst, 'reload schema';
 

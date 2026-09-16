@@ -4,12 +4,12 @@
 
 **Estado:** EN PROGRESO. **Decisión:** DEC-022 ACEPTADA (2026-09-16).
 
-- **T-017.1 — Infraestructura durable:** IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. Agrega dominio UUID y migración 007 para `checkout_attempts` + RPC de 27 parámetros. SQL no aplicado. Sin deploy.
-- **T-017.2 — Integración backend y cutover coordinado:** PENDIENTE. Conectará `orders.js`, manejo concurrente, retry y recuperación sin romper la RPC productiva vigente de 26 parámetros. Observaciones de auditoría: `updated_at` explícito en UPDATEs; coherencia `ready` con preference_id/checkout_url; coherencia `creating_preference` con lease; no reescribir `checkout_attempt_id`; `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
+- **T-017.1 — Infraestructura durable:** COMPLETADA / AUDITADA. Agrega dominio UUID y migración 007 para `checkout_attempts` + RPC de 27 parámetros. SQL no aplicado. Sin deploy.
+- **T-017.2 — Integración backend durable:** COMPLETADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES (2026-09-16). Conecta `orders.js` con la RPC futura de 27 parámetros; implementa matching contra snapshot, carrera `23505` acotada, claim atómico, lease de 30 s, estados `reserved`/`creating_preference`/`ready`/`unknown`, reutilización READY y recuperación Mercado Pago por `external_reference` sin recotizar MiCorreo en retries existentes.
 - **T-017.3 — Integración frontend `checkoutAttemptId`:** PENDIENTE.
 - **T-017.4 — QA, recuperación ambigua y cierre:** PENDIENTE.
-- En T-017.1 no se modifican `app.js`, `orders.js`, Mercado Pago, webhook/HMAC ni frontend. Producción sigue en RPC de 26 parámetros.
-- **Verificación T-017.1:** 294/294 tests, 5 suites; SQL 007 no aplicado. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos.
+- Webhook/HMAC, `markOrderAsPaid` y frontend permanecen intactos. Producción sigue en RPC de 26 parámetros.
+- **Verificación T-017.2:** 345/345 tests, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. SQL 007 no aplicado; sin deploy ni red real. No desplegar hasta coordinar 007 + runtime 27 + T-017.3.
 
 ## T-021 — Selección real de sucursal MiCorreo
 
@@ -87,7 +87,7 @@
 
 ### PENDIENTE
 
-- **DEC-022 ACEPTADA; T-017 EN PROGRESO.** T-017.1 implementada localmente, auditada y APROBADA CON OBSERVACIONES; T-017.2–T-017.4 pendientes. Migración 007 no aplicada.
+- **DEC-022 ACEPTADA; T-017 EN PROGRESO.** T-017.1 completada/auditada; T-017.2 completada localmente/auditada/APROBADA CON OBSERVACIONES; T-017.3–T-017.4 pendientes. Migración 007 no aplicada.
 - **T-021:** pendiente auditoría, aplicación controlada de la migración 006 y QA. El webhook sigue comparando contra el total persistido sin cambios de lógica.
 - Etapa D (creación de envío post-pago) pendiente. No llamar `/shipping/import`.
 - Reemplazar medidas QA (`300 g / 5 × 25 × 35 cm`) por dimensiones/peso reales **antes de usar tarifas en producción**. Los perfiles 1–4 siguen TEMPORAL/QA.
@@ -1242,8 +1242,8 @@ Evitar que un mismo intento lógico de compra cree múltiples pedidos `pending` 
 
 #### Fases
 
-- T-017.1: infraestructura durable implementada localmente, auditada y APROBADA CON OBSERVACIONES.
-- T-017.2: integración backend, concurrencia, retry y recuperación — pendiente.
+- T-017.1: infraestructura durable — completada / auditada.
+- T-017.2: integración backend, concurrencia, retry y recuperación — completada localmente / auditada / APROBADA CON OBSERVACIONES.
 - T-017.3: generación y envío frontend de `checkoutAttemptId` — pendiente.
 - T-017.4: QA y cierre — pendiente.
 
@@ -1251,7 +1251,15 @@ Evitar que un mismo intento lógico de compra cree múltiples pedidos `pending` 
 
 Dominio UUID y migración 007 creados. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. La migración no fue aplicada, no hubo deploy y `orders.js` no fue conectado: producción sigue en la RPC de 26 parámetros. No se cambió webhook, HMAC, Mercado Pago ni frontend.
 
-Observaciones no bloqueantes para T-017.2: actualizar `updated_at` en UPDATEs; coherencia de `ready` con preference_id/checkout_url; coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
+#### Estado de T-017.2
+
+El backend requiere UUID, compara el retry con `orders` + `order_items`, reutiliza READY sin dependencias externas y usa una lease de 30 segundos adquirida mediante un único UPDATE condicional. Los resultados ambiguos pasan a UNKNOWN; UNKNOWN y leases vencidas buscan primero en Mercado Pago por `external_reference`. La preferencia se reconstruye exclusivamente desde el snapshot persistido y su total se valida en centavos.
+
+La recuperación usa `Preference.search` por `external_reference` y, si el summary no contiene URL utilizable, `Preference.get({ preferenceId: ... })`, conforme al contrato del SDK 3.1.0. El uso inicial incorrecto de `{ id: ... }` fue corregido y re-auditado.
+
+La migración 007 local incorpora coherencia de estados, permisos UPDATE solo sobre columnas mutables y `claim_checkout_attempt`. Verificación final: **345/345 tests**, 8 suites, 0 fallos. La 007 no fue aplicada y no hubo deploy. El runtime local de 27 parámetros es incompatible con producción (RPC 26) hasta el cutover coordinado junto con T-017.3.
+
+Observaciones no bloqueantes para T-017.3/T-017.4: el `23505` tiene fallback por nombre de constraint en `message/details`; existe riesgo teórico de lease vencida + búsqueda aún no indexada que permita una segunda preference; `Preference.search` puede modificar opciones de timeout del cliente SDK compartido; el matching de SKU no agrega `trim`; el claim concurrente está cubierto por mocks/lógica y no por SQL real; T-017.4 debe incluir recuperación y concurrencia reales/controladas.
 
 #### Resultado esperado (cuando se implemente)
 

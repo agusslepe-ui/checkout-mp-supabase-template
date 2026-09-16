@@ -1,14 +1,19 @@
 # Seguridad
 
-## T-017.1 / DEC-022 — infraestructura local, auditada
+## T-017.2 / DEC-022 — completada localmente / auditada / APROBADA CON OBSERVACIONES
 
 - `checkoutAttemptId` es un UUID de idempotencia, no un secreto; el dominio exige formato canónico y normaliza lowercase.
 - `checkout_attempts` no duplica cliente, domicilio ni otra PII. RLS está habilitada y no se crean policies para `anon`/`authenticated`.
-- Se revoca acceso de `PUBLIC`, `anon` y `authenticated`; `service_role` recibe solo SELECT/INSERT/UPDATE y USAGE de la identity sequence, sin DELETE.
+- Se revoca acceso de `PUBLIC`, `anon` y `authenticated`; `service_role` recibe SELECT/INSERT y UPDATE solo sobre `state`, preference/URL, lease y `updated_at`, además de USAGE de la identity sequence. No recibe DELETE ni UPDATE de `checkout_attempt_id`, `order_id` o `created_at`.
 - La RPC futura conserva `SECURITY INVOKER`, `search_path` fijo y EXECUTE exclusivo de `service_role`.
-- La UNIQUE de `checkout_attempt_id` es la barrera durable; el conflicto revierte order + items + intento en la misma transacción.
-- Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. Migración 007 no aplicada, sin deploy y runtime no conectado: producción sigue en la RPC de 26 parámetros.
-- T-017.2 debe tratar `23505` reutilizando el attempt existente, no reescribir `checkout_attempt_id` y coordinar el cutover 26→27.
+- La UNIQUE de `checkout_attempt_id` es la barrera durable; solo su constraint exacta convierte `23505` en retry. Otros conflictos no se ocultan.
+- El claim es un UPDATE SQL condicional único y usa un lease token generado en backend. Los updates READY/UNKNOWN exigen poseer ese token y limpian la lease; cada transición modifica `updated_at`.
+- Retries se validan contra el snapshot persistido y no contra precios actuales. READY no llama dependencias externas. UNKNOWN/lease vencida busca por `external_reference` y nunca elige arbitrariamente entre múltiples preferencias.
+- El recovery usa `Preference.search` y completa un resultado mediante `Preference.get({ preferenceId: ... })`; el contrato incorrecto detectado en la auditoría inicial fue corregido antes de la aprobación final.
+- Respuestas y logs no exponen PII, lease token, SQL, access token ni respuestas crudas de Mercado Pago. La recuperación devuelve solo id, referencia exacta y URL HTTPS validada.
+- Verificación final: **345/345 tests**, 8 suites, 0 fallos; mocks solamente. Migración 007 no aplicada, sin deploy; producción sigue en runtime T-021/RPC 26 y el frontend no envía `checkoutAttemptId`.
+- El código T-017.2 no es desplegable hasta coordinar 007 + runtime 27 + frontend T-017.3.
+- Observaciones no bloqueantes: fallback de constraint en texto para `23505`; ventana teórica entre lease vencida e indexación de búsqueda; timeout potencialmente compartido del SDK; SKU sin `trim` adicional; claim concurrente sin prueba SQL real. Recovery y concurrencia reales/controlados quedan obligatorios para T-017.4.
 
 ## T-021 / DEC-026 — implementada localmente / pendiente de auditoría
 

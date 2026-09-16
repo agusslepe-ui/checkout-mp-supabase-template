@@ -1231,12 +1231,13 @@ DEC-021 dejó este problema fuera de alcance a propósito. El usuario pidió reg
 - PostgreSQL es la última barrera de concurrencia mediante `public.checkout_attempts.checkout_attempt_id UNIQUE`.
 - `checkout_attempts` relaciona un intento con una única orden y con la futura preferencia de Mercado Pago, sin duplicar customer/delivery ni PII.
 - La orden, sus items y la reserva del intento se crean en la misma RPC/transacción. Un UUID duplicado provoca una violación UNIQUE y rollback total; no se usa `ON CONFLICT DO NOTHING`.
-- No se almacena `request_fingerprint`: T-017.2 comparará retries con el snapshot autoritativo ya persistido en `orders` y `order_items`.
+- No se almacena `request_fingerprint`: T-017.2 compara retries con el snapshot autoritativo ya persistido en `orders` y `order_items`.
 - Estados iniciales: `reserved`, `creating_preference`, `ready`, `unknown`; lease y datos de preferencia quedan preparados para fases posteriores.
-- T-017.1 crea dominio y migración local. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. La integración runtime, retry HTTP, recuperación de preferencias y frontend quedan para T-017.2–T-017.4.
+- T-017.1 está completada/auditada. T-017.2 implementó localmente runtime, retry HTTP, lease atómica y recuperación de preferencias; fue auditada y APROBADA CON OBSERVACIONES el 2026-09-16. Frontend, cutover/QA y cierre quedan para T-017.3–T-017.4.
 
 ### Consecuencias
 
-- T-017 queda desbloqueada y EN PROGRESO. T-017.1: IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES.
-- La migración 007 no se conecta al runtime ni se aplica antes del cutover coordinado de T-017.2; no hubo deploy; producción conserva la RPC de 26 parámetros.
-- Observaciones no bloqueantes para T-017.2: actualizar `updated_at` en UPDATEs; coherencia de `ready` con preference_id/checkout_url; coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
+- T-017 queda EN PROGRESO. T-017.1 está COMPLETADA/AUDITADA y T-017.2 COMPLETADA LOCALMENTE/AUDITADA/APROBADA CON OBSERVACIONES.
+- La migración 007 fue endurecida localmente, pero no se aplicó. No hubo deploy; producción conserva runtime T-021 y RPC de 26 parámetros.
+- El runtime T-017.2 requiere la firma de 27 parámetros y `checkoutAttemptId`; por eso no es desplegable hasta coordinar migración 007, runtime 27 y frontend T-017.3.
+- El recovery usa `Preference.search` por `external_reference` y `Preference.get({ preferenceId: ... })` cuando necesita completar una preferencia. Este contrato corrige el hallazgo bloqueante inicial de auditoría.
