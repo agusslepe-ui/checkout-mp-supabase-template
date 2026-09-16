@@ -131,9 +131,9 @@ Este registro distingue decisiones observadas en el código de decisiones todav�
 
 ---
 
-## Decisiones pendientes
+## Registro histórico de decisiones
 
-Las siguientes decisiones se registraron inicialmente como pendientes. Cada una conserva el estado `pendiente` hasta que el usuario la defina y apruebe.
+Las siguientes decisiones se registraron inicialmente como pendientes. El estado vigente de cada una está indicado en su propia sección y en `docs/STATUS.md`.
 
 ---
 
@@ -1215,10 +1215,9 @@ El modelo de persistencia ya soporta múltiples ítems. Falta el contrato de car
 
 ## DEC-022 — Idempotencia durable del checkout
 
-**Fecha:** 2026-09-11
-**Estado:** propuesta — pendiente de aprobación del usuario
-**Tarea relacionada si se acepta:** T-017
-**No desbloquea código.** No forma parte de T-016.
+**Fecha de aceptación:** 2026-09-16.
+**Estado:** ACEPTADA.
+**Tarea:** T-017.
 
 ### Contexto
 
@@ -1226,25 +1225,18 @@ T-016 solo mitiga el doble clic visual deshabilitando el botón. Eso no cubre ti
 
 DEC-021 dejó este problema fuera de alcance a propósito. El usuario pidió registrarlo como decisión y tarea independientes.
 
-### Decisión (alcance a definir al aceptar)
+### Decisión
 
-Cuando se acepte, deberá cubrir como mínimo:
-
-- doble request sobre `POST /crear-preferencia`;
-- reintentos del cliente;
-- timeouts;
-- recuperación de resultados ambiguos (pedido creado / preferencia no creada, o a la inversa);
-- prevención de múltiples pedidos y múltiples preferencias para un mismo intento lógico.
-
-No se elige todavía el mecanismo (clave de idempotencia, deduplicación por fingerprint, reutilización de preferencia, etc.). Elegirlo es parte de aceptar esta decisión, no de T-016.
-
-### Fuera de alcance actual
-
-- Implementación.
-- Colas, workers o persistencia adicional de webhooks.
-- Cambios al carrito de T-016.
+- Cada intento lógico usa un `checkoutAttemptId` UUID no secreto como clave durable.
+- PostgreSQL es la última barrera de concurrencia mediante `public.checkout_attempts.checkout_attempt_id UNIQUE`.
+- `checkout_attempts` relaciona un intento con una única orden y con la futura preferencia de Mercado Pago, sin duplicar customer/delivery ni PII.
+- La orden, sus items y la reserva del intento se crean en la misma RPC/transacción. Un UUID duplicado provoca una violación UNIQUE y rollback total; no se usa `ON CONFLICT DO NOTHING`.
+- No se almacena `request_fingerprint`: T-017.2 comparará retries con el snapshot autoritativo ya persistido en `orders` y `order_items`.
+- Estados iniciales: `reserved`, `creating_preference`, `ready`, `unknown`; lease y datos de preferencia quedan preparados para fases posteriores.
+- T-017.1 crea dominio y migración local. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. La integración runtime, retry HTTP, recuperación de preferencias y frontend quedan para T-017.2–T-017.4.
 
 ### Consecuencias
 
-- T-017 permanece bloqueada hasta que el usuario acepte DEC-022 y elija el mecanismo.
-- Codex no debe adelantar idempotencia durable mientras implementa T-016.
+- T-017 queda desbloqueada y EN PROGRESO. T-017.1: IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES.
+- La migración 007 no se conecta al runtime ni se aplica antes del cutover coordinado de T-017.2; no hubo deploy; producción conserva la RPC de 26 parámetros.
+- Observaciones no bloqueantes para T-017.2: actualizar `updated_at` en UPDATEs; coherencia de `ready` con preference_id/checkout_url; coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` reutiliza el attempt existente; cutover 26→27 coordinado.

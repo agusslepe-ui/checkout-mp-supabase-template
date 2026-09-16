@@ -1,5 +1,15 @@
 # Seguridad
 
+## T-017.1 / DEC-022 — infraestructura local, auditada
+
+- `checkoutAttemptId` es un UUID de idempotencia, no un secreto; el dominio exige formato canónico y normaliza lowercase.
+- `checkout_attempts` no duplica cliente, domicilio ni otra PII. RLS está habilitada y no se crean policies para `anon`/`authenticated`.
+- Se revoca acceso de `PUBLIC`, `anon` y `authenticated`; `service_role` recibe solo SELECT/INSERT/UPDATE y USAGE de la identity sequence, sin DELETE.
+- La RPC futura conserva `SECURITY INVOKER`, `search_path` fijo y EXECUTE exclusivo de `service_role`.
+- La UNIQUE de `checkout_attempt_id` es la barrera durable; el conflicto revierte order + items + intento en la misma transacción.
+- Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. Migración 007 no aplicada, sin deploy y runtime no conectado: producción sigue en la RPC de 26 parámetros.
+- T-017.2 debe tratar `23505` reutilizando el attempt existente, no reescribir `checkout_attempt_id` y coordinar el cutover 26→27.
+
 ## T-021 / DEC-026 — implementada localmente / pendiente de auditoría
 
 - Browser envía provincia ISO al endpoint y solo `shippingAgencyCode` al checkout; nunca customerId, price ni snapshot.

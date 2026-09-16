@@ -1,5 +1,22 @@
 # Diseño técnico
 
+## T-017.1 / DEC-022 — infraestructura durable local, auditada
+
+```text
+checkoutAttemptId UUID
+  → RPC futura (27 parámetros)
+  → INSERT order
+  → INSERT order_items
+  → INSERT checkout_attempts(state = reserved)
+  → COMMIT único
+```
+
+`checkout_attempts.checkout_attempt_id` y `order_id` son UNIQUE. Dos transacciones concurrentes con el mismo UUID pueden construir trabajo provisional, pero solo una inserta el intento; la otra recibe unique violation y PostgreSQL revierte su order e items dentro de la misma llamada. No se usa `ON CONFLICT DO NOTHING`.
+
+La tabla prepara `mercadopago_preference_id`, `checkout_url` y un lease coherente para T-017.2, sin copiar PII ni snapshots comerciales. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. La migración 007 no está aplicada, no hubo deploy y Node conserva la firma productiva de 26 parámetros hasta el cutover coordinado. T-017.2/.3/.4 pendientes.
+
+Observaciones no bloqueantes para T-017.2: actualizar `updated_at` en cada UPDATE; exigir coherencia de `ready` con `mercadopago_preference_id`/`checkout_url`; exigir coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
+
 ## T-021 / DEC-026 — implementada localmente, pendiente de auditoría
 
 ```text

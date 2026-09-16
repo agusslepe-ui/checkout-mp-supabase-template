@@ -1,5 +1,23 @@
 # Progreso
 
+## 2026-09-16 — T-017.1 auditada / APROBADA CON OBSERVACIONES
+
+- Cierre documental post-auditoría. Sin código, SQL, tests, `.env`, commit ni push.
+- T-017.1: IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. Sin hallazgos críticos.
+- DEC-022 permanece ACEPTADA (2026-09-16). T-017 EN PROGRESO. T-017.2/.3/.4 pendientes.
+- Migración 007 no aplicada. Sin deploy. Producción sigue usando la RPC de 26 parámetros.
+- Observaciones no bloqueantes para T-017.2: `updated_at` explícito en UPDATEs; coherencia de `ready` con preference_id/checkout_url; coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
+
+## 2026-09-16 — T-017.1 implementada localmente / pendiente de auditoría
+
+- DEC-022 aceptada y T-017 desbloqueada/en progreso.
+- Nuevo dominio `checkoutAttempt`: valida UUID canónico, normaliza lowercase y expone los cuatro estados aprobados.
+- Migración 007 local: tabla `checkout_attempts`, RLS/permisos mínimos, unicidades, lease coherente e infraestructura futura de preferencia.
+- RPC futura de 27 parámetros: conserva T-021 y crea order + items + intento `reserved` atómicamente; UUID duplicado provoca rollback completo.
+- Por seguridad de cutover, `orders.js` y `app.js` no fueron conectados: producción continúa con la RPC aplicada de 26 parámetros.
+- Verificación: **294/294 tests**, 5 suites; sintaxis Node y `git diff --check` correctos.
+- Sin SQL aplicado, red real, Mercado Pago, MiCorreo, `.env`, commit, push ni deploy. T-017.2–T-017.4 pendientes.
+
 ## 2026-09-15 — T-021 implementada localmente / pendiente de auditoría
 
 - `GET /agencies` integrado mediante provider/service existentes; endpoint público por provincia y respuesta normalizada.
@@ -67,7 +85,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-15. T-021 implementada localmente y pendiente de auditoría; DEC-026 no aceptada. Migración 006 no aplicada. Tests: 276/276.
+Última revisión documental: 2026-09-16. T-017.1 IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. DEC-022 ACEPTADA. T-017 EN PROGRESO. Migración 007 no aplicada. Producción sigue en RPC de 26 parámetros. Tests: 294/294.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 

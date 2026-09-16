@@ -1,5 +1,16 @@
 # Tareas
 
+## T-017 — Idempotencia durable del checkout
+
+**Estado:** EN PROGRESO. **Decisión:** DEC-022 ACEPTADA (2026-09-16).
+
+- **T-017.1 — Infraestructura durable:** IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. Agrega dominio UUID y migración 007 para `checkout_attempts` + RPC de 27 parámetros. SQL no aplicado. Sin deploy.
+- **T-017.2 — Integración backend y cutover coordinado:** PENDIENTE. Conectará `orders.js`, manejo concurrente, retry y recuperación sin romper la RPC productiva vigente de 26 parámetros. Observaciones de auditoría: `updated_at` explícito en UPDATEs; coherencia `ready` con preference_id/checkout_url; coherencia `creating_preference` con lease; no reescribir `checkout_attempt_id`; `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
+- **T-017.3 — Integración frontend `checkoutAttemptId`:** PENDIENTE.
+- **T-017.4 — QA, recuperación ambigua y cierre:** PENDIENTE.
+- En T-017.1 no se modifican `app.js`, `orders.js`, Mercado Pago, webhook/HMAC ni frontend. Producción sigue en RPC de 26 parámetros.
+- **Verificación T-017.1:** 294/294 tests, 5 suites; SQL 007 no aplicado. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos.
+
 ## T-021 — Selección real de sucursal MiCorreo
 
 **Estado:** EN PROGRESO / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA. **No COMPLETADA.**
@@ -76,7 +87,7 @@
 
 ### PENDIENTE
 
-- **DEC-022** propuesta; **T-017** bloqueada. Idempotencia durable fuera de T-016.
+- **DEC-022 ACEPTADA; T-017 EN PROGRESO.** T-017.1 implementada localmente, auditada y APROBADA CON OBSERVACIONES; T-017.2–T-017.4 pendientes. Migración 007 no aplicada.
 - **T-021:** pendiente auditoría, aplicación controlada de la migración 006 y QA. El webhook sigue comparando contra el total persistido sin cambios de lógica.
 - Etapa D (creación de envío post-pago) pendiente. No llamar `/shipping/import`.
 - Reemplazar medidas QA (`300 g / 5 × 25 × 35 cm`) por dimensiones/peso reales **antes de usar tarifas en producción**. Los perfiles 1–4 siguen TEMPORAL/QA.
@@ -1221,31 +1232,26 @@ LEMONT puede preparar y cobrar un carrito de varios SKUs con un único pedido `p
 
 ### T-017 — Idempotencia durable del checkout
 
-**Estado:** pendiente — bloqueada hasta que el usuario acepte DEC-022
+**Estado:** EN PROGRESO
 **Prioridad:** P2
-**Decisión:** DEC-022 (propuesta 2026-09-11)
+**Decisión:** DEC-022 ACEPTADA (2026-09-16)
 
 #### Objetivo
 
 Evitar que un mismo intento lógico de compra cree múltiples pedidos `pending` y múltiples preferencias de Mercado Pago cuando hay doble request, reintento, timeout o resultado ambiguo.
 
-#### Alcance mínimo a cubrir cuando se desbloquee
+#### Fases
 
-- Doble request sobre `POST /crear-preferencia`.
-- Reintentos del cliente.
-- Timeouts.
-- Recuperación de resultados ambiguos (pedido creado sin preferencia, u otros estados a medias).
-- Prevención de múltiples pedidos y preferencias para un mismo intento lógico.
+- T-017.1: infraestructura durable implementada localmente, auditada y APROBADA CON OBSERVACIONES.
+- T-017.2: integración backend, concurrencia, retry y recuperación — pendiente.
+- T-017.3: generación y envío frontend de `checkoutAttemptId` — pendiente.
+- T-017.4: QA y cierre — pendiente.
 
-#### Instrucciones
+#### Estado de T-017.1
 
-No implementar ahora. El mecanismo concreto (clave de idempotencia, fingerprint, reutilización de preferencia, etc.) se elige al aceptar DEC-022. T-016 solo conserva el bloqueo visual del botón.
+Dominio UUID y migración 007 creados. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. La migración no fue aplicada, no hubo deploy y `orders.js` no fue conectado: producción sigue en la RPC de 26 parámetros. No se cambió webhook, HMAC, Mercado Pago ni frontend.
 
-#### Qué no hacer mientras T-016 está en curso
-
-- No agregar columnas, migraciones ni claves de idempotencia “por las dudas”.
-- No cambiar el webhook para este problema.
-- No mezclar este alcance con el Paso 1 de T-016.
+Observaciones no bloqueantes para T-017.2: actualizar `updated_at` en UPDATEs; coherencia de `ready` con preference_id/checkout_url; coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
 
 #### Resultado esperado (cuando se implemente)
 

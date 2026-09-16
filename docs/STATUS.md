@@ -30,7 +30,7 @@ El detalle del cierre está en `docs/T021_DEC026_CLOSURE_2026-09-16.md`.
 
 ## Pendientes principales
 
-- T-017 / DEC-022: idempotencia durable del checkout.
+- T-017.2–T-017.4: integración backend, frontend, recuperación y QA de la idempotencia durable.
 - Etapa D: crear el envío post-pago con MiCorreo `/shipping/import`; no implementada todavía.
 - Tracking/etiquetas: no implementados; el PDF oficial disponible no documenta esos endpoints.
 - Stock real por SKU; `maxQuantity: 4` sigue siendo un límite temporal y no inventario.
@@ -44,3 +44,14 @@ El detalle del cierre está en `docs/T021_DEC026_CLOSURE_2026-09-16.md`.
 No declarar la tienda lista para lanzamiento comercial mientras sigan pendientes las medidas reales, la rotación de credenciales, el precio comercial y los controles operativos acordados.
 
 GitHub sigue siendo la fuente de verdad del código. El cierre T-021/DEC-026 de 2026-09-16 prevalece sobre referencias históricas anteriores.
+
+## Trabajo local posterior al cierre T-021
+
+- **DEC-022 — Idempotencia durable del checkout: ACEPTADA** el 2026-09-16.
+- **T-017: EN PROGRESO.**
+- **T-017.1: IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES.** Sin hallazgos críticos.
+- Se prepararon `checkout_attempts`, el dominio de validación UUID y una RPC futura de 27 parámetros en la migración 007.
+- Verificación local T-017.1: **294/294 tests**, 5 suites.
+- La migración 007 **NO está aplicada**. No hubo deploy de T-017. Producción sigue usando la RPC de **26 parámetros**.
+- T-017.2, T-017.3 y T-017.4 permanecen pendientes.
+- Observaciones no bloqueantes para T-017.2: actualizar `updated_at` en cada UPDATE; definir coherencia de `ready` con `mercadopago_preference_id`/`checkout_url`; definir coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` debe reutilizar el attempt existente; cutover 26→27 coordinado.
