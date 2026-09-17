@@ -8,13 +8,13 @@ Las migraciones 007 y 008 están aplicadas en producción. Se verificaron `check
 
 La migración 006 también está aplicada en producción. Las columnas `shipping_agency_*` existen y T-021/DEC-026 están productivas y cerradas.
 
-El runtime T-017 fue desplegado en EasyPanel y usa v2. El QA real confirmó que el mismo intento/intención reutiliza la misma `checkout_attempt`, order y preferencia Mercado Pago; una intención distinta genera un nuevo intento, orden y preferencia; doble clic y retry normal no generaron una orden duplicada. T-017 permanece EN PROGRESO hasta impedir que un attempt `ready` reutilice una preferencia vieja cuando su orden ya está `paid`.
+El runtime T-017 fue desplegado en EasyPanel y usa v2. El QA real confirmó que el mismo intento/intención reutiliza la misma `checkout_attempt`, order y preferencia Mercado Pago; una intención distinta genera un nuevo intento, orden y preferencia; doble clic y retry normal no generaron una orden duplicada. El hardening READY + order `paid` quedó IMPLEMENTADO LOCALMENTE: el backend responde 409 `checkout_attempt_already_paid` sin cotizar, persistir ni llamar Mercado Pago; el frontend elimina solo `lemont.checkoutAttempt.v1`, conserva el carrito y muestra que la compra ya fue pagada. T-017 permanece EN PROGRESO hasta desplegar y validar esta corrección en producción.
 
 T-020 cerró su paid QA con un pago real y shipping incluido. Tras corregir DNS y HTTPS, Mercado Pago entregó el webhook y la orden pasó de `pending` a `paid`. Esto valida `checkout → shipping incluido → Mercado Pago → pago real → webhook → validación → orders.status=paid`; DEC-025 queda ACEPTADA el 2026-09-17.
 
 Incidencia resuelta: `checkout.lemont01.com` apuntaba a la IP anterior del VPS. Se corrigió al EasyPanel actual, se comprobó el puerto 80 y Traefik regeneró un certificado válido de Let's Encrypt después de un estado inicial no confiable. HTTPS quedó operativo; un `POST /webhook` sin firma llegó a Express y respondió `401 {"error":"Webhook inválido"}`, y la notificación válida posterior fue procesada.
 
-T-021/DEC-026 permanecen cerradas. Continúan pendientes: READY con order ya `paid`; página real de agradecimiento; limpieza segura de carrito/`sessionStorage`; MiCorreo `POST /shipping/import`; stock por SKU; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales expuestas; auditoría npm; y etapas posteriores de dominio/frontend/SEO.
+T-021/DEC-026 permanecen cerradas. Continúan pendientes: deploy/QA productivo del hardening READY + order `paid`; página real de agradecimiento; limpieza segura de carrito/`sessionStorage`; MiCorreo `POST /shipping/import`; stock por SKU; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales expuestas; auditoría npm; y etapas posteriores de dominio/frontend/SEO.
 
 La tienda todavía **NO está lista para lanzamiento comercial**.
 
@@ -26,7 +26,7 @@ Cotización dual items o legacy, resolver común, tope 4 unidades totales, perfi
 
 En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío** y T-021 todavía estaba solo local; ambos estados fueron superados por los cierres productivos posteriores.
 
-> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008 aplicadas; runtime T-017 desplegado; idempotencia durable activa y QA real satisfactorio; RPC 26 conservada; T-020 cerrada con pago real y DEC-025 aceptada; T-021/DEC-026 cerradas. T-017 sigue en progreso por READY + order `paid`. El estado vigente está en `docs/STATUS.md`.
+> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008 aplicadas; runtime T-017 desplegado; idempotencia durable activa y QA real satisfactorio; RPC 26 conservada; T-020 cerrada con pago real y DEC-025 aceptada; T-021/DEC-026 cerradas. El hardening READY + order `paid` está implementado localmente y pendiente de deploy/QA; T-017 sigue en progreso. El estado vigente está en `docs/STATUS.md`.
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 

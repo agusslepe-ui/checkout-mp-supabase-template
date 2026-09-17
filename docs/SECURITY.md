@@ -1,5 +1,12 @@
 # Seguridad
 
+## T-017 — hardening READY + order `paid` local
+
+- Un intento READY cuya order ya está `paid` devuelve 409 `checkout_attempt_already_paid`; no expone ni reutiliza `checkout_url` ni preference id.
+- La comprobación usa el snapshot persistido ya cargado y ocurre antes de MiCorreo, creación de order/attempt, claim/recovery y Mercado Pago. No modifica el intento ni la order pagada.
+- El frontend elimina solo `lemont.checkoutAttempt.v1`; no borra `lemont.cart`, no redirige y muestra `Esta compra ya fue pagada.`. Los demás conflictos 409 mantienen su tratamiento anterior.
+- Verificación local: 380/380 tests, 9 suites, 0 fallos. La corrección todavía no está desplegada ni validada en producción; T-017 continúa EN PROGRESO.
+
 ## T-017.4 — hallazgo real de default privileges / migración 008
 
 - La migración 007 fue aplicada en producción. RPC 26, RPC v2 y claim fueron verificados con `SECURITY INVOKER`, `search_path` fijo y EXECUTE solo para postgres/`service_role`.

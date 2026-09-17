@@ -453,6 +453,9 @@ async function sendCheckoutAttemptResult({ res, attempt, identity, logContext })
     });
     return res.status(isControlled ? error.status : 500).json({
       error: isControlled ? error.publicMessage : "No se pudo iniciar el pago",
+      ...(isControlled && error.type === "checkout_attempt_already_paid"
+        ? { type: error.type }
+        : {}),
     });
   }
 }

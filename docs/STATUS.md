@@ -16,7 +16,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 ## Estado de tareas y decisiones
 
 - **DEC-022 — Idempotencia durable del checkout: ACEPTADA** (2026-09-16).
-- **T-017: EN PROGRESO.** T-017.1, T-017.2 y T-017.3 están completadas/auditadas; T-017.4-A está completada/auditada; el cutover y el QA real de idempotencia se ejecutaron correctamente. Falta resolver y validar la reutilización de un attempt `ready` cuando su orden asociada ya está `paid`.
+- **T-017: EN PROGRESO.** T-017.1, T-017.2 y T-017.3 están completadas/auditadas; T-017.4-A está completada/auditada; el cutover y el QA real de idempotencia se ejecutaron correctamente. El hardening READY + order `paid` está IMPLEMENTADO LOCALMENTE: responde 409 `checkout_attempt_already_paid`, no reutiliza la preferencia y el frontend elimina solo el record del attempt. Falta deploy y QA productivo de esta corrección antes de cerrar T-017.
 - **DEC-025 — Cobro autoritativo del envío: ACEPTADA** (2026-09-17), después de la evidencia productiva de pago real con shipping incluido y transición final a `paid`.
 - **T-020: COMPLETADA / AUDITADA / VALIDADA EN PRODUCCIÓN.** La migración 005 está aplicada y el paid QA quedó cerrado.
 - **DEC-026 — Selección autoritativa de agencia: ACEPTADA.**
@@ -31,7 +31,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 ## Pendientes reales
 
-- Impedir que un `checkout_attempt` `ready` reutilice una preferencia vieja cuando la orden asociada ya está `paid`.
+- Desplegar y validar en producción el hardening local que impide reutilizar una preferencia READY cuando la orden asociada ya está `paid`.
 - Convertir `success.html` en una página real de “Gracias por tu compra”.
 - Definir limpieza segura del carrito y `sessionStorage` después del retorno exitoso.
 - Etapa D: crear el envío post-pago mediante MiCorreo `POST /shipping/import`.

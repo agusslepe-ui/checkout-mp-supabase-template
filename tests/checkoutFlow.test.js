@@ -151,6 +151,30 @@ describe("flujo durable de checkout", () => {
     expect(deps.paymentGateway.searchPreferencesByExternalReference).not.toHaveBeenCalled();
   });
 
+  test("READY con order pagada responde 409 sin mutaciones ni Mercado Pago", async () => {
+    const attempt = snapshot({
+      state: "ready",
+      mercadopago_preference_id: "PREF-PAID",
+      checkout_url: "https://checkout.example/paid",
+      order: { status: "paid" },
+    });
+    const before = JSON.stringify(attempt);
+    const deps = dependencies({ currentAttempt: attempt });
+
+    await expect(run(attempt, deps)).rejects.toMatchObject({
+      status: 409,
+      publicMessage: "Esta compra ya fue pagada.",
+      type: "checkout_attempt_already_paid",
+    });
+    expect(JSON.stringify(attempt)).toBe(before);
+    expect(deps.repository.claimCheckoutAttempt).not.toHaveBeenCalled();
+    expect(deps.repository.findCheckoutAttempt).not.toHaveBeenCalled();
+    expect(deps.repository.markCheckoutAttemptReady).not.toHaveBeenCalled();
+    expect(deps.repository.markCheckoutAttemptUnknown).not.toHaveBeenCalled();
+    expect(deps.paymentGateway.createPreference).not.toHaveBeenCalled();
+    expect(deps.paymentGateway.searchPreferencesByExternalReference).not.toHaveBeenCalled();
+  });
+
   test("un lease activo responde 409 y no toca Mercado Pago", async () => {
     const attempt = snapshot({
       state: "creating_preference",

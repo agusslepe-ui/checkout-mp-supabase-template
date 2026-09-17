@@ -630,6 +630,35 @@ describe("T-017.2 integración durable de /crear-preferencia", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  test("retry READY con order pagada responde 409 sin efectos secundarios", async () => {
+    const attempt = persistedAttempt({ order: { status: "paid" } });
+    const before = JSON.stringify(attempt);
+    const app = loadApp({
+      checkoutAttempts: { findCheckoutAttempt: async () => attempt },
+    });
+    const response = createResponse();
+
+    await app.routes.post["/crear-preferencia"](
+      makePreferenceRequest({ ...validPreferenceBody }), response
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(response.body).toEqual({
+      error: "Esta compra ya fue pagada.",
+      type: "checkout_attempt_already_paid",
+    });
+    expect(JSON.stringify(attempt)).toBe(before);
+    expect(app.checkoutAttemptsMock.findCheckoutAttempt).toHaveBeenCalledTimes(1);
+    expect(app.checkoutAttemptsMock.claimCheckoutAttempt).not.toHaveBeenCalled();
+    expect(app.checkoutAttemptsMock.markCheckoutAttemptReady).not.toHaveBeenCalled();
+    expect(app.checkoutAttemptsMock.markCheckoutAttemptUnknown).not.toHaveBeenCalled();
+    expect(app.supabaseMock.createPendingOrderRpc).not.toHaveBeenCalled();
+    expect(app.preferenceCreate).not.toHaveBeenCalled();
+    expect(app.preferenceSearch).not.toHaveBeenCalled();
+    expect(app.preferenceGet).not.toHaveBeenCalled();
+    expect(app.fetchMock).not.toHaveBeenCalled();
+  });
+
   test.each([
     ["carrito", { quantity: 2 }],
     ["customer", { customer: { ...validPreferenceBody.customer, email: "otra@example.test" } }],

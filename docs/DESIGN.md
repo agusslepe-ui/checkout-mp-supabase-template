@@ -1,5 +1,11 @@
 # Diseño técnico
 
+## T-017 — hardening READY + order `paid` local
+
+Cuando el retry coincide con el snapshot y el intento está `ready`, el backend inspecciona el estado de la order ya cargada antes de construir la respuesta durable. Si la order está `paid`, responde HTTP 409 con `type: checkout_attempt_already_paid` y el mensaje público `Esta compra ya fue pagada.`. El corte ocurre antes de cualquier cotización, RPC de creación, claim, recovery o llamada a Mercado Pago; tampoco modifica el attempt ni la order. READY + `pending` conserva la reutilización existente.
+
+El frontend clasifica este caso por el `type` estable, no redirige a Mercado Pago, elimina únicamente `sessionStorage["lemont.checkoutAttempt.v1"]`, conserva `localStorage["lemont.cart"]` y muestra el mensaje de compra pagada. Los demás HTTP 409 conservan su comportamiento. Implementado y verificado localmente con 380/380 tests; pendiente de deploy y QA productivo, por lo que T-017 continúa EN PROGRESO.
+
 ## T-017.4 — hardening reproducible de privilegios efectivos
 
 La migración 007 ya fue aplicada en producción y confirmó la coexistencia de RPC 26, RPC v2 y claim. La verificación efectiva mostró que los default privileges de Supabase podían ampliar los grants declarados en 007, incluyendo UPDATE de tabla completo y privilegios DELETE/TRUNCATE/TRIGGER/REFERENCES.
@@ -44,12 +50,12 @@ Resultado del cutover:
 5. **Deploy:** completado en EasyPanel; las creaciones nuevas usan v2.
 6. **Smoke/checkout QA:** completado dentro del flujo productivo informado.
 7. **Idempotency QA:** mismo intent/retry conservó attempt/order/preference; nueva intención creó nuevas entidades; doble clic/retry normal no duplicó la orden.
-8. **Payment QA:** pago real con shipping, webhook y `pending → paid` completado. Queda pendiente impedir READY con order ya `paid`.
+8. **Payment QA:** pago real con shipping, webhook y `pending → paid` completado. El hardening READY con order ya `paid` fue implementado después y permanece pendiente de deploy/QA productivo.
 9. **Cleanup futuro:** tras estabilidad, una migración separada podrá retirar RPC 26. No forma parte de T-017.4-A.
 
 Rollback: si 007 ya fue aplicada pero el deploy aún no, el runtime viejo continúa mediante RPC 26 y no se revierte por compatibilidad. Si falla el runtime nuevo, se restaura el deployment T-021, que sigue teniendo RPC 26. No se automatizan operaciones destructivas.
 
-Observaciones históricas de preparación: podía existir una ventana breve de schema cache tras `NOTIFY pgrst`, Node T-017 no debía desplegarse antes de 007 y los tests SQL eran mayormente estáticos. El orden de cutover se respetó y el QA real cubrió los escenarios informados de reutilización, cambio de intención y doble clic/retry. El pendiente vigente es order `paid` + attempt READY.
+Observaciones históricas de preparación: podía existir una ventana breve de schema cache tras `NOTIFY pgrst`, Node T-017 no debía desplegarse antes de 007 y los tests SQL eran mayormente estáticos. El orden de cutover se respetó y el QA real cubrió los escenarios informados de reutilización, cambio de intención y doble clic/retry. El caso order `paid` + attempt READY ya tiene corrección local; su deploy/QA sigue pendiente.
 
 ## T-017.3 — identidad durable en frontend local
 
@@ -66,7 +72,7 @@ Productos duplicados se agrupan y ordenan por SKU. Customer/delivery se normaliz
 
 Red, 500/503 y checkout busy conservan el UUID. Mismatch o attempt inválido limpian solo el record. Éxito conserva el record antes de redirigir. No hay retry automático. La ausencia de Web Crypto bloquea el fetch de forma controlada.
 
-Los HTTP 409 se clasifican por código: `shipping_changed`, `agency_changed`, `checkout_busy`, `checkout_mismatch` y `checkout_unavailable`. Un 409 genérico ya no se interpreta como cambio de envío.
+Los HTTP 409 se clasifican por código: `shipping_changed`, `agency_changed`, `checkout_busy`, `checkout_mismatch`, `checkout_attempt_already_paid` y `checkout_unavailable`. Un 409 genérico ya no se interpreta como cambio de envío.
 
 T-017.3 está completada y auditada. El frontend/runtime T-017 está desplegado y la idempotencia durable está activa en producción; RPC 26 se conserva por compatibilidad.
 

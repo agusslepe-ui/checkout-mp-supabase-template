@@ -9,14 +9,14 @@ const STORAGE_KEY = "lemont.checkoutAttempt.v1";
 const UUID_A = "550e8400-e29b-41d4-a716-446655440000";
 const UUID_B = "660e8400-e29b-41d4-a716-446655440000";
 
-function memoryStorage(initialValue) {
+function memoryStorage(initialValue, initialKey = STORAGE_KEY) {
   const values = new Map();
-  if (initialValue !== undefined) values.set(STORAGE_KEY, initialValue);
+  if (initialValue !== undefined) values.set(initialKey, initialValue);
   return {
     getItem: jest.fn((key) => values.get(key) ?? null),
     setItem: jest.fn((key, value) => values.set(key, value)),
     removeItem: jest.fn((key) => values.delete(key)),
-    raw: () => values.get(STORAGE_KEY) ?? null,
+    raw: (key = STORAGE_KEY) => values.get(key) ?? null,
   };
 }
 
@@ -81,7 +81,12 @@ function checkoutInput(overrides = {}) {
   };
 }
 
-function setupCheckout({ fetchImpl, storage = memoryStorage(), cryptoApi = cryptoWith(UUID_A) } = {}) {
+function setupCheckout({
+  fetchImpl,
+  storage = memoryStorage(),
+  cartStorage = memoryStorage(),
+  cryptoApi = cryptoWith(UUID_A),
+} = {}) {
   const fetch = jest.fn(fetchImpl || (async () => ({
     ok: true,
     status: 200,
@@ -92,6 +97,7 @@ function setupCheckout({ fetchImpl, storage = memoryStorage(), cryptoApi = crypt
     fetch,
     window: { location: { assign } },
     sessionStorage: storage,
+    localStorage: cartStorage,
     TextEncoder,
     Uint8Array,
     Set,
@@ -111,7 +117,7 @@ function setupCheckout({ fetchImpl, storage = memoryStorage(), cryptoApi = crypt
       .replace("export async function", "async function"),
     context
   );
-  return { context, fetch, assign, storage, cryptoApi };
+  return { context, fetch, assign, storage, cartStorage, cryptoApi };
 }
 
 describe("identidad frontend de checkout", () => {
@@ -267,6 +273,33 @@ describe("integración frontend del attempt", () => {
     expect(first.statusElement.textContent).toBe("Los datos de la compra cambiaron. Intentá nuevamente.");
     await app.context.iniciarCheckout(checkoutInput());
     expect(JSON.parse(app.fetch.mock.calls[1][1].body).checkoutAttemptId).toBe(UUID_B);
+  });
+
+  test("checkout_attempt_already_paid borra solo el attempt y no redirige", async () => {
+    const cartRecord = JSON.stringify([{ sku: "LEM-REM-001-S", quantity: 1 }]);
+    const cartStorage = memoryStorage(cartRecord, "lemont.cart");
+    const app = setupCheckout({
+      cartStorage,
+      fetchImpl: async () => ({
+        ok: false,
+        status: 409,
+        json: async () => ({
+          error: "Esta compra ya fue pagada.",
+          type: "checkout_attempt_already_paid",
+        }),
+      }),
+    });
+    const input = checkoutInput();
+
+    await app.context.iniciarCheckout(input);
+
+    expect(app.storage.raw()).toBeNull();
+    expect(cartStorage.raw("lemont.cart")).toBe(cartRecord);
+    expect(cartStorage.removeItem).not.toHaveBeenCalled();
+    expect(app.assign).not.toHaveBeenCalled();
+    expect(input.onShippingInvalidated).not.toHaveBeenCalled();
+    expect(input.button.disabled).toBe(false);
+    expect(input.statusElement.textContent).toBe("Esta compra ya fue pagada.");
   });
 
   test.each([

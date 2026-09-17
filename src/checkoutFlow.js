@@ -28,6 +28,7 @@ async function processCheckoutAttempt({
   ensureMatchingRequest(identity, attempt);
 
   if (attempt.state === CHECKOUT_ATTEMPT_STATES.READY) {
+    ensureReadyOrderIsNotPaid(attempt);
     return readyResponse(attempt);
   }
 
@@ -163,7 +164,10 @@ async function resolveClaimLoss({ attempt, identity, repository }) {
   const current = await repository.findCheckoutAttempt(attempt.checkout_attempt_id);
   if (!current) throw temporaryError("checkout_attempt_disappeared");
   ensureMatchingRequest(identity, current);
-  if (current.state === CHECKOUT_ATTEMPT_STATES.READY) return readyResponse(current);
+  if (current.state === CHECKOUT_ATTEMPT_STATES.READY) {
+    ensureReadyOrderIsNotPaid(current);
+    return readyResponse(current);
+  }
   throw preparingError();
 }
 
@@ -181,6 +185,16 @@ function ensureMatchingRequest(identity, attempt) {
       409,
       "El intento de pago no coincide con la compra original",
       "checkout_attempt_mismatch"
+    );
+  }
+}
+
+function ensureReadyOrderIsNotPaid(attempt) {
+  if (attempt.order?.status === "paid") {
+    throw new CheckoutFlowError(
+      409,
+      "Esta compra ya fue pagada.",
+      "checkout_attempt_already_paid"
     );
   }
 }

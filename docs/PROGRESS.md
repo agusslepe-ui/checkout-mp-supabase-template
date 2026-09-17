@@ -1,15 +1,23 @@
 # Progreso
 
+## 2026-09-17 — T-017 hardening READY + order paid implementado localmente
+
+- Backend: un attempt `ready` con order `paid` responde 409 con `type: checkout_attempt_already_paid` y mensaje público `Esta compra ya fue pagada.`; READY + `pending` continúa reutilizando la preference durable.
+- El rechazo ocurre sobre el intento persistido antes de cotizar o crear recursos. No llama MiCorreo/Mercado Pago, no crea order/preference/attempt y no modifica attempt/order.
+- Frontend: el nuevo 409 elimina solo `sessionStorage["lemont.checkoutAttempt.v1"]`, conserva el carrito, no redirige y muestra el mensaje de compra pagada. Los demás 409 conservan su comportamiento.
+- Regresiones agregadas en flujo, integración HTTP y frontend. Suite completa: **380/380 tests**, 9 suites, 0 fallos.
+- Estado: IMPLEMENTADO LOCALMENTE. T-017 continúa EN PROGRESO hasta deploy y QA real; esta sesión no hizo commit, push ni deploy.
+
 ## 2026-09-17 — estado productivo real: T-017 activo y T-020 cerrado
 
 - Migraciones 007 y 008 aplicadas en producción. Se verificaron `checkout_attempts`, RPC 26 conservada, RPC v2 de 27 parámetros, `claim_checkout_attempt`, `SECURITY INVOKER`, `search_path`, RLS y permisos.
 - El exceso de privilegios heredado por `service_role` desde default privileges de Supabase fue corregido manualmente; la 008 auditada y aplicada deja la corrección reproducible.
 - Runtime T-017 desplegado en EasyPanel. QA real de idempotencia aprobado para los casos ejecutados: mismo intento/intención reutiliza attempt, order y preference; intención distinta crea nuevas entidades; doble clic/retry normal no duplicó la orden. La idempotencia durable está ACTIVA EN PRODUCCIÓN.
-- T-017 continúa EN PROGRESO: falta impedir que un attempt `ready` reutilice una preferencia vieja si la order asociada ya está `paid`.
+- T-017 continúa EN PROGRESO: el hardening READY + order `paid` está implementado localmente y falta desplegarlo/validarlo en producción.
 - T-020 quedó COMPLETADA / AUDITADA / VALIDADA EN PRODUCCIÓN y DEC-025 ACEPTADA. Un pago real con shipping incluido llegó por webhook y llevó `orders.status` de `pending` a `paid`.
 - Incidencia resuelta durante el pago: DNS de `checkout.lemont01.com` apuntaba a la IP anterior; se corrigió al VPS EasyPanel actual. Tras comprobar puerto 80 y regenerar Traefik, Let's Encrypt emitió un certificado válido. Un POST sin firma a `/webhook` respondió 401 controlado y la notificación válida posterior fue procesada.
 - T-021/DEC-026 permanecen COMPLETADA/ACEPTADA.
-- Pendientes: READY + paid; página de agradecimiento; limpieza segura de carrito/sessionStorage; `/shipping/import`; stock real; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales; auditoría npm; dominio/frontend/SEO posteriores.
+- Pendientes: deploy/QA de READY + paid; página de agradecimiento; limpieza segura de carrito/sessionStorage; `/shipping/import`; stock real; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales; auditoría npm; dominio/frontend/SEO posteriores.
 
 ## 2026-09-16 — T-017.4 / migración 008 auditada y APROBADA CON OBSERVACIONES
 

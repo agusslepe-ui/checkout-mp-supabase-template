@@ -27,7 +27,10 @@ async function getBackendError(response) {
 
   try {
     const body = await response.json();
-    return typeof body?.error === "string" ? body.error : null;
+    return {
+      message: typeof body?.error === "string" ? body.error : null,
+      type: typeof body?.type === "string" ? body.type : null,
+    };
   } catch {
     return null;
   }
@@ -82,27 +85,32 @@ async function crearPreferencia(input) {
 
   if (!response.ok) {
     const backendError = await getBackendError(response);
+    const backendMessage = backendError?.message;
     if (response.status === 409) {
-      if (backendError === "La opción de envío ya no está disponible") {
+      if (backendError?.type === "checkout_attempt_already_paid") {
+        checkoutAttemptClient.clearCheckoutAttempt();
+        throw new Error("checkout_attempt_already_paid");
+      }
+      if (backendMessage === "La opción de envío ya no está disponible") {
         throw new Error("shipping_changed");
       }
-      if (backendError === "La sucursal ya no está disponible") {
+      if (backendMessage === "La sucursal ya no está disponible") {
         throw new Error("agency_changed");
       }
-      if (backendError === "El checkout está siendo preparado. Intentá nuevamente") {
+      if (backendMessage === "El checkout está siendo preparado. Intentá nuevamente") {
         throw new Error("checkout_busy");
       }
-      if (backendError === "El intento de pago no coincide con la compra original") {
+      if (backendMessage === "El intento de pago no coincide con la compra original") {
         checkoutAttemptClient.clearCheckoutAttempt();
         throw new Error("checkout_mismatch");
       }
       throw new Error("checkout_unavailable");
     }
-    if (response.status === 400 && backendError === "Intento de pago inválido") {
+    if (response.status === 400 && backendMessage === "Intento de pago inválido") {
       checkoutAttemptClient.clearCheckoutAttempt();
       throw new Error("checkout_attempt_invalid");
     }
-    if (CONTROLLED_SHIPPING_ERRORS.has(backendError)) throw new Error(backendError);
+    if (CONTROLLED_SHIPPING_ERRORS.has(backendMessage)) throw new Error(backendMessage);
     throw new Error(response.status === 400
       ? (hasItems ? "invalid_cart" : "invalid_product")
       : "checkout_unavailable");
@@ -155,6 +163,8 @@ export async function iniciarCheckout(input) {
             ? "El pago se está preparando. Intentá nuevamente en unos segundos."
           : error.message === "checkout_mismatch"
             ? "Los datos de la compra cambiaron. Intentá nuevamente."
+          : error.message === "checkout_attempt_already_paid"
+            ? "Esta compra ya fue pagada."
         : error.message === "invalid_cart"
           ? "No pudimos validar el carrito. Volvé al carrito para revisarlo."
           : "No pudimos iniciar el pago. Intentá nuevamente.";
