@@ -15,6 +15,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 ## Estado de tareas y decisiones
 
+- **Post-pago UX: IMPLEMENTADO LOCALMENTE / NO PRODUCTIVO.** `success.html` ya presenta una experiencia LEMONT accesible y responsive; al cargar elimina `lemont.cart` y `lemont.checkoutAttempt.v1` sin consultar servicios ni alterar el estado del pago. Suite local: 383/383 tests. Falta deploy y QA real.
 - **DEC-022 — Idempotencia durable del checkout: ACEPTADA** (2026-09-16).
 - **T-017: COMPLETADA / VALIDADA EN PRODUCCIÓN** (2026-09-17). T-017.1–T-017.4, el cutover y el QA real quedaron cerrados. El hardening READY + order `paid` está desplegado y devolvió 409 `checkout_attempt_already_paid` sobre un intento real sin crear ni modificar recursos.
 - **DEC-025 — Cobro autoritativo del envío: ACEPTADA** (2026-09-17), después de la evidencia productiva de pago real con shipping incluido y transición final a `paid`.
@@ -31,8 +32,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 ## Pendientes reales
 
-- Convertir `success.html` en una página real de “Gracias por tu compra”.
-- Definir limpieza segura del carrito y `sessionStorage` después del retorno exitoso.
+- Desplegar y validar la nueva experiencia post-pago y su cleanup de carrito/attempt.
 - Etapa D: crear el envío post-pago mediante MiCorreo `POST /shipping/import`.
 - Implementar stock real por SKU y catálogo dinámico desde Supabase.
 - Hacer dinámicas las imágenes y descripciones.

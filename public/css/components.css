@@ -41,3 +41,14 @@
   .header-cart{display:flex}
   .cart-actions>.button{flex:1 1 100%}
 }
+
+/* Retorno aprobado: vista informativa; el webhook conserva la autoridad del pago. */
+.success-page{min-height:100svh;display:grid;place-items:center;padding-block:calc(var(--header-height) + clamp(3rem,8vw,7rem)) clamp(3rem,8vw,7rem)}
+.success-card{width:min(100%,760px);display:grid;justify-items:center;gap:1.25rem;padding:clamp(2rem,7vw,5rem);border:1px solid var(--line);background:var(--black-soft);text-align:center}
+.success-card__mark{display:grid;place-items:center;width:4rem;aspect-ratio:1;border:1px solid var(--accent);border-radius:50%;color:var(--accent);font-size:1.75rem;line-height:1}
+.success-card h1{max-width:650px;font-size:clamp(2.7rem,8vw,6.5rem)}
+.success-card__lead{font-size:clamp(1.05rem,2vw,1.25rem);font-weight:600}
+.success-card__message{max-width:54ch;color:var(--gray)}
+.success-card .button{min-width:min(100%,280px);margin-top:.75rem}
+.success-card .button:focus-visible{outline:2px solid var(--white);outline-offset:4px}
+@media(max-width:500px){.success-card{padding-inline:1.5rem}.success-card .button{width:100%}}

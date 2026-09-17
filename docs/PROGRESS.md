@@ -1,5 +1,14 @@
 # Progreso
 
+## 2026-09-17 — post-pago UX + cleanup implementados localmente
+
+- `success.html` fue reemplazada por una página LEMONT responsive y accesible con agradecimiento, aprobación, preparación del pedido y enlace “Volver al inicio”. No muestra IDs, PII, tracking ni despacho.
+- Nuevo `successCleanup.js`: elimina `lemont.cart` usando la constante real de `cartStore.js` y limpia `lemont.checkoutAttempt.v1` mediante el helper existente. Conserva otras keys y tolera storage bloqueado.
+- `/success` no lee query params, no hace fetch, no consulta Mercado Pago/Supabase y no actualiza orders; el webhook conserva la autoridad exclusiva del pago.
+- Riesgo aceptado: una visita manual a `/success` también limpia carrito y attempt. Se prefiere esta simplicidad hasta disponer de una confirmación frontend autoritativa sin ampliar el alcance.
+- Tres regresiones dedicadas; suite completa **383/383 tests**, 10 suites, 0 fallos.
+- Estado: IMPLEMENTADO LOCALMENTE / NO PRODUCTIVO. Pendiente deploy y QA real; sin commit, push ni deploy en esta sesión.
+
 ## 2026-09-17 — cierre definitivo T-017 validado en producción
 
 - **T-017: COMPLETADA / VALIDADA EN PRODUCCIÓN. DEC-022: ACEPTADA.** Migraciones 007/008, `checkout_attempts`, RPC v2, claim y privilegios endurecidos están productivos; RPC 26 permanece temporalmente disponible.

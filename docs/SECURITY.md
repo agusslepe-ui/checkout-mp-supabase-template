@@ -1,5 +1,13 @@
 # Seguridad
 
+## Post-pago UX — cleanup local no autoritativo
+
+- `/success` elimina únicamente `lemont.cart` y `lemont.checkoutAttempt.v1`; no enumera ni limpia el resto de local/session storage.
+- No lee query params, IDs ni PII; no hace requests a backend, Mercado Pago o Supabase y no modifica `orders`. El webhook sigue siendo la autoridad exclusiva del pago.
+- Los fallos de storage se contienen por operación para no romper la página ni impedir el segundo intento de cleanup.
+- Riesgo aceptado: una navegación manual a `/success` borra carrito/attempt sin verificar pago. Se documenta como tradeoff UX local y debe incluirse en QA antes del deploy.
+- Implementado localmente; 383/383 tests, 10 suites, 0 fallos. No está productivo hasta deploy/QA.
+
 ## T-017 — hardening READY + order `paid` productivo
 
 - Un intento READY cuya order ya está `paid` devuelve 409 `checkout_attempt_already_paid`; no expone ni reutiliza `checkout_url` ni preference id.

@@ -1,5 +1,13 @@
 # Diseño técnico
 
+## Post-pago UX — implementación local
+
+`GET /success` continúa sirviendo una vista estática y no participa en la confirmación del pago. La página no lee parámetros de retorno ni consulta backend, Mercado Pago o Supabase; `POST /webhook` y `Payment.get` conservan la autoridad sobre `orders.status`.
+
+Al cargar, `successCleanup.js` elimina `localStorage["lemont.cart"]` mediante `CART_KEY` exportada por `cartStore.js` y limpia `sessionStorage["lemont.checkoutAttempt.v1"]` mediante `checkoutAttemptClient.clearCheckoutAttempt`. Las operaciones están aisladas para que el fallo de un storage no impida intentar la otra. No se tocan otras keys.
+
+La página usa header/footer, tipografías, colores y botones del frontend LEMONT; su card central es responsive, tiene jerarquía semántica y foco visible. Una visita manual a `/success` también ejecuta el cleanup: es un riesgo UX aceptado para evitar introducir tokens, consultas o estados frontend que simulen autoridad de pago. Implementado localmente con 383/383 tests; pendiente de deploy/QA.
+
 ## T-017 — hardening READY + order `paid` productivo
 
 Cuando el retry coincide con el snapshot y el intento está `ready`, el backend inspecciona el estado de la order ya cargada antes de construir la respuesta durable. Si la order está `paid`, responde HTTP 409 con `type: checkout_attempt_already_paid` y el mensaje público `Esta compra ya fue pagada.`. El corte ocurre antes de cualquier cotización, RPC de creación, claim, recovery o llamada a Mercado Pago; tampoco modifica el attempt ni la order. READY + `pending` conserva la reutilización existente.
@@ -365,7 +373,7 @@ Vanilla + ES modules en `public/js/`; header/footer inyectados por `app.js`. Hom
 - `cartStore` agrupa, descarta campos extra y recupera un carrito vacío si la estructura/JSON es inválida. Guarda solo `{ version: 1, items: [{ sku, quantity }] }` en `lemont.cart`, nunca PII. Sus límites son informativos.
 - Contador = suma de cantidades, visible también en móvil; se actualiza con mutaciones, carga y eventos storage.
 - Carrito y resumen usan `createElement`, `textContent` y `replaceChildren`; no interpolan datos locales ni del resumen en innerHTML.
-- **D2-A:** vaciado solo manual. Crear preferencia, redirigir o visitar `/success`, `/failure`, `/pending` no vacía ni confirma pago.
+- **Evolución de D2-A:** crear preferencia y redirigir no vacían. `/failure` y `/pending` tampoco. `/success` ahora elimina carrito y checkout attempt como cleanup UX, pero no confirma ni modifica el pago.
 - QA visual/manual del Paso 3 correcto y aprobado. Sin tests DOM a propósito, sin jsdom/Playwright. Suite backend: **158/158**, verificada nuevamente el 2026-09-13.
 
 El cierre documental no acredita un nuevo despliegue ni pagos reales. Credenciales, stock, logística, deuda npm e idempotencia durable siguen fuera de T-016.
