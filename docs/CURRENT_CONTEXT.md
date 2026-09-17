@@ -1,64 +1,40 @@
 # Contexto actual del proyecto
 
-## Actualización vigente T-017.4-A / DEC-022 — 2026-09-16
+## Actualización vigente — producción al 2026-09-17
 
-**DEC-022 ACEPTADA. T-017 EN PROGRESO. T-017.1/T-017.2/T-017.3 COMPLETADAS/AUDITADAS. T-017.4-A PREPARADO/AUDITADO/APROBADO CON OBSERVACIONES. T-017.4 EN EJECUCIÓN: 007 APLICADA; DEPLOY Y QA PENDIENTES.**
+**DEC-022 ACEPTADA. T-017 EN PROGRESO, CON IDEMPOTENCIA DURABLE ACTIVA EN PRODUCCIÓN. T-020 COMPLETADA Y DEC-025 ACEPTADA. T-021 COMPLETADA Y DEC-026 ACEPTADA.**
 
-La migración local 007 crea `public.checkout_attempts`, conserva sin redefinir la RPC productiva `create_pending_order_with_items` de 26 parámetros, agrega `create_pending_order_with_items_v2` con los 27 parámetros idempotentes y mantiene `claim_checkout_attempt`. La coherencia de estados exige lease en `creating_preference`, preference+URL y lease nula en `ready`, y lease nula en `reserved`/`unknown`. RPC v2 y claim usan `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` exclusivo de `service_role`.
+Las migraciones 007 y 008 están aplicadas en producción. Se verificaron `checkout_attempts`, la RPC anterior `create_pending_order_with_items` de 26 parámetros, `create_pending_order_with_items_v2` de 27 parámetros, `claim_checkout_attempt`, `SECURITY INVOKER`, `search_path`, RLS y permisos. Los default privileges excesivos de `service_role` se corrigieron manualmente y la 008 aplicada reproduce ese hardening. RPC 26 continúa disponible.
 
-El runtime local exige `checkoutAttemptId`, compara identidad lógica contra el snapshot persistido, usa lease de 30 s, reutiliza READY y recupera UNKNOWN/lease vencida por `external_reference` antes de recrear. Usa `Preference.search` y, cuando corresponde, `Preference.get({ preferenceId: ... })`. La preferencia se arma desde order/items persistidos y valida el total en centavos. Verificación final: **345/345 tests**, 8 suites, 0 fallos, mocks solamente.
+La migración 006 también está aplicada en producción. Las columnas `shipping_agency_*` existen y T-021/DEC-026 están productivas y cerradas.
 
-La 007 fue aplicada en producción durante T-017.4. Se verificaron `checkout_attempts`, RPC 26, RPC v2, claim, `SECURITY INVOKER`, `search_path`, EXECUTE solo para postgres/`service_role` y RLS. Producción sigue con runtime T-021 y RPC 26; el runtime/frontend T-017 todavía no fue desplegado.
+El runtime T-017 fue desplegado en EasyPanel y usa v2. El QA real confirmó que el mismo intento/intención reutiliza la misma `checkout_attempt`, order y preferencia Mercado Pago; una intención distinta genera un nuevo intento, orden y preferencia; doble clic y retry normal no generaron una orden duplicada. T-017 permanece EN PROGRESO hasta impedir que un attempt `ready` reutilice una preferencia vieja cuando su orden ya está `paid`.
 
-La verificación real detectó default privileges amplios de `service_role` sobre `checkout_attempts`, incluidos UPDATE de tabla y columnas no operativas. La corrección manual ya fue aplicada exitosamente en producción: SELECT/INSERT de tabla, UPDATE solo sobre seis columnas operativas y USAGE exclusivo en la sequence. RLS continúa habilitada, sin policies públicas ni SELECT para `anon`/`authenticated`.
+T-020 cerró su paid QA con un pago real y shipping incluido. Tras corregir DNS y HTTPS, Mercado Pago entregó el webhook y la orden pasó de `pending` a `paid`. Esto valida `checkout → shipping incluido → Mercado Pago → pago real → webhook → validación → orders.status=paid`; DEC-025 queda ACEPTADA el 2026-09-17.
 
-La migración local 008 registra ese hardening para reproducibilidad. Está PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES, sin hallazgos críticos. No toca RPCs, claim, tablas ni constraints y no fue aplicada. La migración 007 permanece byte-for-byte intacta.
+Incidencia resuelta: `checkout.lemont01.com` apuntaba a la IP anterior del VPS. Se corrigió al EasyPanel actual, se comprobó el puerto 80 y Traefik regeneró un certificado válido de Let's Encrypt después de un estado inicial no confiable. HTTPS quedó operativo; un `POST /webhook` sin firma llegó a Express y respondió `401 {"error":"Webhook inválido"}`, y la notificación válida posterior fue procesada.
 
-Observaciones no bloqueantes de 008: el hash test de 007 depende de LF/CRLF; los tests no afirman `BEGIN`/`COMMIT` explícitamente; la migración no necesita `NOTIFY pgrst`; endurece solo `service_role`; y 008 estaba untracked durante `git diff --check`.
+T-021/DEC-026 permanecen cerradas. Continúan pendientes: READY con order ya `paid`; página real de agradecimiento; limpieza segura de carrito/`sessionStorage`; MiCorreo `POST /shipping/import`; stock por SKU; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales expuestas; auditoría npm; y etapas posteriores de dominio/frontend/SEO.
 
-La auditoría T-017.4-A fue APROBADA CON OBSERVACIONES, sin hallazgos críticos. Confirmó RPC 26 intacta, v2 con 27 parámetros y UUID primero, uso exclusivo de v2 por `orders.js`, seguridad de claim/RLS/permisos, backward compatibility y rollback viable a T-021.
+La tienda todavía **NO está lista para lanzamiento comercial**.
 
-Fases completadas: precheck → aplicar 007 → reload PostgREST → verificar RPC 26 + v2 + claim + RLS → corregir privilegios efectivos. Fases pendientes: deploy runtime/frontend T-017 → smoke QA → idempotency QA → payment QA → cleanup futuro separado de RPC 26.
-
-T-017.3 agrega en frontend un UUID por intención lógica. La key `lemont.checkoutAttempt.v1` vive en `sessionStorage` y contiene solo versión, UUID y digest SHA-256; cambios de carrito/customer/delivery/shipping/agencia generan una intención nueva, mientras los errores temporales reutilizan la existente. HOME ignora agency code. No hay retry automático ni PII persistida.
-
-Verificación local vigente: **377/377 tests**, 9 suites, 0 fallos. Frontend/runtime T-017 no desplegados. Producción continúa en T-021/RPC 26 y la idempotencia no debe considerarse activa hasta el deploy/QA de T-017.4.
-
-Observaciones no bloqueantes para T-017.4: normalización frontend/backend no idéntica para espacios internos raros de email/`streetNumber`; orden ASCII de SKU en frontend frente a `localeCompare` backend; falta de tests nominales explícitos para HTTP 500 y excepciones de storage; tests VM sin carga ESM/Web Crypto/storage reales; y necesidad de probar browser back, READY reutilizada, order ya paid, post-pago real y doble click/concurrencia real.
-
-## Actualización vigente T-021 / DEC-026
-
-**T-021 EN PROGRESO / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA. DEC-026 PROPUESTA / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.** No marcar T-021 COMPLETADA ni DEC-026 ACEPTADA.
-
-MiCorreo `GET /agencies` se consume exclusivamente desde backend usando provincia (`AR-J → J`) y customerId privado. `/sucursales-envio` devuelve campos normalizados. AGENCY exige `shippingAgencyCode`, revalida rate/agencia y prepara snapshot autoritativo; HOME no llama agencies. Migración 006 creada y no aplicada. Suite local: **276/276**.
-
-Sin `/shipping/import`, pagos reales, cambios de webhook/HMAC, tracking o stock. Perfiles 300 g / 5 × 25 × 35 cm siguen TEMPORAL/QA; tienda no lista para público.
-
-## Actualización vigente T-020 / DEC-025
-
-**T-020 IMPLEMENTADA Y DESPLEGADA según handoff T-021; paid QA completo pendiente por separado. DEC-025 no se cierra desde T-021.**
-
-Checkout T-020 exige `shippingOptionId`, recotiza MiCorreo y cobra la tarifa actual. HOME Classic/Express, subtotal + shipping + total e ítem `Envío` fueron confirmados operativamente. La migración 005 forma parte del despliegue informado. La suite previa a T-021 era **242/242**.
-
-El webhook/HMAC sigue intacto y compara el pago contra `orders.amount`/`currency`. Sin `/shipping/import`, agencias, tracking, stock ni T-017. Perfiles 1–4: 300 g / 5 × 25 × 35 cm TEMPORAL/QA; producción comercial continúa bloqueada.
-
-Próximo T-021: auditoría → aplicación controlada de migración 006 → QA. El paid QA completo de T-020 sigue separado.
-
-## Actualización vigente T-019 / DEC-024
+## Antecedente T-019 / DEC-024
 
 **T-019 COMPLETADA. DEC-024 ACEPTADA.** Cierre formal 2026-09-15.
 
 Cotización dual items o legacy, resolver común, tope 4 unidades totales, perfiles editables TEMPORAL/QA 1–4 (todos 300/5/25/35), frontend multítem y normalización CP/EP + D/S. Sin selección de agencia ni costo incluido en el pago. Origen CP 5465 — Rodeo, San Juan.
 
-En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío**; hoy T-020 está desplegada según el handoff y T-021 está implementada localmente.
+En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío** y T-021 todavía estaba solo local; ambos estados fueron superados por los cierres productivos posteriores.
 
-> Resumen compacto para agentes. Última actualización: 2026-09-16 (T-017.4 en ejecución; 007 aplicada; hardening manual productivo; 008 preparada/auditada/APROBADA CON OBSERVACIONES; deploy y QA pendientes; producción T-021/RPC 26; tests 377/377). El estado vigente está en `docs/STATUS.md`.
+> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008 aplicadas; runtime T-017 desplegado; idempotencia durable activa y QA real satisfactorio; RPC 26 conservada; T-020 cerrada con pago real y DEC-025 aceptada; T-021/DEC-026 cerradas. T-017 sigue en progreso por READY + order `paid`. El estado vigente está en `docs/STATUS.md`.
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
 ---
 
-## Estado vigente
+## HISTÓRICO — cortes acumulados del 2026-09-15 y 2026-09-16
+
+> Este bloque conserva el estado de esos cierres y está SUPERADO. No usarlo como estado vigente; prevalece la actualización productiva del 2026-09-17 al inicio del archivo.
 
 ### COMPLETADO
 
@@ -94,9 +70,9 @@ En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD
 - Rotar las credenciales privadas documentadas como expuestas antes del lanzamiento público.
 - El precio ARS 1.000 sigue siendo temporal de prueba; no es el precio comercial definitivo.
 
-### PRÓXIMO PASO
+### PRÓXIMO PASO HISTÓRICO — corte 2026-09-15
 
-**Auditar T-021.** Solo después y con autorización explícita, aplicar la migración 006 y ejecutar QA controlado. Las medidas reales de producción siguen pendientes y bloquean el lanzamiento comercial.
+En el corte del 2026-09-15 el próximo paso era auditar T-021, aplicar la migración 006 y ejecutar QA controlado. Ese plan fue completado posteriormente; las medidas reales de producción continúan pendientes.
 
 **Regla operativa obligatoria:** después de modificar archivos backend/runtime en `src/`, reiniciar el proceso Node antes de realizar pruebas manuales.
 
@@ -193,7 +169,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 **T-016 COMPLETADA**, Pasos 1–4 COMPLETADOS. No quedan pasos de T-016 pendientes.
 
-**T-017 EN PROGRESO:** DEC-022 aceptada el 2026-09-16. T-017.1/T-017.2/T-017.3 completadas/auditadas; 007 aplicada en T-017.4, hardening manual productivo verificado y 008 creada localmente; deploy/QA pendientes. No mezclar las fases siguientes con T-016.
+**T-017 EN PROGRESO:** DEC-022 aceptada el 2026-09-16. T-017.1/T-017.2/T-017.3 y T-017.4-A completadas/auditadas; 007/008 aplicadas, runtime desplegado e idempotencia real validada. Falta resolver READY con order ya `paid`. No mezclar este pendiente con T-016.
 
 **Pendiente obligatorio antes del lanzamiento público:** rotar el Access Token y Webhook Secret de Mercado Pago y la credencial privada de Supabase. Las credenciales actuales se usarán solo durante esta etapa privada/controlada de desarrollo y no deben reutilizarse para declarar la tienda lista para clientes reales. Ver `docs/SECURITY.md`.
 
@@ -218,11 +194,15 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | DEC-019 | **Implementada por T-015.** Política HTTP de `POST /webhook`: 401 para firma ausente/inválida; 200 para éxito y resultados definitivos/idempotentes; 503 para fallos temporales o excepciones inesperadas. Conserva HMAC, transición atómica e idempotencia. |
 | DEC-020 | `orders` + `order_items` se crean atómicamente mediante RPC estricta; PostgreSQL genera `external_reference`, Node conserva autoridad comercial y Mercado Pago reutiliza exactamente esa referencia. |
 | DEC-021 | **Aceptada e implementada por T-016 Pasos 1–4 (cierre 2026-09-13).** Carrito no autoritativo `{ version, items: [{ sku, quantity }] }`; backend agrupa, precifica y alimenta RPC + Mercado Pago; `POST /carrito/resumen`; compatibilidad temporal con `{ sku, quantity, customer, delivery }`; 50 entradas originales antes de agrupar; `maxQuantity: 4` temporal (no es stock); sin migración nueva; webhook sin recálculo de catálogo; Correo Argentino fuera de alcance. |
-| DEC-022 | **ACEPTADA (2026-09-16).** Idempotencia durable mediante UUID y `checkout_attempts` UNIQUE. 007 aplicada y verificada durante T-017.4; hardening manual de privilegios aplicado y migración 008 creada localmente; runtime productivo sigue T-021/RPC 26 y deploy/QA T-017 están pendientes. |
+| DEC-022 | **ACEPTADA (2026-09-16).** Idempotencia durable mediante UUID y `checkout_attempts` UNIQUE. 007/008 aplicadas; hardening productivo verificado; runtime T-017 desplegado e idempotencia activa. RPC 26 permanece disponible. Pendiente: READY con order ya `paid`. |
+| DEC-025 | **ACEPTADA (2026-09-17).** T-020 completada y validada mediante paid QA real con shipping incluido y transición `pending → paid`. |
+| DEC-026 | **ACEPTADA (2026-09-16).** T-021 completada; migración 006 aplicada y selección autoritativa de agencia productiva. |
 
 ---
 
-## Estado técnico actual
+## HISTÓRICO — estado técnico del corte 2026-09-15
+
+> Las referencias siguientes a T-021 local y migración 006 no aplicada describen exclusivamente el corte del 2026-09-15 y fueron superadas.
 
 - **Backend**: Node.js + CommonJS + Express 5. Módulos separados en `src/`.
 - **Pagos**: Mercado Pago Checkout Pro (SDK oficial). Webhook protegido con validación HMAC-SHA256 y confirmación real a la API.
@@ -265,7 +245,9 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | `supabase/migrations/003_add_order_customer_delivery.sql` | Agrega datos de cliente y destino como columnas nullable. Aplicada y verificada sin alterar registros históricos. |
 | `supabase/migrations/004_create_order_items.sql` | Crea `order_items` y la RPC atómica estricta. Aplicada y validada manualmente en Supabase real. |
 | `supabase/migrations/005_add_order_shipping_snapshot.sql` | Agrega shipping snapshot y total, y reemplaza la RPC. Aplicada según el handoff de T-021. |
-| `supabase/migrations/006_add_order_shipping_agency.sql` | Agrega snapshot de agencia y reemplaza la firma RPC. Creada localmente; NO aplicada. |
+| `supabase/migrations/006_add_order_shipping_agency.sql` | Agrega snapshot autoritativo de agencia. Aplicada en producción; T-021 productiva. |
+| `supabase/migrations/007_create_checkout_attempts.sql` | Agrega `checkout_attempts`, RPC v2 y claim. Aplicada en producción. |
+| `supabase/migrations/008_harden_checkout_attempts_privileges.sql` | Reproduce el hardening mínimo de `service_role`. Aplicada en producción. |
 | `Dockerfile` | Build de staging con Node.js 22; instala con `npm ci`, expone `3003` y ejecuta `npm start`. |
 | `.dockerignore` | Excluye `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales del contexto Docker. |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). Incluye `LOG_LEVEL=info`. |
@@ -282,11 +264,13 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. Revisar y autorizar el cutover de T-020 / DEC-025.
-2. Aplicar la migración 005 de forma controlada solo después de aprobación explícita.
-3. Ejecutar QA de carrito → envío → pago → webhook → paid.
-4. Reemplazar perfiles TEMPORAL/QA por medidas reales antes de producción comercial.
-5. No implementar todavía `/shipping/import`, Etapa D, DEC-022/T-017, stock ni `npm audit fix` dentro de este alcance.
+1. Cerrar el hardening de T-017 para impedir que un attempt READY reutilice una preferencia vieja cuando su order asociada ya está `paid`.
+2. Mejorar `success.html` y la experiencia real de “Gracias por tu compra”.
+3. Definir y validar el cleanup seguro del carrito y `sessionStorage` después del retorno exitoso.
+4. Continuar con la Etapa D de MiCorreo: `POST /shipping/import` post-pago.
+5. Después, avanzar con catálogo dinámico desde Supabase y stock real por SKU; imágenes y descripciones dinámicas pertenecen a esa evolución.
+
+Antes del lanzamiento comercial también deben reemplazarse los perfiles TEMPORAL/QA, restaurarse el precio comercial, rotarse las credenciales expuestas y completarse la auditoría npm.
 
 El modelo `orders` + `order_items` ya está implementado y no debe volver a tratarse como propuesta futura. El carrito de interfaz del Paso 3 ya existe.
 

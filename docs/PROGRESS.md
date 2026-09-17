@@ -1,5 +1,16 @@
 # Progreso
 
+## 2026-09-17 — estado productivo real: T-017 activo y T-020 cerrado
+
+- Migraciones 007 y 008 aplicadas en producción. Se verificaron `checkout_attempts`, RPC 26 conservada, RPC v2 de 27 parámetros, `claim_checkout_attempt`, `SECURITY INVOKER`, `search_path`, RLS y permisos.
+- El exceso de privilegios heredado por `service_role` desde default privileges de Supabase fue corregido manualmente; la 008 auditada y aplicada deja la corrección reproducible.
+- Runtime T-017 desplegado en EasyPanel. QA real de idempotencia aprobado para los casos ejecutados: mismo intento/intención reutiliza attempt, order y preference; intención distinta crea nuevas entidades; doble clic/retry normal no duplicó la orden. La idempotencia durable está ACTIVA EN PRODUCCIÓN.
+- T-017 continúa EN PROGRESO: falta impedir que un attempt `ready` reutilice una preferencia vieja si la order asociada ya está `paid`.
+- T-020 quedó COMPLETADA / AUDITADA / VALIDADA EN PRODUCCIÓN y DEC-025 ACEPTADA. Un pago real con shipping incluido llegó por webhook y llevó `orders.status` de `pending` a `paid`.
+- Incidencia resuelta durante el pago: DNS de `checkout.lemont01.com` apuntaba a la IP anterior; se corrigió al VPS EasyPanel actual. Tras comprobar puerto 80 y regenerar Traefik, Let's Encrypt emitió un certificado válido. Un POST sin firma a `/webhook` respondió 401 controlado y la notificación válida posterior fue procesada.
+- T-021/DEC-026 permanecen COMPLETADA/ACEPTADA.
+- Pendientes: READY + paid; página de agradecimiento; limpieza segura de carrito/sessionStorage; `/shipping/import`; stock real; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales; auditoría npm; dominio/frontend/SEO posteriores.
+
 ## 2026-09-16 — T-017.4 / migración 008 auditada y APROBADA CON OBSERVACIONES
 
 - La migración 007 fue aplicada correctamente en producción. Se verificaron `checkout_attempts`, RPC 26, RPC v2, `claim_checkout_attempt`, seguridad invoker/search path, permisos de ejecución y RLS.
@@ -11,7 +22,7 @@
 - Verificación: **377/377 tests**, 9 suites, 0 fallos.
 - Auditoría 008: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. Estado: PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES.
 - Observaciones no bloqueantes: hash test de 007 dependiente de LF/CRLF; ausencia de asserts explícitos para `BEGIN`/`COMMIT`; 008 no necesita `NOTIFY pgrst`; alcance limitado a `service_role`; archivo 008 untracked durante `git diff --check`.
-- No hubo SQL real en esta implementación local, deploy, commit, push, red real ni lectura de `.env`. Producción sigue ejecutando runtime T-021/RPC 26; deploy y QA T-017 permanecen pendientes.
+- En ese corte histórico no hubo SQL real en la implementación local, deploy, commit, push, red real ni lectura de `.env`; producción todavía ejecutaba runtime T-021/RPC 26 y el deploy/QA T-017 permanecía pendiente. El bloque del 2026-09-17 documenta su ejecución posterior.
 
 ## 2026-09-16 — T-017.4-A preparado localmente / auditado / APROBADO CON OBSERVACIONES
 
@@ -26,7 +37,7 @@
 - Orden documentado en esa preparación: precheck → 007 → reload/verificación → deploy → QA. Los pasos hasta la verificación de base se completaron posteriormente; el estado vigente y el hallazgo de privilegios constan en el bloque superior.
 - Rollback: antes del deploy, RPC 26 mantiene operativo el runtime viejo; si falla el deploy nuevo, volver al deployment T-021. No se implementaron comandos destructivos ni migración de limpieza.
 - Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de 007; tests SQL mayormente estáticos; QA real pendiente de concurrencia, recovery MP, browser back/READY, sessionStorage/Web Crypto, paid order y doble click.
-- Estado histórico de la preparación local: en ese momento 007 no estaba aplicada. Fue aplicada posteriormente durante T-017.4; producción continúa T-021/RPC 26.
+- Estado histórico de la preparación local: en ese momento 007 no estaba aplicada y producción todavía continuaba con T-021/RPC 26. Ambos estados fueron superados posteriormente por el cutover T-017 documentado en el bloque del 2026-09-17.
 
 ## 2026-09-16 — T-017.3 completada localmente / auditada / APROBADA CON OBSERVACIONES
 
@@ -53,7 +64,7 @@
 - La preferencia se reconstruye desde el snapshot persistido, incluido `Envío`; el total debe coincidir en centavos con `orders.amount`.
 - Migración 007 modificada localmente: coherencia de estados, permisos UPDATE por columnas mutables y función de claim. **NO aplicada**.
 - Verificación final: **345/345 tests**, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. Sin red real, `.env`, SQL aplicado, deploy, commit ni push.
-- Producción continúa con runtime T-021 y RPC 26. T-017.2 no es desplegable hasta coordinar 007 + runtime 27 + frontend T-017.3. En ese cierre T-017.3 y T-017.4 estaban pendientes; el estado vigente de T-017.3 consta en el bloque superior.
+- En ese cierre histórico producción continuaba con runtime T-021 y RPC 26, y T-017.2 no era desplegable hasta coordinar 007 + runtime 27 + frontend T-017.3. Ese cutover fue ejecutado posteriormente; el estado vigente consta en el bloque del 2026-09-17.
 - Observaciones no bloqueantes trasladadas a T-017.3/T-017.4: fallback de `23505` por constraint en `message/details`; riesgo teórico de lease vencida con búsqueda MP aún no indexada; posible modificación del timeout del cliente SDK compartido por `Preference.search`; SKU matching sin `trim` adicional; concurrencia del claim cubierta por mocks/lógica, no SQL real; QA real/controlado de recovery y concurrencia requerido en T-017.4.
 
 ## 2026-09-16 — T-017.1 auditada / APROBADA CON OBSERVACIONES
@@ -70,7 +81,7 @@
 - Nuevo dominio `checkoutAttempt`: valida UUID canónico, normaliza lowercase y expone los cuatro estados aprobados.
 - Migración 007 local: tabla `checkout_attempts`, RLS/permisos mínimos, unicidades, lease coherente e infraestructura futura de preferencia.
 - RPC futura de 27 parámetros: conserva T-021 y crea order + items + intento `reserved` atómicamente; UUID duplicado provoca rollback completo.
-- Por seguridad de cutover, `orders.js` y `app.js` no fueron conectados: producción continúa con la RPC aplicada de 26 parámetros.
+- Por seguridad de cutover, `orders.js` y `app.js` no fueron conectados en esa fase: producción continuaba entonces con la RPC aplicada de 26 parámetros.
 - Verificación: **294/294 tests**, 5 suites; sintaxis Node y `git diff --check` correctos.
 - Sin SQL aplicado, red real, Mercado Pago, MiCorreo, `.env`, commit, push ni deploy. T-017.2–T-017.4 pendientes.
 
@@ -141,7 +152,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-16. T-017 EN PROGRESO / T-017.4 EN EJECUCIÓN. Migración 007 aplicada; hardening manual productivo corregido; migración 008 PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. Deploy/QA T-017 pendientes. Producción sigue en runtime T-021/RPC 26. Tests: 377/377.
+Última revisión documental: 2026-09-17. T-017 EN PROGRESO con migraciones 007/008 aplicadas, runtime T-017 desplegado e idempotencia durable activa tras QA real. RPC 26 permanece disponible. T-020 cerrada con paid QA real y DEC-025 aceptada; T-021/DEC-026 permanecen cerradas. El bloque cronológico superior prevalece sobre estados históricos posteriores de este archivo.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 
@@ -170,7 +181,9 @@ Cierre formal tras auditoría (APROBADO CON OBSERVACIONES, solo documentales) y 
 - Webhook intacto. Sin migraciones. Sin frontend/`localStorage`. Sin Correo Argentino adicional. Sin DEC-022/T-017. Sin stock real. Sin lectura de `.env`, llamadas reales, commit, push ni deploy.
 - DEC-021 ACCEPTED. T-016 EN PROGRESO. Paso 1 COMPLETADO. Paso 2 COMPLETADO. Paso 3 PENDIENTE. Paso 4 PENDIENTE.
 
-## Estado actual
+## HISTÓRICO — estado al 2026-09-15
+
+> Este bloque conserva el corte previo a las auditorías, migraciones y despliegues posteriores. No describe el estado vigente del 2026-09-17.
 
 - **T-021 EN PROGRESO / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.** **DEC-026 PROPUESTA / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.** Migración 006 no aplicada.
 - **T-020 IMPLEMENTADA Y DESPLEGADA** según el handoff de T-021; paid QA completo pendiente por separado. **DEC-025** no aceptada.

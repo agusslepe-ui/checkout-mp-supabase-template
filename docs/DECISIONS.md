@@ -3,23 +3,23 @@
 ## DEC-026 — Selección autoritativa de agencia
 
 **Fecha:** 2026-09-15.
-**Estado:** PROPUESTA / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.
-**Tarea:** T-021. No marcar ACEPTADA hasta auditoría y QA posteriores.
+**Estado:** ACEPTADA. **Cierre:** 2026-09-16.
+**Tarea:** T-021 COMPLETADA.
 
 - API exclusiva MiCorreo `GET /agencies`, autenticada con el JWT/cache existente. Query autoritativa: customerId backend + provinceCode derivado de `delivery.province`; sin CP ni services.
 - `response[].code` es la identidad. El browser recibe agencias normalizadas y envía solo `shippingAgencyCode`.
 - Solo agencias ACTIVE; si `services.pickupAvailability` existe debe ser true. Lista vacía es resultado válido.
 - HOME no consulta agencias, ignora code extra y persiste snapshot null. AGENCY Classic/Express exige code y revalida rate + agencia antes de RPC.
 - Snapshot: code, name, streetName, streetNumber, locality y postalCode provenientes de MiCorreo. No manager/email/phone/coordenadas/customerId/hours/raw.
-- Migración 006 local: columnas nullable, checks HOME/AGENCY y firma RPC única. No aplicada.
+- Migración 006: columnas nullable, checks HOME/AGENCY y firma RPC única. Aplicada y validada durante el cierre de T-021.
 - Total, preferencia MP, external_reference, webhook y HMAC no cambian. `/shipping/import` queda futuro y usará agency code.
 - Perfiles continúan TEMPORAL/QA; la tienda no queda lista para público.
 
 ## DEC-025 — Cobro autoritativo del envío
 
-**Fecha:** 2026-09-15.
-**Estado:** PROPUESTA / IMPLEMENTADA LOCALMENTE / AUDITORÍA APROBADA CON OBSERVACIONES.
-**Tarea:** T-020. No marcar ACEPTADA hasta migración controlada y QA aprobado.
+**Fecha de propuesta:** 2026-09-15. **Fecha de aceptación:** 2026-09-17.
+**Estado:** ACEPTADA.
+**Tarea:** T-020 COMPLETADA / AUDITADA / VALIDADA EN PRODUCCIÓN.
 
 - Persistencia aditiva en `orders`: `products_subtotal`, `shipping_amount`, `shipping_provider`, `shipping_option_id`, `shipping_delivery_type` y `shipping_service`. No se crea `order_shipping`.
 - `orders.amount` es el total final: `products_subtotal + shipping_amount`; el subtotal coincide con `SUM(order_items.line_total)`.
@@ -28,7 +28,8 @@
 - Si la opción desaparece, checkout responde 409. Fallos de MiCorreo responden 503 sin crear orden. Carritos de 5+ unidades responden 400 sin cotizar ni crear orden/preferencia.
 - Rates con el mismo ID/precio se colapsan; con el mismo ID y precios distintos se descartan por ambigüedad.
 - Mercado Pago recibe los productos y un único ítem adicional `Envío`; no se usa `shipments`.
-- La migración `005_add_order_shipping_snapshot.sql` y la firma RPC fueron desplegadas como parte de T-020 según el estado informado al iniciar T-021. El paid QA completo sigue separado.
+- La migración `005_add_order_shipping_snapshot.sql` y la firma RPC fueron desplegadas como parte de T-020.
+- Evidencia de aceptación: un pago real en producción validó `checkout → shipping incluido → Mercado Pago → webhook → validación → orders.status=paid`. El paid QA pendiente quedó completado.
 - Los perfiles 1–4 continúan en 300 g / 5 × 25 × 35 cm, exclusivamente TEMPORAL/QA. No habilitan lanzamiento comercial.
 - En T-020, T-017/DEC-022, `/shipping/import`, agencias, tracking y stock permanecían fuera de alcance. T-021 agrega selección de agencia, sin implementar import/tracking/stock.
 
@@ -48,7 +49,7 @@
 - Etapa B = saber costo; Etapa C = cobrar costo. Mercado Pago, webhook, HMAC, RPC, migraciones, `orders.amount` y `preference.items` intactos.
 - Prueba real `POST /rates` PROD (2026-09-15): `micorreo_rates_ok options=4`. Origen CP 5465 (Rodeo, San Juan). Destino QA CP 5400. No se imprimió JWT, password, Basic Auth, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Mercado Pago intacto. Envío no cobrado.
 - Los perfiles 1–4 siguen TEMPORAL/QA. Las medidas actuales **no** están aprobadas para producción.
-- En el cierre histórico de T-019, Etapa C (cobrar el envío) seguía PENDIENTE. T-020 está desplegada según el handoff de T-021; DEC-025 conserva su cierre formal pendiente por separado.
+- En el cierre histórico de T-019, Etapa C (cobrar el envío) seguía PENDIENTE. Ese estado fue superado: T-020 quedó validada con pago real y DEC-025 fue aceptada el 2026-09-17.
 
 ## DEC-023 — ShippingService / ShippingProvider / MiCorreoProvider
 
@@ -1233,11 +1234,12 @@ DEC-021 dejó este problema fuera de alcance a propósito. El usuario pidió reg
 - La orden, sus items y la reserva del intento se crean en la misma RPC/transacción. Un UUID duplicado provoca una violación UNIQUE y rollback total; no se usa `ON CONFLICT DO NOTHING`.
 - No se almacena `request_fingerprint`: T-017.2 compara retries con el snapshot autoritativo ya persistido en `orders` y `order_items`.
 - Estados iniciales: `reserved`, `creating_preference`, `ready`, `unknown`; lease y datos de preferencia quedan preparados para fases posteriores.
-- T-017.1 está completada/auditada. T-017.2 implementó localmente runtime, retry HTTP, lease atómica y recuperación de preferencias; fue auditada y APROBADA CON OBSERVACIONES el 2026-09-16. Frontend, cutover/QA y cierre quedan para T-017.3–T-017.4.
+- T-017.1, T-017.2 y T-017.3 están completadas/auditadas. T-017.4-A está completada/auditada. El runtime y frontend T-017 fueron desplegados y el QA real de idempotencia validó reutilización del mismo intento, separación de una intención distinta y ausencia de duplicado ante doble clic/retry normal.
 
 ### Consecuencias
 
-- T-017 queda EN PROGRESO. T-017.1 está COMPLETADA/AUDITADA y T-017.2 COMPLETADA LOCALMENTE/AUDITADA/APROBADA CON OBSERVACIONES.
-- La migración 007 fue endurecida localmente, pero no se aplicó. No hubo deploy; producción conserva runtime T-021 y RPC de 26 parámetros.
-- El runtime T-017.2 requiere la firma de 27 parámetros y `checkoutAttemptId`; por eso no es desplegable hasta coordinar migración 007, runtime 27 y frontend T-017.3.
+- T-017 queda EN PROGRESO por el caso pendiente de un attempt `ready` cuya order asociada ya está `paid`; debe impedirse reutilizar una preferencia vieja.
+- Las migraciones 007 y 008 están aplicadas en producción. El exceso de privilegios de `service_role` descubierto durante el cutover fue corregido manualmente y quedó reproducido por la 008.
+- El runtime T-017 usa la firma v2 de 27 parámetros y `checkoutAttemptId`; la RPC anterior de 26 parámetros permanece disponible.
+- La idempotencia durable está ACTIVA EN PRODUCCIÓN después del deploy en EasyPanel y del QA real descrito arriba.
 - El recovery usa `Preference.search` por `external_reference` y `Preference.get({ preferenceId: ... })` cuando necesita completar una preferencia. Este contrato corrige el hallazgo bloqueante inicial de auditoría.

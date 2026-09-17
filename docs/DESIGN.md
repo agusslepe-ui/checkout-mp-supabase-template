@@ -17,9 +17,9 @@ checkout_attempts_id_seq
   → GRANT USAGE
 ```
 
-La 008 no modifica funciones, tablas ni constraints. Los permisos RPC, RLS y policies permanecen fuera de su alcance. Producción sigue ejecutando T-021/RPC 26; el deploy del runtime/frontend T-017 y los QA continúan pendientes.
+La 008 no modifica funciones, tablas ni constraints. Los permisos RPC, RLS y policies permanecen fuera de su alcance. Fue aplicada en producción después de la corrección manual. El runtime/frontend T-017 está desplegado, usa RPC v2 y conserva RPC 26 disponible.
 
-Auditoría 008: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. La migración está preparada localmente y no aplicada. Observaciones: el hash test de 007 depende de LF/CRLF; los tests no afirman `BEGIN`/`COMMIT` explícitamente; no se requiere `NOTIFY pgrst` al cambiar solo privilegios; el hardening se limita a `service_role`; y 008 estaba untracked durante `git diff --check`.
+Auditoría 008: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. Observaciones históricas: el hash test de 007 depende de LF/CRLF; los tests no afirman `BEGIN`/`COMMIT` explícitamente; no se requiere `NOTIFY pgrst` al cambiar solo privilegios; el hardening se limita a `service_role`; y 008 estaba untracked durante aquel `git diff --check`.
 
 ## T-017.4-A — preparado localmente / auditado / APROBADO CON OBSERVACIONES
 
@@ -35,21 +35,21 @@ La v2 conserva exactamente la semántica idempotente auditada: `p_checkout_attem
 
 La auditoría no encontró hallazgos críticos y aprobó el diseño con observaciones. Confirmó que `claim_checkout_attempt`, RLS y permisos mínimos permanecen seguros y que el rollback a T-021 es viable porque RPC 26 continúa disponible.
 
-Plan de cutover futuro:
+Resultado del cutover:
 
 1. **Precheck:** completado para la aplicación real de 007.
 2. **Aplicar 007:** completado en producción.
 3. **Schema reload:** completado/verificado.
 4. **Verificación SQL:** RPC 26, v2, claim y RLS verificados; privilegios amplios detectados y corregidos manualmente. La migración 008 registra el hardening.
-5. **Deploy:** recién entonces desplegar runtime T-017 + frontend T-017.3; las creaciones nuevas usan v2.
-6. **Smoke QA:** cargar página, carrito, cotizar HOME/AGENCY, generar attempt y llegar al redirect MP.
-7. **Idempotency QA:** mismo intent/retry conserva attempt/order/preference; probar doble click, browser back, 409 busy, READY, mismatch y nueva intención.
-8. **Payment QA:** cuando corresponda y con monto/ambiente controlado, comprobar pago, webhook, `pending → paid`, una order y una preference.
+5. **Deploy:** completado en EasyPanel; las creaciones nuevas usan v2.
+6. **Smoke/checkout QA:** completado dentro del flujo productivo informado.
+7. **Idempotency QA:** mismo intent/retry conservó attempt/order/preference; nueva intención creó nuevas entidades; doble clic/retry normal no duplicó la orden.
+8. **Payment QA:** pago real con shipping, webhook y `pending → paid` completado. Queda pendiente impedir READY con order ya `paid`.
 9. **Cleanup futuro:** tras estabilidad, una migración separada podrá retirar RPC 26. No forma parte de T-017.4-A.
 
 Rollback: si 007 ya fue aplicada pero el deploy aún no, el runtime viejo continúa mediante RPC 26 y no se revierte por compatibilidad. Si falla el runtime nuevo, se restaura el deployment T-021, que sigue teniendo RPC 26. No se automatizan operaciones destructivas.
 
-Observaciones no bloqueantes: puede existir una ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de 007; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia, recovery `Preference.search/get`, browser back con READY, order paid + attempt READY, sessionStorage/Web Crypto reales y doble click.
+Observaciones históricas de preparación: podía existir una ventana breve de schema cache tras `NOTIFY pgrst`, Node T-017 no debía desplegarse antes de 007 y los tests SQL eran mayormente estáticos. El orden de cutover se respetó y el QA real cubrió los escenarios informados de reutilización, cambio de intención y doble clic/retry. El pendiente vigente es order `paid` + attempt READY.
 
 ## T-017.3 — identidad durable en frontend local
 
@@ -68,9 +68,9 @@ Red, 500/503 y checkout busy conservan el UUID. Mismatch o attempt inválido lim
 
 Los HTTP 409 se clasifican por código: `shipping_changed`, `agency_changed`, `checkout_busy`, `checkout_mismatch` y `checkout_unavailable`. Un 409 genérico ya no se interpreta como cambio de envío.
 
-T-017.3 está completada y auditada. La migración 007 ya fue aplicada, pero el frontend/runtime T-017 no está desplegado y producción conserva T-021/RPC 26 sin idempotencia durable activa; T-017.4 debe completar deploy y QA real.
+T-017.3 está completada y auditada. El frontend/runtime T-017 está desplegado y la idempotencia durable está activa en producción; RPC 26 se conserva por compatibilidad.
 
-Observaciones no bloqueantes de T-017.3 para T-017.4: el frontend no colapsa espacios internos de email/`streetNumber` exactamente como backend; el sort de SKU es ASCII frente a `localeCompare`; no hay caso nominal explícito de HTTP 500 ni de excepciones `SecurityError`/`QuotaError` del storage; los tests VM no validan carga ESM real; y el record que permanece tras redirect requiere QA de browser back, READY reutilizada, order ya paid y post-pago real. También deben probarse doble click/concurrencia, storage y Web Crypto reales en navegador.
+Observaciones históricas de auditoría de T-017.3: normalización rara de email/`streetNumber`, sort de SKU, cobertura nominal de HTTP 500/storage y límites de los tests VM. El estado productivo del 2026-09-17 prevalece; el pendiente explícito derivado del record conservado es impedir reutilizar una preferencia READY si la order ya está `paid` y definir la limpieza segura tras el retorno.
 
 ## T-017.2 / DEC-022 — integración backend durable local
 
@@ -92,11 +92,11 @@ El claim es una función SQL con un único UPDATE condicional: admite `reserved`
 
 UNKNOWN y leases vencidas consultan primero `Preference.search` por `external_reference`: cero resultados permite crear; uno exacto/utilizable se persiste READY; más de uno queda ambiguo y no se elige. Si el summary único necesita completarse, el SDK 3.1.0 recibe `Preference.get({ preferenceId: ... })`. La preferencia se reconstruye desde `orders` + `order_items`, incluido el envío, y su total se valida en centavos contra `orders.amount`.
 
-La migración 007 contiene la RPC v2 de 27 parámetros, coherencia de estados y claim atómico; fue aplicada en producción y conserva RPC 26 para el runtime T-021. El hardening efectivo de columnas se corrigió manualmente y quedó reproducido en la migración local 008. T-017.2 y T-017.3 están completadas/auditadas; T-017.4 aún requiere deploy y QA.
+La migración 007 contiene la RPC v2 de 27 parámetros, coherencia de estados y claim atómico; fue aplicada en producción y conserva RPC 26. El hardening efectivo de columnas se corrigió manualmente y quedó reproducido por la migración 008, también aplicada. T-017.2 y T-017.3 están completadas/auditadas; el deploy y QA principal de T-017.4 se ejecutaron, pero falta resolver READY con order ya `paid`.
 
 Observaciones no bloqueantes de diseño para las fases restantes: el reconocimiento `23505` conserva fallback por nombre de constraint en `message/details`; una lease vencida combinada con una búsqueda todavía no indexada tiene riesgo teórico de segunda preference; `Preference.search` puede modificar opciones de timeout del cliente SDK compartido; el matching de SKU no agrega `trim`; y el claim concurrente aún no tiene prueba SQL real. T-017.4 debe probar recovery y concurrencia de forma real/controlada.
 
-## T-021 / DEC-026 — implementada localmente, pendiente de auditoría
+## T-021 / DEC-026 — COMPLETADA / ACEPTADA
 
 ```text
 POST /sucursales-envio { province: AR-J }
@@ -110,9 +110,9 @@ checkout AGENCY { shippingOptionId, shippingAgencyCode }
   → snapshot autoritativo → RPC → preferencia productos + Envío
 ```
 
-HOME no llama `/agencies`, ignora cualquier code extra y persiste agency null. La migración 006 reemplaza allowlists/constraints y la firma T-020 sin overload; conserva `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` solo para `service_role`. No fue aplicada. `/shipping/import`, webhook, HMAC y Mercado Pago permanecen sin cambios.
+HOME no llama `/agencies`, ignora cualquier code extra y persiste agency null. La migración 006 reemplaza allowlists/constraints y la firma T-020 sin overload; conserva `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` solo para `service_role`. Fue aplicada durante el cierre de T-021. `/shipping/import` permanece pendiente.
 
-## T-020 / DEC-025 — diseño desplegado; paid QA pendiente separado
+## T-020 / DEC-025 — COMPLETADA / ACEPTADA
 
 ```text
 checkout { items|legacy, customer, delivery, shippingOptionId }
@@ -134,6 +134,8 @@ Node trabaja en centavos: `totalCents = subtotalCents + shippingCents`. La RPC v
 La migración 005 agrega seis columnas nullable y checks de cohesión/allowlist/aritmética, elimina la firma anterior y crea una única firma nueva `SECURITY INVOKER`, con `search_path` fijo y `EXECUTE` solo para `service_role`. Fue aplicada como parte del despliegue T-020 informado al iniciar T-021.
 
 Frontend mantiene la tarifa solo en memoria para mostrar Subtotal/Envío/Total; envía únicamente el ID y la invalida al cambiar CP/carrito o ante 409. En T-020, agencias quedaban fuera; T-021 las incorpora sin `/shipping/import`, tracking ni stock. Los perfiles continúan TEMPORAL/QA.
+
+El diseño fue validado en producción el 2026-09-17 mediante un pago real: shipping incluido en la preferencia, webhook válido y transición final de la orden de `pending` a `paid`. DEC-025 quedó aceptada. Esta evidencia no aprueba los perfiles TEMPORAL/QA para uso comercial.
 
 ## T-019 / DEC-024 — antecedente (COMPLETADA / ACEPTADA)
 
@@ -253,7 +255,7 @@ Antes de procesar, el webhook valida HMAC-SHA256. No recalcula precios del catá
 
 ## Persistencia
 
-La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. Las migraciones 001–004 definen pedidos, variantes, cliente/entrega, `order_items` y la RPC atómica; la 005 aplicada agrega subtotal, envío y snapshot HOME. La 006 local no aplicada agrega el snapshot nullable de agencia y reemplaza la firma RPC sin overload. Las columnas aditivas de pedidos históricos son nullable y no fueron completadas. Los pedidos nuevos guardan cliente, destino y uno o más items; durante la transición, el primer item también completa las columnas legacy de producto en `orders`. La transición `pending → paid` permanece atómica e idempotente mediante `UPDATE WHERE status = 'pending'` (T-003, DEC-010).
+La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. Las migraciones 001–004 definen pedidos, variantes, cliente/entrega, `order_items` y la RPC atómica; la 005 aplicada agrega subtotal, envío y snapshot HOME. La 006 está aplicada en producción: las columnas nullable `shipping_agency_*` existen y T-021 persiste el snapshot autoritativo para AGENCY sin completar pedidos históricos. Las migraciones 007 y 008 también están aplicadas; agregan `checkout_attempts`, RPC v2, claim y hardening reproducible de privilegios. El runtime productivo crea mediante RPC v2, mientras RPC 26 permanece temporalmente disponible para rollback. Los pedidos nuevos guardan cliente, destino y uno o más items; durante la transición, el primer item también completa las columnas legacy de producto en `orders`. La transición `pending → paid` permanece atómica e idempotente mediante `UPDATE WHERE status = 'pending'` (T-003, DEC-010).
 
 ## Flujo de compra con entrega
 
@@ -324,7 +326,9 @@ La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `serv
 
 - Puerto fijo y catálogo versionado en backend; sin fuente administrable externa todavía.
 - La ruta `GET /webhook` queda restringida a entornos no productivos.
-- Producción todavía no tiene idempotencia durable del checkout ni rate limiting. T-017.2 resuelve la primera solo en código local; los timeouts/reintentos de MiCorreo no sustituyen el cutover pendiente.
+- La idempotencia durable está activa en producción. T-017 sigue EN PROGRESO por el caso READY asociado a una order ya `paid`. El rate limiting continúa pendiente.
+- `success.html` todavía no ofrece la experiencia final de agradecimiento y falta definir el cleanup seguro de carrito/`sessionStorage`.
+- MiCorreo `POST /shipping/import`, catálogo dinámico y stock real por SKU todavía no están implementados.
 - El backend endurecido está desplegado en EasyPanel/VPS desde la rama `main` de `checkout-mp-supabase-template`, bajo `checkout.lemont01.com`; no hay infraestructura como código.
 
 ## Implementado y vigente
@@ -343,6 +347,9 @@ La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `serv
 - T-016 COMPLETADA, Pasos 1–4: carrito, checkout dual y documentación alineada.
 - Deploy a staging documentado para EasyPanel/VPS con checklists y rollback (T-013, DEC-016).
 - Política resiliente 401/200/503 del webhook implementada y validada en producción (T-015, DEC-019).
+- T-020/DEC-025 completadas y validadas con pago real, shipping incluido y transición `pending → paid`.
+- T-021/DEC-026 productivas con migración 006 aplicada y snapshot autoritativo de agencia.
+- Runtime T-017 desplegado con RPC v2 e idempotencia durable activa; migraciones 007/008 aplicadas y RPC 26 conservada temporalmente.
 
 ## Frontend actual de LEMONT
 

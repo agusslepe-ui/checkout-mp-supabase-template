@@ -5,32 +5,34 @@
 **Estado:** EN PROGRESO. **Decisión:** DEC-022 ACEPTADA (2026-09-16).
 
 - **T-017.1 — Infraestructura durable:** COMPLETADA / AUDITADA. La migración 007 fue aplicada en producción durante T-017.4; crea `checkout_attempts`, RPC v2 y claim sin retirar RPC 26.
-- **T-017.2 — Integración backend durable:** COMPLETADA / AUDITADA. Conecta `orders.js` con la RPC futura de 27 parámetros; implementa matching contra snapshot, carrera `23505` acotada, claim atómico, lease de 30 s, estados `reserved`/`creating_preference`/`ready`/`unknown`, reutilización READY y recuperación Mercado Pago por `external_reference` sin recotizar MiCorreo en retries existentes.
+- **T-017.2 — Integración backend durable:** COMPLETADA / AUDITADA. `orders.js` usa la RPC v2 de 27 parámetros; implementa matching contra snapshot, carrera `23505` acotada, claim atómico, lease de 30 s, estados `reserved`/`creating_preference`/`ready`/`unknown`, reutilización READY y recuperación Mercado Pago por `external_reference` sin recotizar MiCorreo en retries existentes.
 - **T-017.3 — Integración frontend `checkoutAttemptId`:** COMPLETADA / AUDITADA. Genera UUID con Web Crypto, conserva el intento por digest SHA-256 en `sessionStorage`, diferencia los 409 y mantiene el UUID ante fallos temporales.
-- **T-017.4-A — Preparación backward-compatible:** CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES. Sin hallazgos críticos.
-- **T-017.4 — Ejecución, QA y cierre:** EN PROGRESO. 007 aplicada/verificada; deploy y QA pendientes.
-- Webhook/HMAC y `markOrderAsPaid` permanecen intactos. Producción sigue en runtime T-021/RPC de 26 parámetros; T-017 no fue desplegada.
-- **Verificación T-017.2:** 345/345 tests, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. SQL 007 no aplicado; sin deploy ni red real. El cutover queda para T-017.4.
+- **T-017.4-A — Preparación backward-compatible:** COMPLETADA / AUDITADA / APROBADA CON OBSERVACIONES. Sin hallazgos críticos.
+- **T-017.4 — Ejecución, QA y cierre:** EN PROGRESO. Las migraciones 007 y 008 están aplicadas; el runtime T-017 fue desplegado en EasyPanel y el QA real de idempotencia fue satisfactorio.
+- **QA real:** el mismo intento/intención reutiliza la misma `checkout_attempt`, orden y preferencia; una intención distinta crea un intento, orden y preferencia nuevos; doble clic y retry normal no generaron una orden duplicada. La idempotencia durable está ACTIVA EN PRODUCCIÓN.
+- **Compatibilidad:** la RPC v2 de 27 parámetros está activa y la RPC anterior de 26 parámetros permanece disponible.
+- **Hardening de privilegios:** el exceso producido por default privileges de Supabase fue corregido manualmente; la migración 008 fue creada, auditada, pusheada y aplicada en producción para reproducibilidad.
+- **Pendiente de T-017:** revisar el comportamiento de un attempt `ready` cuando su orden asociada ya está `paid`, para impedir reutilizar una preferencia vieja. No declarar T-017 completa hasta resolver y validar este caso.
+- **Verificación histórica T-017.2:** 345/345 tests, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. En ese cierre la 007 aún no estaba aplicada; el cutover se ejecutó posteriormente.
 - **Verificación T-017.3:** 369/369 tests, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos. Web Crypto/sessionStorage/fetch simulados, sin red real. En ese cierre la 007 aún no estaba aplicada; fue aplicada posteriormente durante T-017.4.
 - **Verificación T-017.4-A:** 372/372 tests, 9 suites, 0 fallos; `npm.cmd test`, `node --check src/orders.js` y `git diff --check` correctos. En esa preparación local no hubo SQL ni red real; la aplicación productiva de 007 ocurrió después.
-- **Hardening de privilegios:** corregido manualmente en producción. Migración 008 PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES, sin hallazgos críticos y no aplicada. Suite: 377/377, 9 suites.
+- **Verificación histórica de 008:** 377/377 tests, 9 suites; auditoría APROBADA CON OBSERVACIONES y sin hallazgos críticos.
 
 ## T-021 — Selección real de sucursal MiCorreo
 
-**Estado:** EN PROGRESO / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA. **No COMPLETADA.**
-**Decisión:** DEC-026 PROPUESTA / IMPLEMENTADA LOCALMENTE / PENDIENTE AUDITORÍA.
-**Verificación local:** 276/276 tests; migración 006 creada y no aplicada.
+**Estado:** COMPLETADA. **Decisión:** DEC-026 ACEPTADA. **Cierre:** 2026-09-16.
+**Verificación de cierre:** 276/276 tests; migración 006 aplicada y runtime desplegado.
 
 - Provider/service implementan `listAgencies`; endpoint `/sucursales-envio` usa provincia y devuelve campos públicos mínimos.
 - Frontend permite las cuatro opciones, lista/busca agencias, envía solo code e invalida selección ante cambios o respuestas tardías.
 - Checkout HOME intacto. AGENCY requiere code, revalida tarifa/sucursal y persiste snapshot autoritativo mediante la RPC 006.
 - Sin cambios a Mercado Pago, webhook/HMAC, perfiles, `/shipping/import`, tracking o stock.
-- Pendiente: auditoría, aplicación controlada de 006 y QA. No habilita producción comercial.
+- El cierre T-021/DEC-026 permanece vigente. No habilita por sí solo el lanzamiento comercial.
 
 ## T-020 — Shipping incluido en checkout y total
 
-**Estado operativo informado al iniciar T-021:** IMPLEMENTADA Y DESPLEGADA; paid QA completo pendiente como tarea separada. No cerrar documentalmente desde T-021.
-**Decisión:** DEC-025 PROPUESTA / IMPLEMENTADA LOCALMENTE / AUDITORÍA APROBADA CON OBSERVACIONES; no aceptada formalmente.
+**Estado:** COMPLETADA / AUDITADA / VALIDADA EN PRODUCCIÓN (2026-09-17).
+**Decisión:** DEC-025 ACEPTADA (2026-09-17).
 **Verificación local:** 242/242 tests; `git diff --check` sin errores (solo avisos informativos LF/CRLF).
 
 - Backend recotiza MiCorreo durante `POST /crear-preferencia`, acepta solo home Classic/Express, usa precio actual y responde 409 si la opción elegida desapareció.
@@ -39,7 +41,9 @@
 - Frontend exige selección home, muestra Subtotal/Envío/Total e invalida la selección al cambiar CP, carrito o recibir 409. Agency es informativa.
 - Migración 005 aplicada como parte del despliegue T-020 informado por el usuario. Órdenes históricas conservan snapshot nulo.
 - Correcciones post-auditoría: validación del total de preferencia antes de la RPC, mensajes 400 controlados, logs genéricos y regresiones de decimal, 3+2, rates vacíos y cero efectos laterales.
-- Pendiente para el cierre formal separado de T-020: paid QA y aprobación documental. Perfiles reales y validación comercial siguen bloqueando producción.
+- **Paid QA real:** se validó `checkout → shipping incluido → Mercado Pago → pago real → webhook → validación → orders.status=paid`.
+- Durante ese QA se corrigieron el DNS de `checkout.lemont01.com` hacia el VPS EasyPanel actual y el certificado HTTPS de Traefik/Let's Encrypt; después el webhook quedó accesible y Mercado Pago entregó la notificación correctamente.
+- Los perfiles reales y la validación comercial siguen pendientes para el lanzamiento público; no reabren el cierre técnico de T-020.
 
 ## T-019 — MiCorreo Etapa B: cotización real multítem
 
@@ -51,7 +55,7 @@
 - Auditoría técnica: APROBADO CON OBSERVACIONES. Suite **211/211**, 4 suites.
 - Prueba real `POST /rates` PROD: `micorreo_rates_ok options=4`. Origen CP 5465 (Rodeo, San Juan). Destino QA CP 5400. No se imprimió JWT, password, Basic Auth, Bearer, `customerId` ni respuesta cruda. No se llamó `/shipping/import`. No se creó envío. Mercado Pago intacto. Envío no cobrado.
 - Los perfiles 1–4 siguen TEMPORAL/QA. Las medidas actuales **no** están aprobadas para producción.
-- Antecedente histórico de T-019: en ese cierre la siguiente etapa, Etapa C, todavía no estaba implementada. El estado vigente de T-020 es desplegada según el handoff; T-021 está implementada localmente y pendiente de auditoría.
+- Antecedente histórico de T-019: en ese cierre la siguiente etapa, Etapa C, todavía no estaba implementada; T-021 también permanecía local y pendiente de auditoría. Ambos estados fueron superados: T-020 y T-021 están completadas en producción.
 
 ## T-018 — MiCorreo Etapa A: autenticación + ShippingProvider
 
@@ -66,7 +70,24 @@
 - Prueba contra API real PROD: `POST /token` ejecutada por el usuario → `micorreo_auth_ok`. No se imprimió ni persistió JWT, contraseña, Basic Auth ni `customerId`. **No** se probaron `/rates` ni `/shipping/import`.
 - La etapa siguiente (Etapa B / T-019) se cerró el 2026-09-15. Este bloque permanece como histórico de T-018.
 
-## Estado vigente — 2026-09-15
+## Estado vigente — 2026-09-17
+
+### COMPLETADO Y VALIDADO
+
+- T-020 cerrada con paid QA real; DEC-025 ACEPTADA.
+- T-021 cerrada; DEC-026 ACEPTADA.
+- Migraciones 007 y 008 aplicadas en producción. Runtime T-017 desplegado en EasyPanel; RPC v2 en uso y RPC 26 conservada.
+- QA real de idempotencia satisfactorio: reutilización para mismo intento, separación para intención distinta y ausencia de duplicado ante doble clic/retry normal.
+- Flujo productivo con envío y pago real confirmado hasta `orders.status=paid`.
+
+### PENDIENTE
+
+- T-017 continúa EN PROGRESO hasta impedir la reutilización de una preferencia vieja cuando el attempt `ready` apunta a una orden ya `paid`.
+- Página de éxito real y política segura de limpieza de carrito/`sessionStorage`.
+- MiCorreo `POST /shipping/import`, stock por SKU, catálogo/imágenes/descripciones dinámicos, perfiles reales y precio comercial.
+- Rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
+
+## Estado histórico — 2026-09-15
 
 ### COMPLETADO Y VALIDADO
 
@@ -1249,12 +1270,12 @@ Evitar que un mismo intento lógico de compra cree múltiples pedidos `pending` 
 - T-017.1: infraestructura durable — completada / auditada.
 - T-017.2: integración backend, concurrencia, retry y recuperación — completada / auditada.
 - T-017.3: generación y envío frontend de `checkoutAttemptId` — completada / auditada.
-- T-017.4-A: preparación backward-compatible — cutover preparado localmente / auditado / APROBADO CON OBSERVACIONES.
-- T-017.4 ejecución, QA y cierre — pendiente.
+- T-017.4-A: preparación backward-compatible — completada / auditada / APROBADA CON OBSERVACIONES.
+- T-017.4 ejecución, QA y cierre — EN PROGRESO; migraciones y deploy completados, QA real de idempotencia aprobado, pendiente READY con order `paid`.
 
 #### Estado de T-017.1
 
-Dominio UUID y migración 007 creados. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. La migración no fue aplicada, no hubo deploy y `orders.js` no fue conectado: producción sigue en la RPC de 26 parámetros. No se cambió webhook, HMAC, Mercado Pago ni frontend.
+Dominio UUID y migración 007 creados. Auditoría: APROBADO CON OBSERVACIONES, sin hallazgos críticos. En el cierre histórico de T-017.1 la migración aún no estaba aplicada ni `orders.js` conectado; ambos pasos se completaron posteriormente durante T-017.4. No se cambió webhook, HMAC ni la validación de pagos.
 
 #### Estado de T-017.2
 
@@ -1270,7 +1291,7 @@ Observaciones no bloqueantes para T-017.3/T-017.4: el `23505` tiene fallback por
 
 El navegador construye el body lógico, normaliza una identidad equivalente al matching backend, calcula SHA-256 con Web Crypto y obtiene/reutiliza un UUID generado exclusivamente por `crypto.randomUUID()`. `sessionStorage` usa `lemont.checkoutAttempt.v1` y persiste solo versión, UUID y digest; no guarda PII ni envía el digest al backend.
 
-Errores de red, 500/503 y `checkout_busy` conservan el UUID. `checkout_mismatch` y el 400 exacto de attempt inválido eliminan solo ese record. El frontend distingue `shipping_changed`, `agency_changed`, `checkout_busy`, `checkout_mismatch` y `checkout_unavailable`; un 409 desconocido ya no se clasifica como shipping. No hay retry automático. T-017.3 no es productiva hasta T-017.4.
+Errores de red, 500/503 y `checkout_busy` conservan el UUID. `checkout_mismatch` y el 400 exacto de attempt inválido eliminan solo ese record. El frontend distingue `shipping_changed`, `agency_changed`, `checkout_busy`, `checkout_mismatch` y `checkout_unavailable`; un 409 desconocido ya no se clasifica como shipping. No hay retry automático. **Estado histórico previo al cutover:** T-017.3 no era productiva por separado hasta ejecutar T-017.4; posteriormente fue desplegada de forma coordinada y hoy está activa en producción.
 
 Auditoría final: **APROBADA CON OBSERVACIONES**. Verificación: **369/369 tests**, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos.
 
@@ -1284,7 +1305,7 @@ Observaciones no bloqueantes trasladadas a T-017.4:
 6. El record permanece tras el redirect exitoso; T-017.4 debe probar browser back, reutilización READY, order ya paid y comportamiento después de un pago real.
 7. T-017.4 debe probar doble click/concurrencia real, storage real y Web Crypto real en navegador.
 
-Producción sigue en runtime T-021/RPC 26, sin frontend T-017.3 desplegado y sin idempotencia durable activa en runtime. La migración 007 ya fue aplicada y verificó coexistencia de RPC 26 + v2 + claim.
+El runtime/frontend T-017.3 fue desplegado posteriormente durante T-017.4. Producción usa la RPC v2 con idempotencia durable activa; la RPC 26 continúa disponible.
 
 #### Estado de T-017.4-A
 
@@ -1298,7 +1319,7 @@ La 007 fue aplicada correctamente en producción y se verificaron tabla, RPC 26,
 
 Producción fue corregida manualmente: tabla con SELECT/INSERT, sin DELETE/TRUNCATE/TRIGGER/REFERENCES/UPDATE de tabla; UPDATE solo sobre `state`, `mercadopago_preference_id`, `checkout_url`, `lease_token`, `lease_expires_at`, `updated_at`; sequence con USAGE y sin SELECT/UPDATE; RLS habilitada, cero policies públicas y sin SELECT para `anon`/`authenticated`.
 
-`008_harden_checkout_attempts_privileges.sql` reproduce el estado corregido mediante REVOKE ALL + grants mínimos. No toca RPC 26, v2, claim, tablas ni constraints. La 008 no fue aplicada; la 007 permanece byte-for-byte intacta. Auditoría 008: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos.
+`008_harden_checkout_attempts_privileges.sql` reproduce el estado corregido mediante REVOKE ALL + grants mínimos. No toca RPC 26, v2, claim, tablas ni constraints. La 008 fue auditada, pusheada y aplicada en producción; la 007 permaneció intacta. Auditoría 008: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos.
 
 Observaciones no bloqueantes de 008:
 
@@ -1308,22 +1329,22 @@ Observaciones no bloqueantes de 008:
 4. La 008 endurece únicamente los privilegios de `service_role`.
 5. El archivo 008 estaba untracked durante la ejecución de `git diff --check`.
 
-Estado del plan de cutover:
+Estado ejecutado del plan de cutover:
 
 1. **Precheck:** completado para la aplicación real de 007.
 2. **Aplicar 007:** completado en producción.
 3. **Schema reload:** completado/verificado.
 4. **Verificación SQL:** tabla, claim, RPC 26, RPC v2, permisos RPC y RLS verificados; privilegios de tabla amplios detectados y corregidos manualmente. La 008 registra la corrección.
-5. **Deploy:** recién entonces desplegar runtime T-017 y frontend T-017.3; el runtime nuevo usa v2.
-6. **Smoke QA:** carga, carrito, cotizaciones HOME/AGENCY, generación de attempt y redirect Mercado Pago.
-7. **Idempotency QA:** mismo intent/retry, doble click, browser back, 409 busy, READY, mismatch y nueva intención.
-8. **Payment QA:** solo con monto/ambiente controlado, validar pago, webhook, `pending → paid` y ausencia de duplicados.
+5. **Deploy:** completado en EasyPanel; runtime T-017 y frontend T-017.3 usan v2.
+6. **Smoke/checkout QA:** completado dentro del flujo productivo informado.
+7. **Idempotency QA:** mismo intento/retry reutilizó attempt, orden y preferencia; nueva intención creó entidades nuevas; doble clic/retry normal no duplicó la orden. Queda pendiente el caso READY cuya order ya está `paid`.
+8. **Payment QA:** completado con pago real, webhook válido, transición `pending → paid` y shipping incluido.
 9. **Cleanup futuro:** tras estabilidad, migración separada para retirar RPC 26; no implementada ahora.
 
 Rollback documentado: si 007 falla antes del deploy, el runtime viejo conserva RPC 26 y no requiere reversión inmediata por compatibilidad. Si falla el deploy nuevo, volver al deployment anterior para regresar a T-021/RPC 26. No automatizar comandos destructivos.
 
-Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; se respetó el orden 007 antes de Node T-017; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia y `23505`, recovery `Preference.search/get`, browser back con READY, order ya paid con attempt READY, sessionStorage/Web Crypto/ESM reales, errores de storage y doble click.
+Observaciones históricas no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; se respetó el orden 007 antes de Node T-017; los tests SQL eran mayormente estáticos. El QA real cubrió reutilización, cambio de intención y doble clic/retry normal. Sigue pendiente cubrir y corregir específicamente order ya `paid` con attempt READY, además de definir la limpieza segura posterior al retorno.
 
 #### Resultado esperado del cutover T-017.4
 
-Un reintento o doble envío del mismo intento lógico no genera un segundo pedido cobrable ni una segunda preferencia.
+El objetivo principal quedó validado en producción: un reintento o doble envío normal del mismo intento lógico no generó un segundo pedido ni una segunda preferencia. T-017 permanece EN PROGRESO por el caso READY asociado a una order ya `paid`.

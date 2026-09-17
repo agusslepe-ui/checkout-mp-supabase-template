@@ -7,9 +7,9 @@
 - Hallazgo: los default privileges efectivos otorgaron a `service_role` DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE y UPDATE de tabla, además de UPDATE sobre todas las columnas. Los tests estáticos no representaban el estado efectivo de producción.
 - Corrección manual productiva: tabla solo SELECT/INSERT, sin DELETE/TRUNCATE/TRIGGER/REFERENCES/UPDATE general; UPDATE limitado a `state`, `mercadopago_preference_id`, `checkout_url`, `lease_token`, `lease_expires_at`, `updated_at`; sequence solo USAGE, sin SELECT/UPDATE.
 - La migración 008 reproduce este estado mediante REVOKE ALL seguido de grants mínimos. Es idempotente respecto del estado corregido y no toca RPCs, claim, tablas ni constraints.
-- La 008 está PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES, sin hallazgos críticos y no aplicada. La 007 permanece byte-for-byte intacta.
+- La 008 fue AUDITADA / APROBADA CON OBSERVACIONES, pusheada y APLICADA EN PRODUCCIÓN, sin hallazgos críticos. La 007 permaneció intacta.
 - Observaciones no bloqueantes: el hash test de 007 depende de LF/CRLF; no hay asserts explícitos de `BEGIN`/`COMMIT`; 008 no necesita `NOTIFY pgrst`; endurece solo `service_role`; y el archivo estaba untracked durante `git diff --check`.
-- Suite: **377/377 tests**, 9 suites, 0 fallos. Producción sigue con runtime T-021/RPC 26; T-017 no está desplegada ni completa.
+- Suite histórica del hardening: **377/377 tests**, 9 suites, 0 fallos. Producción ejecuta runtime T-017 mediante RPC v2; RPC 26 permanece disponible. La idempotencia durable está activa, aunque T-017 no se declara completa por el caso pendiente READY + order `paid`.
 
 ## T-017.4-A — auditado / APROBADO CON OBSERVACIONES
 
@@ -21,7 +21,7 @@
 - La RPC 26 solo se retirará mediante una migración futura separada después de estabilidad y QA; no está creada en esta fase.
 - Estado histórico previo al cutover: **372/372 tests**, 9 suites, 0 fallos. El estado vigente de 007 y privilegios está documentado en la sección superior.
 - Auditoría sin hallazgos críticos: RPC 26 permanece intacta; v2 conserva 27 parámetros con UUID primero; `orders.js` usa exclusivamente v2; claim, RLS y privilegios mínimos continúan seguros.
-- Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; se respetó el orden 007 antes de Node T-017; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia, recovery Mercado Pago, browser back/READY, sessionStorage/Web Crypto reales, paid order y doble click.
+- Observaciones no bloqueantes históricas: se respetó el orden 007 antes de Node T-017 y el QA real confirmó reutilización del mismo intento, nueva identidad ante cambio de intención y ausencia de duplicado ante doble clic/retry normal. Sigue pendiente cubrir y corregir READY cuando la order ya está `paid`.
 - Orden de seguridad obligatorio: precheck → 007 → esperar/verificar reload PostgREST → comprobar RPC 26/v2/permisos → deploy → smoke QA → idempotency QA → payment QA → cleanup futuro separado.
 
 ## T-017.3 — UUID y digest frontend local
@@ -33,35 +33,35 @@
 - Records corruptos/inválidos se descartan. Mismatch elimina solo el attempt; errores temporales lo conservan para recovery.
 - Sin Web Crypto no se envía el checkout. No existe retry automático.
 - T-017.3 está completada localmente, auditada y APROBADA CON OBSERVACIONES. Verificación final: **369/369 tests**, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos.
-- Observaciones no bloqueantes para T-017.4: normalización de espacios internos rara no idéntica al backend; sort ASCII de SKU frente a `localeCompare`; falta de casos explícitos para HTTP 500 y excepciones de storage; tests VM sin ESM/Web Crypto/storage reales; y persistencia post-redirect pendiente de QA con browser back, READY, order paid, post-pago y doble click/concurrencia real.
-- La 007 está aplicada, pero T-017.3 no está desplegada y producción continúa con T-021/RPC 26, sin idempotencia durable activa en runtime. T-017.4 debe completar deploy y QA real.
+- Observaciones históricas de auditoría: normalización rara de espacios, sort de SKU, cobertura nominal de HTTP 500/storage y límites de los tests VM. Tras el deploy y QA real, el pendiente de seguridad vigente es impedir la reutilización de una preferencia READY cuando la order ya está `paid` y definir la limpieza segura posterior al retorno.
+- La 007 y la 008 están aplicadas; T-017.3 fue desplegada con el runtime T-017. La idempotencia durable está activa en producción y RPC 26 se conserva.
 
 ## T-017.2 / DEC-022 — completada / auditada
 
 - `checkoutAttemptId` es un UUID de idempotencia, no un secreto; el dominio exige formato canónico y normaliza lowercase.
 - `checkout_attempts` no duplica cliente, domicilio ni otra PII. RLS está habilitada y no se crean policies para `anon`/`authenticated`.
 - Se revoca acceso de `PUBLIC`, `anon` y `authenticated`; `service_role` recibe SELECT/INSERT y UPDATE solo sobre `state`, preference/URL, lease y `updated_at`, además de USAGE de la identity sequence. No recibe DELETE ni UPDATE de `checkout_attempt_id`, `order_id` o `created_at`.
-- La RPC futura conserva `SECURITY INVOKER`, `search_path` fijo y EXECUTE exclusivo de `service_role`.
+- La RPC v2 ya está productiva y conserva `SECURITY INVOKER`, `search_path` fijo y EXECUTE exclusivo de `service_role`. La RPC 26 permanece temporalmente disponible para rollback.
 - La UNIQUE de `checkout_attempt_id` es la barrera durable; solo su constraint exacta convierte `23505` en retry. Otros conflictos no se ocultan.
 - El claim es un UPDATE SQL condicional único y usa un lease token generado en backend. Los updates READY/UNKNOWN exigen poseer ese token y limpian la lease; cada transición modifica `updated_at`.
 - Retries se validan contra el snapshot persistido y no contra precios actuales. READY no llama dependencias externas. UNKNOWN/lease vencida busca por `external_reference` y nunca elige arbitrariamente entre múltiples preferencias.
 - El recovery usa `Preference.search` y completa un resultado mediante `Preference.get({ preferenceId: ... })`; el contrato incorrecto detectado en la auditoría inicial fue corregido antes de la aprobación final.
 - Respuestas y logs no exponen PII, lease token, SQL, access token ni respuestas crudas de Mercado Pago. La recuperación devuelve solo id, referencia exacta y URL HTTPS validada.
-- Verificación histórica de T-017.2: **345/345 tests**, 8 suites, 0 fallos; mocks solamente. La 007 fue aplicada posteriormente durante T-017.4; producción sigue en runtime T-021/RPC 26 y el frontend productivo no envía `checkoutAttemptId`.
-- El código T-017.2 y el frontend T-017.3 no son desplegables por separado. Con 007 ya aplicada, T-017.4 debe coordinar el deploy del runtime/frontend compatible y ejecutar QA.
+- Verificación histórica de T-017.2: **345/345 tests**, 8 suites, 0 fallos; mocks solamente. La 007 fue aplicada posteriormente durante T-017.4 y el frontend productivo ahora envía `checkoutAttemptId`.
+- T-017.2 y T-017.3 se desplegaron coordinadamente después de 007; la RPC 26 quedó disponible por compatibilidad.
 - Observaciones no bloqueantes: fallback de constraint en texto para `23505`; ventana teórica entre lease vencida e indexación de búsqueda; timeout potencialmente compartido del SDK; SKU sin `trim` adicional; claim concurrente sin prueba SQL real. Recovery y concurrencia reales/controlados quedan obligatorios para T-017.4.
 
-## T-021 / DEC-026 — implementada localmente / pendiente de auditoría
+## T-021 / DEC-026 — COMPLETADA / ACEPTADA
 
 - Browser envía provincia ISO al endpoint y solo `shippingAgencyCode` al checkout; nunca customerId, price ni snapshot.
 - Backend revalida `/rates` y `/agencies` antes de la RPC. Solo ACTIVE y pickup usable; lista vacía es 200.
 - Respuesta pública omite manager, email, phone, JWT, customerId, coordenadas, hours y wrapper crudo.
 - Logs permitidos: `agency_lookup_ok`, `agency_lookup_failed`, `agency_selection_invalid`; sin code, provincia, CP, cliente ni body.
 - Frontend renderiza datos del provider con `createElement`/`textContent` y descarta respuestas tardías con AbortController + revisiones.
-- Migración 006 local no aplicada; snapshot nullable para historia/HOME, completo y coherente para AGENCY. RPC invoker y privilegios restringidos.
+- Migración 006 aplicada; snapshot nullable para historia/HOME, completo y coherente para AGENCY. RPC invoker y privilegios restringidos.
 - 276/276 tests con red, Supabase y Mercado Pago simulados. Sin `.env`, SQL real ni llamadas externas.
 
-## T-020 / DEC-025 — desplegada / paid QA pendiente separado
+## T-020 / DEC-025 — COMPLETADA / ACEPTADA
 
 - El navegador envía únicamente `shippingOptionId`; precio de envío, subtotal, total, moneda, provider, service, customerId, origen y dimensiones permanecen bajo autoridad del backend.
 - Checkout vuelve a resolver el carrito y a consultar `/rates`. Solo home Classic/Express es cobrable. Agency, IDs manipulados y opciones ambiguas no crean órdenes.
@@ -70,7 +70,9 @@
 - Mercado Pago recibe productos + un ítem `Envío`, nunca `shipments`. El webhook/HMAC no fue modificado y compara exclusivamente contra `orders.amount` y `orders.currency`.
 - La migración 005 mantiene snapshots históricos en null, restringe valores cobrables y conserva RPC `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` solo para `service_role`. Fue aplicada en el despliegue T-020 informado.
 - Tests 242/242 con dotenv, Supabase, Mercado Pago y red simulados. No se leyeron secretos ni se hicieron llamadas reales.
-- Riesgos pendientes: orden pending huérfana si MP falla, doble checkout sin idempotencia durable, perfiles TEMPORAL/QA, credenciales por rotar y falta de stock real. Producción comercial bloqueada.
+- Pago real validado el 2026-09-17: shipping incluido, webhook procesado y orden `pending → paid`. La idempotencia durable T-017 elimina el pendiente anterior de doble checkout normal; permanece el caso específico READY con order ya `paid`.
+- Incidencia de transporte resuelta: DNS apuntaba al VPS anterior y HTTPS presentó inicialmente un certificado no confiable. Tras corregir DNS y regenerar Traefik, Let's Encrypt emitió un certificado válido. Un POST externo sin firma a `/webhook` llegó a Express y fue rechazado correctamente con HTTP 401; la notificación válida posterior de Mercado Pago fue aceptada.
+- Riesgos pendientes: perfiles TEMPORAL/QA, credenciales por rotar, falta de stock real y limpieza segura del estado del navegador. Producción comercial bloqueada.
 
 ## T-019 / DEC-024 — 2026-09-15 (COMPLETADA / ACEPTADA)
 

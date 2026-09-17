@@ -1,20 +1,20 @@
 # Requisitos
 
-## Actualización T-021 — IMPLEMENTADA LOCALMENTE / PENDIENTE DE AUDITORÍA
+## Actualización T-021 — COMPLETADA / DEC-026 ACEPTADA
 
 `POST /sucursales-envio` recibe solo `province` ISO `AR-*`; backend deriva `provinceCode`, agrega `customerId` privado y usa MiCorreo `GET /agencies`. La respuesta pública incluye code, nombre y domicilio normalizados; exige ACTIVE y, cuando existe, `pickupAvailability: true`.
 
-Checkout acepta HOME sin agencia o AGENCY con `shippingAgencyCode`. Para AGENCY recotiza `/rates`, vuelve a listar agencias y persiste exclusivamente el snapshot de la respuesta autoritativa. El total sigue siendo productos + shipping; Mercado Pago y webhook no cambian. Migración 006 local no aplicada. Suite: 276/276.
+Checkout acepta HOME sin agencia o AGENCY con `shippingAgencyCode`. Para AGENCY recotiza `/rates`, vuelve a listar agencias y persiste exclusivamente el snapshot de la respuesta autoritativa. El total sigue siendo productos + shipping; Mercado Pago y webhook no cambian. La migración 006 está aplicada en producción. Suite histórica de cierre: 276/276.
 
-## Actualización T-020 — IMPLEMENTADA Y DESPLEGADA / PAID QA PENDIENTE SEPARADO
+## Actualización T-020 — COMPLETADA / DEC-025 ACEPTADA
 
 `POST /crear-preferencia` requiere `shippingOptionId` tanto para `items[]` como para legacy. El backend recotiza MiCorreo con el carrito y CP de entrega, acepta solo home Classic/Express, toma la tarifa vigente y persiste subtotal, envío y total. Si la opción desaparece responde 409; fallos de MiCorreo responden 503 sin crear orden; 5+ unidades responden 400 sin cotizar.
 
-Mercado Pago cobra productos + un ítem `Envío`, sin `shipments`. T-020 desplegó HOME y la migración 005; AGENCY seleccionable pertenece a T-021. Su paid QA completo y cierre documental siguen separados.
+Mercado Pago cobra productos + un ítem `Envío`, sin `shipments`. T-020 desplegó HOME y la migración 005; AGENCY seleccionable pertenece a T-021. El paid QA real quedó completado el 2026-09-17 y DEC-025 fue aceptada.
 
 ## Actualización T-019 — COMPLETADA (DEC-024 ACEPTADA)
 
-En el cierre histórico de T-019, la cotización informativa admitía contrato dual items[] o sku+quantity y 1–4 unidades totales, con perfiles editables TEMPORAL/QA (300 g / 5 × 25 × 35 cm para cada cantidad). Cantidades totales 5+ se rechazaban sin MiCorreo. CP origen productivo acordado 5465 desde entorno. Domicilio/sucursal y Clásico/Express solo cuando los devolvía MiCorreo; sin elegir agencia, sin persistencia ni envío en el pago. La suite de ese cierre fue 211/211. `POST /rates` PROD verificado (`micorreo_rates_ok options=4`, destino QA 5400). Las medidas actuales **no** están aprobadas para producción. Etapa C estaba pendiente en ese cierre; hoy T-020 está desplegada según el handoff y T-021 está implementada localmente.
+En el cierre histórico de T-019, la cotización informativa admitía contrato dual items[] o sku+quantity y 1–4 unidades totales, con perfiles editables TEMPORAL/QA (300 g / 5 × 25 × 35 cm para cada cantidad). Cantidades totales 5+ se rechazaban sin MiCorreo. CP origen productivo acordado 5465 desde entorno. Domicilio/sucursal y Clásico/Express solo cuando los devolvía MiCorreo; sin elegir agencia, sin persistencia ni envío en el pago. La suite de ese cierre fue 211/211. `POST /rates` PROD verificado (`micorreo_rates_ok options=4`, destino QA 5400). Las medidas actuales **no** están aprobadas para producción. Etapa C estaba pendiente en ese cierre; posteriormente T-020 y T-021 quedaron completadas en producción.
 
 ## Objetivo
 
@@ -76,7 +76,7 @@ Evita confirmar un pedido solamente por una redirección del navegador o por dat
 - La clave `service_role` de Supabase solo puede usarse en backend.
 - La confirmación del pago depende de la disponibilidad de Mercado Pago y Supabase.
 - Hay 276 tests automatizados en Jest. Frontend vanilla + ES modules con pruebas DOM mínimas aisladas. No hay contrato de disponibilidad definido.
-- Existen migraciones versionadas 001–005 aplicadas según el handoff de T-021 y una migración 006 local pendiente de auditoría y aplicación controlada.
+- Las migraciones versionadas 001–008 están aplicadas en producción. La migración 006 y T-021 están productivas; las migraciones 007 y 008 sostienen la idempotencia durable y su hardening de privilegios.
 
 ## El sistema no debe
 
