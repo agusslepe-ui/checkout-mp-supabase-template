@@ -15,7 +15,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 ## Estado de tareas y decisiones
 
-- **Post-pago UX: IMPLEMENTADO LOCALMENTE / NO PRODUCTIVO.** `success.html` ya presenta una experiencia LEMONT accesible y responsive; al cargar elimina `lemont.cart` y `lemont.checkoutAttempt.v1` sin consultar servicios ni alterar el estado del pago. Suite local: 383/383 tests. Falta deploy y QA real.
+- **Post-pago UX: COMPLETADO / DESPLEGADO / VALIDADO EN PRODUCCIÓN** (2026-09-17). La implementación fue auditada por Grok, enviada al repositorio y desplegada en EasyPanel. El QA manual en navegador real confirmó el diseño y textos de `/success`, el funcionamiento de “Volver al inicio” y la eliminación de `lemont.cart` y `lemont.checkoutAttempt.v1`. No consulta servicios ni altera el estado del pago; el webhook continúa siendo la autoridad.
 - **DEC-022 — Idempotencia durable del checkout: ACEPTADA** (2026-09-16).
 - **T-017: COMPLETADA / VALIDADA EN PRODUCCIÓN** (2026-09-17). T-017.1–T-017.4, el cutover y el QA real quedaron cerrados. El hardening READY + order `paid` está desplegado y devolvió 409 `checkout_attempt_already_paid` sobre un intento real sin crear ni modificar recursos.
 - **DEC-025 — Cobro autoritativo del envío: ACEPTADA** (2026-09-17), después de la evidencia productiva de pago real con shipping incluido y transición final a `paid`.
@@ -32,15 +32,10 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 ## Pendientes reales
 
-- Desplegar y validar la nueva experiencia post-pago y su cleanup de carrito/attempt.
-- Etapa D: crear el envío post-pago mediante MiCorreo `POST /shipping/import`.
-- Implementar stock real por SKU y catálogo dinámico desde Supabase.
-- Hacer dinámicas las imágenes y descripciones.
 - Sustituir los perfiles TEMPORAL/QA de `300 g / 5 × 25 × 35 cm` por medidas reales y repetir QA.
-- Restaurar el precio comercial definitivo.
-- Rotar credenciales privadas previamente expuestas antes del lanzamiento.
-- Ejecutar la auditoría npm pendiente.
-- Abordar dominio definitivo, frontend final y SEO en etapas posteriores.
+- Etapa D: crear el envío post-pago mediante MiCorreo `POST /shipping/import`.
+- Implementar catálogo y stock reales desde Supabase, con imágenes y descripciones dinámicas.
+- Completar el hardening comercial: restaurar el precio definitivo, rotar credenciales privadas previamente expuestas, ejecutar la auditoría npm y abordar dominio definitivo, frontend final y SEO.
 
 ## Regla de alcance
 

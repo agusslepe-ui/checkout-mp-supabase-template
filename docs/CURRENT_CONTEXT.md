@@ -16,7 +16,7 @@ Incidencia resuelta: `checkout.lemont01.com` apuntaba a la IP anterior del VPS. 
 
 T-021/DEC-026 permanecen cerradas. Continúan pendientes fuera de T-017: MiCorreo `POST /shipping/import`; stock por SKU; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales expuestas; auditoría npm; y etapas posteriores de dominio/frontend/SEO.
 
-La UX post-pago y el cleanup están IMPLEMENTADOS LOCALMENTE / NO PRODUCTIVOS: `/success` muestra “¡Gracias por tu compra!”, elimina solo `localStorage["lemont.cart"]` y `sessionStorage["lemont.checkoutAttempt.v1"]`, y no lee query params ni llama backend, Mercado Pago o Supabase. Visitar `/success` manualmente también limpia ambos records; este riesgo UX se acepta temporalmente para mantener el flujo simple hasta contar con una confirmación frontend autoritativa. Falta deploy y QA real.
+La UX post-pago y el cleanup están COMPLETADOS / DESPLEGADOS / VALIDADOS EN PRODUCCIÓN. La implementación fue auditada por Grok, enviada al repositorio y desplegada en EasyPanel. El QA manual en navegador real confirmó que `/success` carga correctamente, presenta el diseño esperado, muestra “¡Gracias por tu compra!” y “Estamos preparando tu pedido”, y que “Volver al inicio” funciona. También confirmó que elimina solo `localStorage["lemont.cart"]` y `sessionStorage["lemont.checkoutAttempt.v1"]`, dejando el carrito vacío y sin attempt reutilizable. No lee query params como autoridad, no llama backend, Mercado Pago o Supabase y no modifica `orders`; el webhook continúa siendo la autoridad del pago. Visitar `/success` manualmente también limpia ambos records: este riesgo UX está aceptado en esta etapa y una protección futura mediante flag de `sessionStorage` queda como mejora no bloqueante.
 
 La tienda todavía **NO está lista para lanzamiento comercial**.
 
@@ -28,7 +28,7 @@ Cotización dual items o legacy, resolver común, tope 4 unidades totales, perfi
 
 En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío** y T-021 todavía estaba solo local; ambos estados fueron superados por los cierres productivos posteriores.
 
-> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008 aplicadas; runtime T-017 desplegado; idempotencia durable y hardening READY + order `paid` validados en producción; RPC 26 conservada; T-017/T-020/T-021 cerradas y DEC-022/DEC-025/DEC-026 aceptadas. UX post-pago + cleanup implementados localmente, pendientes de deploy/QA. El estado vigente está en `docs/STATUS.md`.
+> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008 aplicadas; runtime T-017 desplegado; idempotencia durable y hardening READY + order `paid` validados en producción; RPC 26 conservada; T-017/T-020/T-021 cerradas y DEC-022/DEC-025/DEC-026 aceptadas. UX post-pago + cleanup desplegados y validados en producción. El estado vigente está en `docs/STATUS.md`.
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -266,9 +266,10 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. Desplegar y validar en navegador real la nueva UX post-pago y el cleanup de carrito/attempt.
+1. Reemplazar los perfiles TEMPORAL/QA por peso y dimensiones físicas reales de los paquetes y repetir QA.
 2. Continuar con la Etapa D de MiCorreo: `POST /shipping/import` post-pago.
-3. Después, avanzar con catálogo dinámico desde Supabase y stock real por SKU; imágenes y descripciones dinámicas pertenecen a esa evolución.
+3. Avanzar con catálogo y stock reales desde Supabase, incluidas imágenes y descripciones dinámicas.
+4. Completar el hardening comercial: precio definitivo, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
 
 Antes del lanzamiento comercial también deben reemplazarse los perfiles TEMPORAL/QA, restaurarse el precio comercial, rotarse las credenciales expuestas y completarse la auditoría npm.
 

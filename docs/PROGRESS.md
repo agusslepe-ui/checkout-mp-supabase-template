@@ -1,5 +1,14 @@
 # Progreso
 
+## 2026-09-17 — cierre productivo de post-pago UX + cleanup
+
+- **Estado: COMPLETADO / DESPLEGADO / VALIDADO EN PRODUCCIÓN.** La implementación fue auditada por Grok, tuvo commit y push, y fue desplegada en EasyPanel.
+- QA manual en navegador real: `/success` carga correctamente, el diseño visual es correcto, muestra “¡Gracias por tu compra!” y “Estamos preparando tu pedido”, y “Volver al inicio” funciona.
+- El cleanup productivo elimina `localStorage["lemont.cart"]` y `sessionStorage["lemont.checkoutAttempt.v1"]`; el carrito queda vacío y el checkout attempt eliminado.
+- No hubo impacto en backend ni `orders`, ni llamadas a Mercado Pago o Supabase. El webhook conserva la autoridad del pago.
+- Riesgo aceptado: visitar `/success` manualmente también limpia carrito y attempt. Una posible protección futura mediante flag de `sessionStorage` queda como mejora no bloqueante.
+- Próximos bloques: perfiles físicos reales, MiCorreo `POST /shipping/import` post-pago, catálogo/stock/imágenes dinámicos y hardening comercial.
+
 ## 2026-09-17 — post-pago UX + cleanup implementados localmente
 
 - `success.html` fue reemplazada por una página LEMONT responsive y accesible con agradecimiento, aprobación, preparación del pedido y enlace “Volver al inicio”. No muestra IDs, PII, tracking ni despacho.
@@ -16,7 +25,7 @@
 - El hardening final se validó reutilizando una `checkout_attempt` real en `ready` cuya order estaba `paid`. `POST /crear-preferencia` con la intención original completa devolvió HTTP 409 con `type: checkout_attempt_already_paid` y `error: Esta compra ya fue pagada.`.
 - No hubo redirección a Mercado Pago, nueva order ni nueva preference; `max(order.id)` no cambió, el attempt permaneció `ready` y la order permaneció `paid`.
 - La reconstrucción correcta usó `order_items` reales. Un primer request armado con columnas legacy produjo correctamente mismatch y cero efectos secundarios.
-- `success.html`, cleanup post-pago, `/shipping/import`, catálogo/stock/imágenes, perfiles reales, precio, secretos, npm y dominio/frontend/SEO continúan pendientes, pero quedan fuera de T-017.
+- En ese cierre de T-017, `success.html`, cleanup post-pago, `/shipping/import`, catálogo/stock/imágenes, perfiles reales, precio, secretos, npm y dominio/frontend/SEO continuaban pendientes y quedaban fuera de T-017. Success/cleanup se cerraron productivamente después, como registra el bloque superior.
 
 ## 2026-09-17 — T-017 hardening READY + order paid implementado localmente
 

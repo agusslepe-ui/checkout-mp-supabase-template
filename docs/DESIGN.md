@@ -1,12 +1,14 @@
 # Diseño técnico
 
-## Post-pago UX — implementación local
+## Post-pago UX — diseño productivo validado
 
 `GET /success` continúa sirviendo una vista estática y no participa en la confirmación del pago. La página no lee parámetros de retorno ni consulta backend, Mercado Pago o Supabase; `POST /webhook` y `Payment.get` conservan la autoridad sobre `orders.status`.
 
 Al cargar, `successCleanup.js` elimina `localStorage["lemont.cart"]` mediante `CART_KEY` exportada por `cartStore.js` y limpia `sessionStorage["lemont.checkoutAttempt.v1"]` mediante `checkoutAttemptClient.clearCheckoutAttempt`. Las operaciones están aisladas para que el fallo de un storage no impida intentar la otra. No se tocan otras keys.
 
-La página usa header/footer, tipografías, colores y botones del frontend LEMONT; su card central es responsive, tiene jerarquía semántica y foco visible. Una visita manual a `/success` también ejecuta el cleanup: es un riesgo UX aceptado para evitar introducir tokens, consultas o estados frontend que simulen autoridad de pago. Implementado localmente con 383/383 tests; pendiente de deploy/QA.
+La página usa header/footer, tipografías, colores y botones del frontend LEMONT; su card central es responsive, tiene jerarquía semántica y foco visible. Una visita manual a `/success` también ejecuta el cleanup: es un riesgo UX aceptado para evitar introducir tokens, consultas o estados frontend que simulen autoridad de pago. Una protección futura mediante flag de `sessionStorage` queda como mejora no bloqueante.
+
+La implementación fue auditada por Grok, enviada al repositorio, desplegada en EasyPanel y validada manualmente en navegador real el 2026-09-17. El QA confirmó carga, diseño, textos, navegación al inicio y cleanup de ambas keys. Estado: COMPLETADO / DESPLEGADO / VALIDADO EN PRODUCCIÓN.
 
 ## T-017 — hardening READY + order `paid` productivo
 
@@ -341,7 +343,7 @@ La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `serv
 - Puerto fijo y catálogo versionado en backend; sin fuente administrable externa todavía.
 - La ruta `GET /webhook` queda restringida a entornos no productivos.
 - La idempotencia durable está activa y T-017 está COMPLETADA / VALIDADA EN PRODUCCIÓN, incluido el caso READY asociado a una order ya `paid`. El rate limiting continúa pendiente y no forma parte de T-017.
-- `success.html` todavía no ofrece la experiencia final de agradecimiento y falta definir el cleanup seguro de carrito/`sessionStorage`.
+- La UX y el cleanup de `/success` están desplegados y validados. La visita manual también limpia carrito/attempt; el riesgo está aceptado y un flag previo en `sessionStorage` es una mejora futura no bloqueante.
 - MiCorreo `POST /shipping/import`, catálogo dinámico y stock real por SKU todavía no están implementados.
 - El backend endurecido está desplegado en EasyPanel/VPS desde la rama `main` de `checkout-mp-supabase-template`, bajo `checkout.lemont01.com`; no hay infraestructura como código.
 

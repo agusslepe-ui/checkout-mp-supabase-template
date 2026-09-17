@@ -2,14 +2,14 @@
 
 ## Post-pago UX — success + cleanup seguro
 
-**Estado:** IMPLEMENTADO LOCALMENTE / NO PRODUCTIVO (2026-09-17).
+**Estado:** COMPLETADO / DESPLEGADO / VALIDADO EN PRODUCCIÓN (2026-09-17).
 
 - `success.html` usa el frontend LEMONT, es responsive/accesible y muestra “¡Gracias por tu compra!”, pago aprobado, preparación del pedido y “Volver al inicio”, sin IDs, tracking ni promesas de despacho.
 - `successCleanup.js` elimina exactamente `localStorage["lemont.cart"]` y `sessionStorage["lemont.checkoutAttempt.v1"]`; no toca otras keys, query params, backend, Supabase, Mercado Pago ni `orders`.
 - `/success` sigue siendo una vista no autoritativa: el webhook conserva exclusivamente la confirmación y transición real del pago.
-- Visitar `/success` manualmente también limpia carrito/attempt. Riesgo UX aceptado temporalmente para evitar complejidad o autoridad falsa en frontend.
+- Visitar `/success` manualmente también limpia carrito/attempt. Riesgo UX aceptado temporalmente para evitar complejidad o autoridad falsa en frontend; una protección futura mediante flag de `sessionStorage` queda como mejora no bloqueante.
 - Cobertura dedicada: cleanup de ambas keys, preservación de otras keys, cero red/navegación y markup/enlace al inicio. Suite completa: 383/383 tests, 10 suites, 0 fallos.
-- Pendiente: deploy y QA real, incluidos retorno desde Mercado Pago, back button, contador vacío y visita manual.
+- La implementación fue auditada por Grok, tuvo commit y push, fue desplegada en EasyPanel y validada manualmente en navegador real. `/success` carga con el diseño y textos esperados, “Volver al inicio” funciona, el carrito queda vacío y el checkout attempt eliminado.
 
 ## T-017 — Idempotencia durable del checkout
 
@@ -94,13 +94,14 @@
 - QA real de idempotencia satisfactorio: reutilización para mismo intento, separación para intención distinta y ausencia de duplicado ante doble clic/retry normal.
 - T-017 COMPLETADA / VALIDADA EN PRODUCCIÓN; el hardening READY + order `paid` fue desplegado y verificado sin efectos secundarios.
 - Flujo productivo con envío y pago real confirmado hasta `orders.status=paid`.
-- UX post-pago + cleanup implementados localmente; no productivos hasta deploy/QA.
+- UX post-pago + cleanup COMPLETADOS / DESPLEGADOS / VALIDADOS EN PRODUCCIÓN.
 
 ### PENDIENTE
 
-- Deploy/QA de la página de éxito y cleanup local ya implementados.
-- MiCorreo `POST /shipping/import`, stock por SKU, catálogo/imágenes/descripciones dinámicos, perfiles reales y precio comercial.
-- Rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
+- Perfiles físicos reales de los paquetes y repetición de QA.
+- MiCorreo `POST /shipping/import` post-pago.
+- Catálogo/stock/imágenes/descripciones dinámicos.
+- Hardening comercial: precio definitivo, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
 
 ## Estado histórico — 2026-09-15
 
