@@ -4,15 +4,16 @@
 
 **Estado:** EN PROGRESO. **Decisión:** DEC-022 ACEPTADA (2026-09-16).
 
-- **T-017.1 — Infraestructura durable:** COMPLETADA / AUDITADA. Agrega dominio UUID y migración 007 para `checkout_attempts` + RPC de 27 parámetros. SQL no aplicado. Sin deploy.
+- **T-017.1 — Infraestructura durable:** COMPLETADA / AUDITADA. La migración 007 fue aplicada en producción durante T-017.4; crea `checkout_attempts`, RPC v2 y claim sin retirar RPC 26.
 - **T-017.2 — Integración backend durable:** COMPLETADA / AUDITADA. Conecta `orders.js` con la RPC futura de 27 parámetros; implementa matching contra snapshot, carrera `23505` acotada, claim atómico, lease de 30 s, estados `reserved`/`creating_preference`/`ready`/`unknown`, reutilización READY y recuperación Mercado Pago por `external_reference` sin recotizar MiCorreo en retries existentes.
 - **T-017.3 — Integración frontend `checkoutAttemptId`:** COMPLETADA / AUDITADA. Genera UUID con Web Crypto, conserva el intento por digest SHA-256 en `sessionStorage`, diferencia los 409 y mantiene el UUID ante fallos temporales.
 - **T-017.4-A — Preparación backward-compatible:** CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES. Sin hallazgos críticos.
-- **T-017.4 — Ejecución, QA y cierre:** PENDIENTE.
+- **T-017.4 — Ejecución, QA y cierre:** EN PROGRESO. 007 aplicada/verificada; deploy y QA pendientes.
 - Webhook/HMAC y `markOrderAsPaid` permanecen intactos. Producción sigue en runtime T-021/RPC de 26 parámetros; T-017 no fue desplegada.
 - **Verificación T-017.2:** 345/345 tests, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. SQL 007 no aplicado; sin deploy ni red real. El cutover queda para T-017.4.
-- **Verificación T-017.3:** 369/369 tests, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos. Web Crypto/sessionStorage/fetch simulados, sin red real. Migración 007 no aplicada. T-017.4 debe coordinar cutover y QA.
-- **Verificación T-017.4-A:** 372/372 tests, 9 suites, 0 fallos; `npm.cmd test`, `node --check src/orders.js` y `git diff --check` correctos. Migración 007 no aplicada; sin SQL ni red real.
+- **Verificación T-017.3:** 369/369 tests, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos. Web Crypto/sessionStorage/fetch simulados, sin red real. En ese cierre la 007 aún no estaba aplicada; fue aplicada posteriormente durante T-017.4.
+- **Verificación T-017.4-A:** 372/372 tests, 9 suites, 0 fallos; `npm.cmd test`, `node --check src/orders.js` y `git diff --check` correctos. En esa preparación local no hubo SQL ni red real; la aplicación productiva de 007 ocurrió después.
+- **Hardening de privilegios:** corregido manualmente en producción. Migración 008 PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES, sin hallazgos críticos y no aplicada. Suite: 377/377, 9 suites.
 
 ## T-021 — Selección real de sucursal MiCorreo
 
@@ -90,7 +91,7 @@
 
 ### PENDIENTE
 
-- **DEC-022 ACEPTADA; T-017 EN PROGRESO.** T-017.1, T-017.2 y T-017.3 completadas/auditadas; T-017.4-A con cutover preparado localmente/auditado/APROBADO CON OBSERVACIONES; ejecución T-017.4 pendiente. Migración 007 no aplicada.
+- **DEC-022 ACEPTADA; T-017 EN PROGRESO.** T-017.1, T-017.2 y T-017.3 completadas/auditadas; T-017.4-A aprobado con observaciones; 007 aplicada/verificada y privilegios corregidos manualmente; migración 008 creada localmente; deploy/QA pendientes.
 - **T-021:** pendiente auditoría, aplicación controlada de la migración 006 y QA. El webhook sigue comparando contra el total persistido sin cambios de lógica.
 - Etapa D (creación de envío post-pago) pendiente. No llamar `/shipping/import`.
 - Reemplazar medidas QA (`300 g / 5 × 25 × 35 cm`) por dimensiones/peso reales **antes de usar tarifas en producción**. Los perfiles 1–4 siguen TEMPORAL/QA.
@@ -1261,7 +1262,7 @@ El backend requiere UUID, compara el retry con `orders` + `order_items`, reutili
 
 La recuperación usa `Preference.search` por `external_reference` y, si el summary no contiene URL utilizable, `Preference.get({ preferenceId: ... })`, conforme al contrato del SDK 3.1.0. El uso inicial incorrecto de `{ id: ... }` fue corregido y re-auditado.
 
-La migración 007 local incorpora coherencia de estados, permisos UPDATE solo sobre columnas mutables y `claim_checkout_attempt`. Verificación final de esa fase: **345/345 tests**, 8 suites, 0 fallos. La 007 no fue aplicada y no hubo deploy. El runtime local de 27 parámetros es incompatible con producción (RPC 26) hasta el cutover coordinado de T-017.4.
+La migración 007 local incorpora coherencia de estados, permisos UPDATE solo sobre columnas mutables y `claim_checkout_attempt`. Verificación final de esa fase: **345/345 tests**, 8 suites, 0 fallos. En ese cierre la 007 todavía no estaba aplicada; fue aplicada posteriormente durante T-017.4.
 
 Observaciones no bloqueantes para T-017.3/T-017.4: el `23505` tiene fallback por nombre de constraint en `message/details`; existe riesgo teórico de lease vencida + búsqueda aún no indexada que permita una segunda preference; `Preference.search` puede modificar opciones de timeout del cliente SDK compartido; el matching de SKU no agrega `trim`; el claim concurrente está cubierto por mocks/lógica y no por SQL real; T-017.4 debe incluir recuperación y concurrencia reales/controladas.
 
@@ -1283,7 +1284,7 @@ Observaciones no bloqueantes trasladadas a T-017.4:
 6. El record permanece tras el redirect exitoso; T-017.4 debe probar browser back, reutilización READY, order ya paid y comportamiento después de un pago real.
 7. T-017.4 debe probar doble click/concurrencia real, storage real y Web Crypto real en navegador.
 
-Producción sigue en T-021/RPC 26, sin migración 007 aplicada, sin frontend T-017.3 desplegado y sin idempotencia durable activa. T-017.4 debe coordinar migración 007 + runtime backend RPC 27 + frontend T-017.3 + deploy + QA real.
+Producción sigue en runtime T-021/RPC 26, sin frontend T-017.3 desplegado y sin idempotencia durable activa en runtime. La migración 007 ya fue aplicada y verificó coexistencia de RPC 26 + v2 + claim.
 
 #### Estado de T-017.4-A
 
@@ -1291,12 +1292,28 @@ La estrategia de cutover ya no reemplaza la RPC productiva. La migración 007 ma
 
 Auditoría: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. Confirmó la firma v2 de 27 parámetros con `p_checkout_attempt_id uuid` primero, la preservación de RPC 26, `claim_checkout_attempt`, RLS y permisos mínimos, y la viabilidad de rollback a T-021.
 
-Plan futuro:
+#### Hallazgo real de privilegios y migración 008
 
-1. **Precheck:** git limpio y commit identificado, tests verdes, backup/verificación Supabase, RPC 26 existente y 007 no aplicada.
-2. **Aplicar 007:** ejecutar la migración solo con autorización.
-3. **Schema reload:** esperar y verificar la recarga del schema cache de PostgREST posterior a `NOTIFY pgrst`.
-4. **Verificación SQL:** comprobar tabla `checkout_attempts`, `claim_checkout_attempt`, RPC 26 conservada, RPC v2 creada y permisos correctos. El runtime viejo debe continuar funcionando.
+La 007 fue aplicada correctamente en producción y se verificaron tabla, RPC 26, RPC v2, claim, permisos de ejecución y RLS. La inspección efectiva descubrió que los default privileges habían otorgado a `service_role` DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE y UPDATE de tabla, además de UPDATE sobre todas las columnas. Los tests estáticos de 007 no detectaron esa herencia.
+
+Producción fue corregida manualmente: tabla con SELECT/INSERT, sin DELETE/TRUNCATE/TRIGGER/REFERENCES/UPDATE de tabla; UPDATE solo sobre `state`, `mercadopago_preference_id`, `checkout_url`, `lease_token`, `lease_expires_at`, `updated_at`; sequence con USAGE y sin SELECT/UPDATE; RLS habilitada, cero policies públicas y sin SELECT para `anon`/`authenticated`.
+
+`008_harden_checkout_attempts_privileges.sql` reproduce el estado corregido mediante REVOKE ALL + grants mínimos. No toca RPC 26, v2, claim, tablas ni constraints. La 008 no fue aplicada; la 007 permanece byte-for-byte intacta. Auditoría 008: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos.
+
+Observaciones no bloqueantes de 008:
+
+1. El hash test de 007 depende de que los bytes LF/CRLF permanezcan estables.
+2. Los tests no afirman `BEGIN` y `COMMIT` de forma explícita.
+3. La 008 no necesita `NOTIFY pgrst` porque solo cambia privilegios.
+4. La 008 endurece únicamente los privilegios de `service_role`.
+5. El archivo 008 estaba untracked durante la ejecución de `git diff --check`.
+
+Estado del plan de cutover:
+
+1. **Precheck:** completado para la aplicación real de 007.
+2. **Aplicar 007:** completado en producción.
+3. **Schema reload:** completado/verificado.
+4. **Verificación SQL:** tabla, claim, RPC 26, RPC v2, permisos RPC y RLS verificados; privilegios de tabla amplios detectados y corregidos manualmente. La 008 registra la corrección.
 5. **Deploy:** recién entonces desplegar runtime T-017 y frontend T-017.3; el runtime nuevo usa v2.
 6. **Smoke QA:** carga, carrito, cotizaciones HOME/AGENCY, generación de attempt y redirect Mercado Pago.
 7. **Idempotency QA:** mismo intent/retry, doble click, browser back, 409 busy, READY, mismatch y nueva intención.
@@ -1305,7 +1322,7 @@ Plan futuro:
 
 Rollback documentado: si 007 falla antes del deploy, el runtime viejo conserva RPC 26 y no requiere reversión inmediata por compatibilidad. Si falla el deploy nuevo, volver al deployment anterior para regresar a T-021/RPC 26. No automatizar comandos destructivos.
 
-Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de aplicar 007; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia y `23505`, recovery `Preference.search/get`, browser back con READY, order ya paid con attempt READY, sessionStorage/Web Crypto/ESM reales, errores de storage y doble click.
+Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; se respetó el orden 007 antes de Node T-017; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia y `23505`, recovery `Preference.search/get`, browser back con READY, order ya paid con attempt READY, sessionStorage/Web Crypto/ESM reales, errores de storage y doble click.
 
 #### Resultado esperado del cutover T-017.4
 

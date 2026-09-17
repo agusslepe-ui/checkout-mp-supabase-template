@@ -30,7 +30,7 @@ El detalle del cierre está en `docs/T021_DEC026_CLOSURE_2026-09-16.md`.
 
 ## Pendientes principales
 
-- T-017.2 está completada y auditada. T-017.3 está completada localmente, auditada y aprobada con observaciones. T-017.4 (cutover/QA y cierre) sigue pendiente.
+- T-017.1–T-017.3 están completadas y auditadas. T-017.4 está en ejecución: la migración 007 fue aplicada y verificada, pero el deploy y QA continúan pendientes.
 - Etapa D: crear el envío post-pago con MiCorreo `/shipping/import`; no implementada todavía.
 - Tracking/etiquetas: no implementados; el PDF oficial disponible no documenta esos endpoints.
 - Stock real por SKU; `maxQuantity: 4` sigue siendo un límite temporal y no inventario.
@@ -52,13 +52,17 @@ GitHub sigue siendo la fuente de verdad del código. El cierre T-021/DEC-026 de 
 - **T-017.1: COMPLETADA / AUDITADA.**
 - **T-017.2: COMPLETADA / AUDITADA.** Backend exige `checkoutAttemptId`, reutiliza el snapshot persistido, aplica lease de 30 segundos, recupera preferencias por `external_reference` y persiste `ready`/`unknown` sin recotizar retries existentes.
 - **T-017.3: COMPLETADA / AUDITADA.** El frontend calcula un SHA-256 de la intención normalizada, guarda solo `{ version: 1, checkoutAttemptId, intentDigest }` bajo `lemont.checkoutAttempt.v1` en `sessionStorage` y reutiliza el UUID en retries sin cambios.
-- **T-017.4-A: CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES.** No hubo hallazgos críticos. La migración 007 conserva intacta la RPC productiva `create_pending_order_with_items` de 26 parámetros y agrega `create_pending_order_with_items_v2` con 27 parámetros y `p_checkout_attempt_id uuid` primero. **NO está aplicada**.
-- **T-017.4 ejecución: PENDIENTE.** No hubo SQL real ni deploy; T-017 no está productiva ni completa.
+- **T-017.4-A: CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES.** La migración 007 conserva la RPC productiva `create_pending_order_with_items` de 26 parámetros y agrega `create_pending_order_with_items_v2` con 27 parámetros y `p_checkout_attempt_id uuid` primero.
+- **T-017.4 ejecución: EN PROGRESO.** La migración 007 **FUE APLICADA EN PRODUCCIÓN**. Se verificaron `checkout_attempts`, RPC 26, RPC v2, `claim_checkout_attempt`, `SECURITY INVOKER`, `search_path`, permisos de ejecución y RLS. El deploy T-017 y los QA siguen pendientes; T-017 no está completa ni productiva.
+- Hallazgo real: los default privileges de Supabase otorgaron a `service_role` privilegios de tabla y UPDATE más amplios que los previstos. Producción fue corregida manualmente con éxito: tabla solo SELECT/INSERT, UPDATE limitado a seis columnas operativas y sequence solo USAGE.
+- **Migración 008: PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES.** La auditoría no encontró hallazgos críticos. Reproduce el hardening de forma idempotente, no modifica RPCs, claim, tablas ni constraints y **NO fue aplicada**.
 - El bloqueo inicial del recovery fue corregido: después de `Preference.search` por `external_reference`, el SDK 3.1.0 recibe `Preference.get({ preferenceId: ... })` cuando necesita completar el resultado.
 - Verificación final T-017.2: **345/345 tests**, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos.
 - No hubo deploy de T-017. Producción sigue usando el runtime T-021 y la RPC de **26 parámetros**.
 - Verificación final T-017.3: **369/369 tests**, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos.
 - Verificación local T-017.4-A: **372/372 tests**, 9 suites, 0 fallos; `npm.cmd test`, `node --check src/orders.js` y `git diff --check` correctos. El runtime T-017 llama exclusivamente `create_pending_order_with_items_v2`; `markOrderAsPaid` permanece intacto.
+- Verificación local del hardening 008: **377/377 tests**, 9 suites, 0 fallos. La 007 permanece byte-for-byte intacta.
 - Observaciones no bloqueantes para T-017.4: diferencias raras de normalización de espacios y orden de SKU; faltan casos nominales explícitos de HTTP 500 y errores de storage; los tests VM no sustituyen ESM/Web Crypto/storage reales; y debe validarse el record conservado tras redirect, browser back, READY reutilizada, order ya paid y doble click/concurrencia real.
-- La idempotencia todavía **no está en producción**: la migración 007 no fue aplicada y producción conserva runtime T-021/RPC 26. Orden obligatorio futuro: precheck → aplicar 007 → esperar/verificar reload del schema PostgREST → comprobar RPC 26 + v2 + permisos → deploy runtime/frontend T-017 → smoke QA → idempotency QA → payment QA → cleanup futuro de RPC 26 mediante otra migración.
+- La infraestructura de base de datos T-017 ya existe, pero la idempotencia todavía **no está activa en el runtime productivo**: producción continúa ejecutando T-021 contra RPC 26. Pendiente: deploy runtime/frontend T-017 → smoke QA → idempotency QA → payment QA → cleanup futuro de RPC 26 mediante otra migración.
 - Observaciones no bloqueantes: puede existir una ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de 007; los tests SQL actuales son mayormente estáticos; el QA real debe cubrir concurrencia, recovery Mercado Pago, browser back/READY, sessionStorage/Web Crypto reales, paid order y doble click.
+- Observaciones de auditoría 008: el hash test de 007 depende de la normalización LF/CRLF; los tests no afirman `BEGIN`/`COMMIT` explícitamente; 008 no necesita `NOTIFY pgrst`; endurece únicamente `service_role`; y el archivo 008 estaba untracked durante `git diff --check`.

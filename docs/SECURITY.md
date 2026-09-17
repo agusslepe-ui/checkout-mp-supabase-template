@@ -1,5 +1,16 @@
 # Seguridad
 
+## T-017.4 — hallazgo real de default privileges / migración 008
+
+- La migración 007 fue aplicada en producción. RPC 26, RPC v2 y claim fueron verificados con `SECURITY INVOKER`, `search_path` fijo y EXECUTE solo para postgres/`service_role`.
+- RLS está habilitada, no existen policies públicas y `anon`/`authenticated` no tienen SELECT sobre `checkout_attempts`.
+- Hallazgo: los default privileges efectivos otorgaron a `service_role` DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE y UPDATE de tabla, además de UPDATE sobre todas las columnas. Los tests estáticos no representaban el estado efectivo de producción.
+- Corrección manual productiva: tabla solo SELECT/INSERT, sin DELETE/TRUNCATE/TRIGGER/REFERENCES/UPDATE general; UPDATE limitado a `state`, `mercadopago_preference_id`, `checkout_url`, `lease_token`, `lease_expires_at`, `updated_at`; sequence solo USAGE, sin SELECT/UPDATE.
+- La migración 008 reproduce este estado mediante REVOKE ALL seguido de grants mínimos. Es idempotente respecto del estado corregido y no toca RPCs, claim, tablas ni constraints.
+- La 008 está PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES, sin hallazgos críticos y no aplicada. La 007 permanece byte-for-byte intacta.
+- Observaciones no bloqueantes: el hash test de 007 depende de LF/CRLF; no hay asserts explícitos de `BEGIN`/`COMMIT`; 008 no necesita `NOTIFY pgrst`; endurece solo `service_role`; y el archivo estaba untracked durante `git diff --check`.
+- Suite: **377/377 tests**, 9 suites, 0 fallos. Producción sigue con runtime T-021/RPC 26; T-017 no está desplegada ni completa.
+
 ## T-017.4-A — auditado / APROBADO CON OBSERVACIONES
 
 - La migración 007 no elimina ni redefine `create_pending_order_with_items` de 26 parámetros; esto mantiene operativo el runtime T-021 durante la ventana SQL→deploy.
@@ -8,9 +19,9 @@
 - RLS, privilegios por columna, coherencia de estados/lease y `claim_checkout_attempt` permanecen sin relajación. `markOrderAsPaid`, webhook y HMAC no cambian.
 - Rollback compatible: antes del deploy, continuar con T-021/RPC 26; ante fallo del deploy nuevo, restaurar el deployment anterior. No hay comandos destructivos ni rollback SQL automático.
 - La RPC 26 solo se retirará mediante una migración futura separada después de estabilidad y QA; no está creada en esta fase.
-- Estado local: **372/372 tests**, 9 suites, 0 fallos; sintaxis y `git diff --check` correctos. Migración 007 no aplicada; sin SQL/red real, deploy, commit ni push. Producción sigue T-021/RPC 26.
+- Estado histórico previo al cutover: **372/372 tests**, 9 suites, 0 fallos. El estado vigente de 007 y privilegios está documentado en la sección superior.
 - Auditoría sin hallazgos críticos: RPC 26 permanece intacta; v2 conserva 27 parámetros con UUID primero; `orders.js` usa exclusivamente v2; claim, RLS y privilegios mínimos continúan seguros.
-- Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de aplicar 007; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia, recovery Mercado Pago, browser back/READY, sessionStorage/Web Crypto reales, paid order y doble click.
+- Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; se respetó el orden 007 antes de Node T-017; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia, recovery Mercado Pago, browser back/READY, sessionStorage/Web Crypto reales, paid order y doble click.
 - Orden de seguridad obligatorio: precheck → 007 → esperar/verificar reload PostgREST → comprobar RPC 26/v2/permisos → deploy → smoke QA → idempotency QA → payment QA → cleanup futuro separado.
 
 ## T-017.3 — UUID y digest frontend local
@@ -23,7 +34,7 @@
 - Sin Web Crypto no se envía el checkout. No existe retry automático.
 - T-017.3 está completada localmente, auditada y APROBADA CON OBSERVACIONES. Verificación final: **369/369 tests**, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos.
 - Observaciones no bloqueantes para T-017.4: normalización de espacios internos rara no idéntica al backend; sort ASCII de SKU frente a `localeCompare`; falta de casos explícitos para HTTP 500 y excepciones de storage; tests VM sin ESM/Web Crypto/storage reales; y persistencia post-redirect pendiente de QA con browser back, READY, order paid, post-pago y doble click/concurrencia real.
-- La 007 no está aplicada, T-017.3 no está desplegada y producción continúa con T-021/RPC 26, sin idempotencia durable activa. T-017.4 debe coordinar 007 + runtime 27 + frontend + deploy + QA real.
+- La 007 está aplicada, pero T-017.3 no está desplegada y producción continúa con T-021/RPC 26, sin idempotencia durable activa en runtime. T-017.4 debe completar deploy y QA real.
 
 ## T-017.2 / DEC-022 — completada / auditada
 
@@ -36,8 +47,8 @@
 - Retries se validan contra el snapshot persistido y no contra precios actuales. READY no llama dependencias externas. UNKNOWN/lease vencida busca por `external_reference` y nunca elige arbitrariamente entre múltiples preferencias.
 - El recovery usa `Preference.search` y completa un resultado mediante `Preference.get({ preferenceId: ... })`; el contrato incorrecto detectado en la auditoría inicial fue corregido antes de la aprobación final.
 - Respuestas y logs no exponen PII, lease token, SQL, access token ni respuestas crudas de Mercado Pago. La recuperación devuelve solo id, referencia exacta y URL HTTPS validada.
-- Verificación final: **345/345 tests**, 8 suites, 0 fallos; mocks solamente. Migración 007 no aplicada, sin deploy; producción sigue en runtime T-021/RPC 26 y el frontend no envía `checkoutAttemptId`.
-- El código T-017.2 y el frontend T-017.3 no son desplegables por separado; T-017.4 debe coordinar 007 + runtime 27 + frontend compatible.
+- Verificación histórica de T-017.2: **345/345 tests**, 8 suites, 0 fallos; mocks solamente. La 007 fue aplicada posteriormente durante T-017.4; producción sigue en runtime T-021/RPC 26 y el frontend productivo no envía `checkoutAttemptId`.
+- El código T-017.2 y el frontend T-017.3 no son desplegables por separado. Con 007 ya aplicada, T-017.4 debe coordinar el deploy del runtime/frontend compatible y ejecutar QA.
 - Observaciones no bloqueantes: fallback de constraint en texto para `23505`; ventana teórica entre lease vencida e indexación de búsqueda; timeout potencialmente compartido del SDK; SKU sin `trim` adicional; claim concurrente sin prueba SQL real. Recovery y concurrencia reales/controlados quedan obligatorios para T-017.4.
 
 ## T-021 / DEC-026 — implementada localmente / pendiente de auditoría

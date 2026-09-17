@@ -1,5 +1,26 @@
 # Diseño técnico
 
+## T-017.4 — hardening reproducible de privilegios efectivos
+
+La migración 007 ya fue aplicada en producción y confirmó la coexistencia de RPC 26, RPC v2 y claim. La verificación efectiva mostró que los default privileges de Supabase podían ampliar los grants declarados en 007, incluyendo UPDATE de tabla completo y privilegios DELETE/TRUNCATE/TRIGGER/REFERENCES.
+
+La corrección productiva se aplicó manualmente. La migración 008 la hace reproducible con este patrón idempotente:
+
+```text
+checkout_attempts
+  → REVOKE ALL service_role
+  → GRANT SELECT, INSERT
+  → GRANT UPDATE (seis columnas operativas)
+
+checkout_attempts_id_seq
+  → REVOKE ALL service_role
+  → GRANT USAGE
+```
+
+La 008 no modifica funciones, tablas ni constraints. Los permisos RPC, RLS y policies permanecen fuera de su alcance. Producción sigue ejecutando T-021/RPC 26; el deploy del runtime/frontend T-017 y los QA continúan pendientes.
+
+Auditoría 008: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. La migración está preparada localmente y no aplicada. Observaciones: el hash test de 007 depende de LF/CRLF; los tests no afirman `BEGIN`/`COMMIT` explícitamente; no se requiere `NOTIFY pgrst` al cambiar solo privilegios; el hardening se limita a `service_role`; y 008 estaba untracked durante `git diff --check`.
+
 ## T-017.4-A — preparado localmente / auditado / APROBADO CON OBSERVACIONES
 
 ```text
@@ -16,10 +37,10 @@ La auditoría no encontró hallazgos críticos y aprobó el diseño con observac
 
 Plan de cutover futuro:
 
-1. **Precheck:** confirmar git limpio/commit, suite verde, backup/verificación Supabase, RPC 26 existente y 007 no aplicada.
-2. **Aplicar 007:** ejecutar la migración solo con autorización.
-3. **Schema reload:** esperar y verificar la recarga de PostgREST posterior a `NOTIFY pgrst`.
-4. **Verificación SQL:** comprobar `checkout_attempts`, claim, RPC 26 conservada, RPC v2 presente y privilegios. El runtime T-021 debe seguir operativo.
+1. **Precheck:** completado para la aplicación real de 007.
+2. **Aplicar 007:** completado en producción.
+3. **Schema reload:** completado/verificado.
+4. **Verificación SQL:** RPC 26, v2, claim y RLS verificados; privilegios amplios detectados y corregidos manualmente. La migración 008 registra el hardening.
 5. **Deploy:** recién entonces desplegar runtime T-017 + frontend T-017.3; las creaciones nuevas usan v2.
 6. **Smoke QA:** cargar página, carrito, cotizar HOME/AGENCY, generar attempt y llegar al redirect MP.
 7. **Idempotency QA:** mismo intent/retry conserva attempt/order/preference; probar doble click, browser back, 409 busy, READY, mismatch y nueva intención.
@@ -47,7 +68,7 @@ Red, 500/503 y checkout busy conservan el UUID. Mismatch o attempt inválido lim
 
 Los HTTP 409 se clasifican por código: `shipping_changed`, `agency_changed`, `checkout_busy`, `checkout_mismatch` y `checkout_unavailable`. Un 409 genérico ya no se interpreta como cambio de envío.
 
-T-017.3 está completada localmente, auditada y APROBADA CON OBSERVACIONES. La migración 007 no está aplicada, el frontend no está desplegado y producción conserva T-021/RPC 26 sin idempotencia durable activa; T-017.4 debe coordinar migración 007 + runtime backend RPC 27 + frontend T-017.3 + deploy + QA real.
+T-017.3 está completada y auditada. La migración 007 ya fue aplicada, pero el frontend/runtime T-017 no está desplegado y producción conserva T-021/RPC 26 sin idempotencia durable activa; T-017.4 debe completar deploy y QA real.
 
 Observaciones no bloqueantes de T-017.3 para T-017.4: el frontend no colapsa espacios internos de email/`streetNumber` exactamente como backend; el sort de SKU es ASCII frente a `localeCompare`; no hay caso nominal explícito de HTTP 500 ni de excepciones `SecurityError`/`QuotaError` del storage; los tests VM no validan carga ESM real; y el record que permanece tras redirect requiere QA de browser back, READY reutilizada, order ya paid y post-pago real. También deben probarse doble click/concurrencia, storage y Web Crypto reales en navegador.
 
@@ -71,7 +92,7 @@ El claim es una función SQL con un único UPDATE condicional: admite `reserved`
 
 UNKNOWN y leases vencidas consultan primero `Preference.search` por `external_reference`: cero resultados permite crear; uno exacto/utilizable se persiste READY; más de uno queda ambiguo y no se elige. Si el summary único necesita completarse, el SDK 3.1.0 recibe `Preference.get({ preferenceId: ... })`. La preferencia se reconstruye desde `orders` + `order_items`, incluido el envío, y su total se valida en centavos contra `orders.amount`.
 
-La migración 007 local contiene la RPC v2 de 27 parámetros, coherencia de estados, claim atómico y UPDATE solo sobre columnas mutables. **No está aplicada**; conserva la RPC 26 para el runtime T-021. T-017.2 y T-017.3 están completadas/auditadas; T-017.4-A fue auditada y aprobada con observaciones, y aún requiere ejecución y QA.
+La migración 007 contiene la RPC v2 de 27 parámetros, coherencia de estados y claim atómico; fue aplicada en producción y conserva RPC 26 para el runtime T-021. El hardening efectivo de columnas se corrigió manualmente y quedó reproducido en la migración local 008. T-017.2 y T-017.3 están completadas/auditadas; T-017.4 aún requiere deploy y QA.
 
 Observaciones no bloqueantes de diseño para las fases restantes: el reconocimiento `23505` conserva fallback por nombre de constraint en `message/details`; una lease vencida combinada con una búsqueda todavía no indexada tiene riesgo teórico de segunda preference; `Preference.search` puede modificar opciones de timeout del cliente SDK compartido; el matching de SKU no agrega `trim`; y el claim concurrente aún no tiene prueba SQL real. T-017.4 debe probar recovery y concurrencia de forma real/controlada.
 

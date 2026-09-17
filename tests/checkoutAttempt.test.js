@@ -7,6 +7,7 @@ const {
 } = require("../src/checkoutAttempt");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 describe("normalizeCheckoutAttemptId", () => {
   test("acepta un UUID canónico válido", () => {
@@ -219,6 +220,82 @@ describe("migración 007", () => {
     expect(sql).toMatch(/if p_checkout_attempt_id is null then/i);
     expect(sql).toMatch(/p_checkout_attempt_id,[\s\S]*created_order\.id,[\s\S]*'reserved'/i);
     expect(sql).not.toMatch(/on conflict/i);
+  });
+});
+
+describe("migración 008 de privilegios checkout_attempts", () => {
+  const migration007Path = path.join(
+    __dirname,
+    "../supabase/migrations/007_create_checkout_attempts.sql"
+  );
+  const migration008Path = path.join(
+    __dirname,
+    "../supabase/migrations/008_harden_checkout_attempts_privileges.sql"
+  );
+  const sql = fs.readFileSync(migration008Path, "utf8");
+
+  test("mantiene la migración 007 byte-for-byte sin cambios", () => {
+    const migration007 = fs.readFileSync(migration007Path);
+    const digest = crypto.createHash("sha256").update(migration007).digest("hex");
+    expect(digest).toBe(
+      "647d6d91dcf5471da58ba3ddee3fa436a4455e83eb9659e30d55745d124ebde3"
+    );
+  });
+
+  test("revoca ALL de tabla antes de reotorgar SELECT e INSERT", () => {
+    const revokePosition = sql.search(
+      /revoke all privileges\s+on table public\.checkout_attempts\s+from service_role;/i
+    );
+    const grantPosition = sql.search(
+      /grant select, insert\s+on table public\.checkout_attempts\s+to service_role;/i
+    );
+
+    expect(revokePosition).toBeGreaterThan(-1);
+    expect(grantPosition).toBeGreaterThan(revokePosition);
+    expect(sql.match(/grant\s+(?!update\s*\()[\s\S]*?on table public\.checkout_attempts/gi))
+      .toEqual([
+        expect.stringMatching(/^grant select, insert\s+on table public\.checkout_attempts$/i),
+      ]);
+    expect(sql).not.toMatch(/grant\s+(?:delete|truncate|trigger|references)\b/i);
+  });
+
+  test("limita UPDATE exactamente a las seis columnas operativas", () => {
+    const updateColumns = sql.match(
+      /grant update\s*\(([\s\S]*?)\)\s*on table public\.checkout_attempts\s*to service_role;/i
+    )?.[1]
+      .split(",")
+      .map((column) => column.trim());
+
+    expect(updateColumns).toEqual([
+      "state",
+      "mercadopago_preference_id",
+      "checkout_url",
+      "lease_token",
+      "lease_expires_at",
+      "updated_at",
+    ]);
+    expect(sql).not.toMatch(
+      /grant update\s+on table public\.checkout_attempts/i
+    );
+  });
+
+  test("restringe la sequence a USAGE después de revocar ALL", () => {
+    const revokePosition = sql.search(
+      /revoke all privileges\s+on sequence public\.checkout_attempts_id_seq\s+from service_role;/i
+    );
+    const grantPosition = sql.search(
+      /grant usage\s+on sequence public\.checkout_attempts_id_seq\s+to service_role;/i
+    );
+
+    expect(revokePosition).toBeGreaterThan(-1);
+    expect(grantPosition).toBeGreaterThan(revokePosition);
+    expect(sql).not.toMatch(/grant\s+(?:select|update)\s+on sequence/i);
+  });
+
+  test("no modifica RPC 26, RPC v2 ni claim_checkout_attempt", () => {
+    expect(sql).not.toMatch(/\bfunction\b/i);
+    expect(sql).not.toMatch(/create_pending_order_with_items/i);
+    expect(sql).not.toMatch(/claim_checkout_attempt/i);
   });
 });
 

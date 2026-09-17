@@ -1,5 +1,18 @@
 # Progreso
 
+## 2026-09-16 — T-017.4 / migración 008 auditada y APROBADA CON OBSERVACIONES
+
+- La migración 007 fue aplicada correctamente en producción. Se verificaron `checkout_attempts`, RPC 26, RPC v2, `claim_checkout_attempt`, seguridad invoker/search path, permisos de ejecución y RLS.
+- La verificación efectiva descubrió default privileges amplios de `service_role`: DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE de tabla y UPDATE sobre todas las columnas. Los tests estáticos de 007 no lo detectaron.
+- Producción fue corregida manualmente: tabla solo SELECT/INSERT; UPDATE solo sobre seis columnas operativas; sequence solo USAGE; RLS habilitada, cero policies públicas y sin SELECT para `anon`/`authenticated`.
+- Nueva migración local `008_harden_checkout_attempts_privileges.sql`: revoca todo a `service_role` sobre tabla/sequence y reotorga exclusivamente los privilegios mínimos verificados. Es idempotente respecto del estado actual.
+- La 008 no toca RPC 26, RPC v2, claim, tablas ni constraints. La 007 permanece byte-for-byte intacta.
+- Nuevas regresiones: existencia y orden REVOKE→GRANT; SELECT/INSERT únicos a nivel tabla; UPDATE exacto de seis columnas; ausencia de DELETE/TRUNCATE/TRIGGER/REFERENCES; sequence solo USAGE; ausencia de RPC/claim en 008; hash SHA-256 fijo de 007.
+- Verificación: **377/377 tests**, 9 suites, 0 fallos.
+- Auditoría 008: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. Estado: PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES.
+- Observaciones no bloqueantes: hash test de 007 dependiente de LF/CRLF; ausencia de asserts explícitos para `BEGIN`/`COMMIT`; 008 no necesita `NOTIFY pgrst`; alcance limitado a `service_role`; archivo 008 untracked durante `git diff --check`.
+- No hubo SQL real en esta implementación local, deploy, commit, push, red real ni lectura de `.env`. Producción sigue ejecutando runtime T-021/RPC 26; deploy y QA T-017 permanecen pendientes.
+
 ## 2026-09-16 — T-017.4-A preparado localmente / auditado / APROBADO CON OBSERVACIONES
 
 - Migración 007 conserva `create_pending_order_with_items` de 26 parámetros sin DROP ni redefinición y crea `create_pending_order_with_items_v2` con el contrato auditado de 27 parámetros.
@@ -10,10 +23,10 @@
 - Verificación: **372/372 tests**, 9 suites, 0 fallos; `npm.cmd test`, `node --check src/orders.js` y `git diff --check` correctos.
 - Auditoría final: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. Confirmó RPC 26 intacta, v2 con 27 parámetros y UUID primero, uso exclusivo de v2, claim/RLS/permisos seguros, compatibilidad hacia atrás y rollback viable a T-021.
 - T-017 sigue EN PROGRESO. T-017.4-A queda con CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES; la ejecución T-017.4 permanece PENDIENTE.
-- Orden futuro obligatorio: precheck → aplicar 007 → esperar/verificar reload PostgREST → comprobar RPC 26 + v2 + permisos → deploy runtime/frontend T-017 → smoke QA → idempotency QA → payment QA → limpieza futura separada de RPC 26.
+- Orden documentado en esa preparación: precheck → 007 → reload/verificación → deploy → QA. Los pasos hasta la verificación de base se completaron posteriormente; el estado vigente y el hallazgo de privilegios constan en el bloque superior.
 - Rollback: antes del deploy, RPC 26 mantiene operativo el runtime viejo; si falla el deploy nuevo, volver al deployment T-021. No se implementaron comandos destructivos ni migración de limpieza.
 - Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de 007; tests SQL mayormente estáticos; QA real pendiente de concurrencia, recovery MP, browser back/READY, sessionStorage/Web Crypto, paid order y doble click.
-- Migración 007 NO aplicada; sin SQL real, red real, `.env`, deploy, commit ni push. Producción continúa T-021/RPC 26.
+- Estado histórico de la preparación local: en ese momento 007 no estaba aplicada. Fue aplicada posteriormente durante T-017.4; producción continúa T-021/RPC 26.
 
 ## 2026-09-16 — T-017.3 completada localmente / auditada / APROBADA CON OBSERVACIONES
 
@@ -27,7 +40,7 @@
 - Verificación final: **369/369 tests**, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos. Mocks solamente; sin red real.
 - Observaciones no bloqueantes para T-017.4: normalización de espacios internos de email/`streetNumber` no idéntica al backend; orden ASCII de SKU frente a `localeCompare`; sin test nominal explícito de HTTP 500 ni de `SecurityError`/`QuotaError` de storage; VM sin validar ESM real; y record conservado tras redirect pendiente de QA con browser back, READY, order paid y post-pago real.
 - T-017.4 debe incluir doble click/concurrencia real, storage real y Web Crypto real en navegador.
-- T-017 continúa EN PROGRESO. T-017.3 queda cerrada localmente y T-017.4 pendiente. Migración 007 no aplicada; sin deploy, commit ni push. Producción continúa T-021/RPC 26, sin idempotencia durable activa.
+- Estado histórico del cierre T-017.3: T-017 continuaba EN PROGRESO y la 007 todavía no estaba aplicada. El estado vigente consta en el bloque superior.
 
 ## 2026-09-16 — T-017.2 completada localmente / auditada / APROBADA CON OBSERVACIONES
 
@@ -48,7 +61,7 @@
 - Cierre documental post-auditoría. Sin código, SQL, tests, `.env`, commit ni push.
 - T-017.1: IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. Sin hallazgos críticos.
 - DEC-022 permanece ACEPTADA (2026-09-16). T-017 EN PROGRESO. T-017.2/.3/.4 pendientes.
-- Migración 007 no aplicada. Sin deploy. Producción sigue usando la RPC de 26 parámetros.
+- Estado histórico del cierre T-017.1: la migración 007 todavía no estaba aplicada y producción usaba RPC 26. El estado vigente consta en el bloque superior.
 - Observaciones no bloqueantes para T-017.2: `updated_at` explícito en UPDATEs; coherencia de `ready` con preference_id/checkout_url; coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
 
 ## 2026-09-16 — T-017.1 implementada localmente / pendiente de auditoría
@@ -128,7 +141,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-16. T-017.1/T-017.2/T-017.3 COMPLETADAS/AUDITADAS. DEC-022 ACEPTADA. T-017 EN PROGRESO; T-017.4-A CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES; ejecución T-017.4 PENDIENTE. Migración 007 no aplicada. Producción sigue en runtime T-021/RPC 26, sin idempotencia durable activa. Tests: 372/372.
+Última revisión documental: 2026-09-16. T-017 EN PROGRESO / T-017.4 EN EJECUCIÓN. Migración 007 aplicada; hardening manual productivo corregido; migración 008 PREPARADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. Deploy/QA T-017 pendientes. Producción sigue en runtime T-021/RPC 26. Tests: 377/377.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 
