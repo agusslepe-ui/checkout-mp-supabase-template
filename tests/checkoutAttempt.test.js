@@ -176,15 +176,37 @@ describe("migración 007", () => {
     expect(sql).toMatch(/grant execute on function public\.claim_checkout_attempt\(uuid, uuid, timestamptz\)[\s\S]*to service_role/i);
   });
 
-  test("reemplaza la RPC de 26 por una única firma de 27 parámetros", () => {
+  test("conserva la RPC 26 y crea una v2 distinta de 27 parámetros", () => {
     const createSignature = sql.match(
-      /create function public\.create_pending_order_with_items\(([\s\S]*?)\)\s*returns table/i
+      /create function public\.create_pending_order_with_items_v2\(([\s\S]*?)\)\s*returns table/i
     )?.[1];
     expect(createSignature).toBeDefined();
     expect(createSignature.match(/^\s*p_/gm)).toHaveLength(27);
     expect(createSignature).toMatch(/p_checkout_attempt_id uuid/);
-    expect(sql).toMatch(/drop function public\.create_pending_order_with_items\([\s\S]*?jsonb\s*\);/i);
-    expect(sql).toMatch(/security invoker\s+set search_path = pg_catalog, public/i);
+    expect(sql).not.toMatch(
+      /drop\s+function(?:\s+if\s+exists)?\s+public\.create_pending_order_with_items\s*\(/i
+    );
+    expect(sql).not.toMatch(
+      /create\s+function\s+public\.create_pending_order_with_items\s*\(/i
+    );
+  });
+
+  test("restringe la RPC v2 a service_role con invoker y search_path fijo", () => {
+    const v2Start = sql.indexOf(
+      "create function public.create_pending_order_with_items_v2("
+    );
+    const claimStart = sql.indexOf("create function public.claim_checkout_attempt(");
+    const v2Sql = sql.slice(v2Start, claimStart);
+
+    expect(v2Start).toBeGreaterThan(-1);
+    expect(claimStart).toBeGreaterThan(v2Start);
+    expect(v2Sql).toMatch(/security invoker\s+set search_path = pg_catalog, public/i);
+    expect(v2Sql).toMatch(
+      /revoke execute on function public\.create_pending_order_with_items_v2\([\s\S]*?\) from public, anon, authenticated;/i
+    );
+    expect(v2Sql).toMatch(
+      /grant execute on function public\.create_pending_order_with_items_v2\([\s\S]*?\) to service_role;/i
+    );
   });
 
   test("inserta intento después de order e items sin ocultar conflictos", () => {
@@ -197,5 +219,33 @@ describe("migración 007", () => {
     expect(sql).toMatch(/if p_checkout_attempt_id is null then/i);
     expect(sql).toMatch(/p_checkout_attempt_id,[\s\S]*created_order\.id,[\s\S]*'reserved'/i);
     expect(sql).not.toMatch(/on conflict/i);
+  });
+});
+
+describe("cutover backward-compatible de orders", () => {
+  const ordersSource = fs.readFileSync(
+    path.join(__dirname, "../src/orders.js"),
+    "utf8"
+  );
+
+  test("createPendingOrder llama exclusivamente la RPC idempotente v2", () => {
+    expect(ordersSource).toMatch(
+      /\.rpc\("create_pending_order_with_items_v2",\s*\{[\s\S]*?p_checkout_attempt_id:\s*checkoutAttemptId/i
+    );
+    expect(ordersSource).not.toMatch(
+      /\.rpc\("create_pending_order_with_items",/i
+    );
+  });
+
+  test("markOrderAsPaid conserva la transición pending a paid", () => {
+    const start = ordersSource.indexOf("async function markOrderAsPaid(");
+    const end = ordersSource.indexOf("module.exports", start);
+    const markOrderSource = ordersSource.slice(start, end);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(markOrderSource).toMatch(/\.from\("orders"\)/);
+    expect(markOrderSource).toMatch(/status:\s*"paid"/);
+    expect(markOrderSource).toMatch(/\.eq\("status",\s*"pending"\)/);
+    expect(markOrderSource).toMatch(/importesCoinciden\(transaction_amount, order\.amount\)/);
   });
 });

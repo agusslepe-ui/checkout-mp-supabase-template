@@ -1,5 +1,35 @@
 # Diseño técnico
 
+## T-017.4-A — preparado localmente / auditado / APROBADO CON OBSERVACIONES
+
+```text
+migración 007
+  ├─ conserva create_pending_order_with_items (26) ← runtime T-021
+  ├─ crea create_pending_order_with_items_v2 (27) ← runtime T-017
+  ├─ crea checkout_attempts
+  └─ crea claim_checkout_attempt
+```
+
+La v2 conserva exactamente la semántica idempotente auditada: `p_checkout_attempt_id uuid` primero, order + `order_items` + `checkout_attempts` en una sola función PL/pgSQL y conflicto UNIQUE sin `ON CONFLICT`, de modo que PostgreSQL revierte toda la transacción. Usa `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` solo para `service_role`. `orders.js` llama exclusivamente v2; la RPC 26 no se elimina ni redefine.
+
+La auditoría no encontró hallazgos críticos y aprobó el diseño con observaciones. Confirmó que `claim_checkout_attempt`, RLS y permisos mínimos permanecen seguros y que el rollback a T-021 es viable porque RPC 26 continúa disponible.
+
+Plan de cutover futuro:
+
+1. **Precheck:** confirmar git limpio/commit, suite verde, backup/verificación Supabase, RPC 26 existente y 007 no aplicada.
+2. **Aplicar 007:** ejecutar la migración solo con autorización.
+3. **Schema reload:** esperar y verificar la recarga de PostgREST posterior a `NOTIFY pgrst`.
+4. **Verificación SQL:** comprobar `checkout_attempts`, claim, RPC 26 conservada, RPC v2 presente y privilegios. El runtime T-021 debe seguir operativo.
+5. **Deploy:** recién entonces desplegar runtime T-017 + frontend T-017.3; las creaciones nuevas usan v2.
+6. **Smoke QA:** cargar página, carrito, cotizar HOME/AGENCY, generar attempt y llegar al redirect MP.
+7. **Idempotency QA:** mismo intent/retry conserva attempt/order/preference; probar doble click, browser back, 409 busy, READY, mismatch y nueva intención.
+8. **Payment QA:** cuando corresponda y con monto/ambiente controlado, comprobar pago, webhook, `pending → paid`, una order y una preference.
+9. **Cleanup futuro:** tras estabilidad, una migración separada podrá retirar RPC 26. No forma parte de T-017.4-A.
+
+Rollback: si 007 ya fue aplicada pero el deploy aún no, el runtime viejo continúa mediante RPC 26 y no se revierte por compatibilidad. Si falla el runtime nuevo, se restaura el deployment T-021, que sigue teniendo RPC 26. No se automatizan operaciones destructivas.
+
+Observaciones no bloqueantes: puede existir una ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de 007; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia, recovery `Preference.search/get`, browser back con READY, order paid + attempt READY, sessionStorage/Web Crypto reales y doble click.
+
 ## T-017.3 — identidad durable en frontend local
 
 ```text
@@ -26,7 +56,7 @@ Observaciones no bloqueantes de T-017.3 para T-017.4: el frontend no colapsa esp
 ```text
 checkoutAttemptId UUID
   → buscar checkout_attempts + order + order_items
-  → si no existe: RPC futura 27 crea order + items + reserved
+  → si no existe: RPC v2 de 27 parámetros crea order + items + reserved
   → comparar identidad lógica contra snapshot persistido
   → claim atómico con lease backend de 30 s
   → crear o recuperar preference por external_reference
@@ -41,7 +71,7 @@ El claim es una función SQL con un único UPDATE condicional: admite `reserved`
 
 UNKNOWN y leases vencidas consultan primero `Preference.search` por `external_reference`: cero resultados permite crear; uno exacto/utilizable se persiste READY; más de uno queda ambiguo y no se elige. Si el summary único necesita completarse, el SDK 3.1.0 recibe `Preference.get({ preferenceId: ... })`. La preferencia se reconstruye desde `orders` + `order_items`, incluido el envío, y su total se valida en centavos contra `orders.amount`.
 
-La migración 007 local contiene la RPC futura 27, coherencia de estados, claim atómico y UPDATE solo sobre columnas mutables. **No está aplicada**; producción conserva runtime T-021/RPC 26 y su frontend desplegado aún no envía `checkoutAttemptId`. T-017.2 está completada y auditada; T-017.3 ya genera/reutiliza el UUID localmente. T-017.4 debe coordinar 007 + runtime 27 + frontend compatible y ejecutar QA.
+La migración 007 local contiene la RPC v2 de 27 parámetros, coherencia de estados, claim atómico y UPDATE solo sobre columnas mutables. **No está aplicada**; conserva la RPC 26 para el runtime T-021. T-017.2 y T-017.3 están completadas/auditadas; T-017.4-A fue auditada y aprobada con observaciones, y aún requiere ejecución y QA.
 
 Observaciones no bloqueantes de diseño para las fases restantes: el reconocimiento `23505` conserva fallback por nombre de constraint en `message/details`; una lease vencida combinada con una búsqueda todavía no indexada tiene riesgo teórico de segunda preference; `Preference.search` puede modificar opciones de timeout del cliente SDK compartido; el matching de SKU no agrega `trim`; y el claim concurrente aún no tiene prueba SQL real. T-017.4 debe probar recovery y concurrencia de forma real/controlada.
 

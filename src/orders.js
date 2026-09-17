@@ -20,7 +20,7 @@ async function createPendingOrder({
   items,
 }) {
   const { data, error } = await supabase
-    .rpc("create_pending_order_with_items", {
+    .rpc("create_pending_order_with_items_v2", {
       p_checkout_attempt_id: checkoutAttemptId,
       p_expected_amount: expectedAmount,
       p_products_subtotal: productsSubtotal,

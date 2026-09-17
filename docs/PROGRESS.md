@@ -1,5 +1,20 @@
 # Progreso
 
+## 2026-09-16 — T-017.4-A preparado localmente / auditado / APROBADO CON OBSERVACIONES
+
+- Migración 007 conserva `create_pending_order_with_items` de 26 parámetros sin DROP ni redefinición y crea `create_pending_order_with_items_v2` con el contrato auditado de 27 parámetros.
+- RPC v2 mantiene `SECURITY INVOKER`, `search_path = pg_catalog, public`, revocación para `PUBLIC`/`anon`/`authenticated` y `EXECUTE` solo para `service_role`.
+- Order + items + checkout attempt siguen siendo atómicos; un `checkoutAttemptId` duplicado revierte la llamada completa. State machine, lease, RLS, permisos de tabla y `claim_checkout_attempt` permanecen.
+- `src/orders.js` llama exclusivamente `create_pending_order_with_items_v2`; argumentos, validación de respuesta y `markOrderAsPaid` no cambiaron.
+- Regresiones SQL/runtime verifican ausencia de DROP/redefinición de RPC 26, firma v2 de 27 parámetros con UUID, atomicidad, permisos, claim, llamada exclusiva v2 y preservación del pago.
+- Verificación: **372/372 tests**, 9 suites, 0 fallos; `npm.cmd test`, `node --check src/orders.js` y `git diff --check` correctos.
+- Auditoría final: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. Confirmó RPC 26 intacta, v2 con 27 parámetros y UUID primero, uso exclusivo de v2, claim/RLS/permisos seguros, compatibilidad hacia atrás y rollback viable a T-021.
+- T-017 sigue EN PROGRESO. T-017.4-A queda con CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES; la ejecución T-017.4 permanece PENDIENTE.
+- Orden futuro obligatorio: precheck → aplicar 007 → esperar/verificar reload PostgREST → comprobar RPC 26 + v2 + permisos → deploy runtime/frontend T-017 → smoke QA → idempotency QA → payment QA → limpieza futura separada de RPC 26.
+- Rollback: antes del deploy, RPC 26 mantiene operativo el runtime viejo; si falla el deploy nuevo, volver al deployment T-021. No se implementaron comandos destructivos ni migración de limpieza.
+- Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de 007; tests SQL mayormente estáticos; QA real pendiente de concurrencia, recovery MP, browser back/READY, sessionStorage/Web Crypto, paid order y doble click.
+- Migración 007 NO aplicada; sin SQL real, red real, `.env`, deploy, commit ni push. Producción continúa T-021/RPC 26.
+
 ## 2026-09-16 — T-017.3 completada localmente / auditada / APROBADA CON OBSERVACIONES
 
 - Nuevo helper frontend `checkoutAttemptClient.js`: identidad canónica, SHA-256 nativo, validación del record y UUID exclusivo de `crypto.randomUUID()`.
@@ -113,7 +128,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-16. T-017.3 COMPLETADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. DEC-022 ACEPTADA. T-017 EN PROGRESO; T-017.4 PENDIENTE. Migración 007 no aplicada. Producción sigue en runtime T-021/RPC 26, sin idempotencia durable activa. Tests: 369/369.
+Última revisión documental: 2026-09-16. T-017.1/T-017.2/T-017.3 COMPLETADAS/AUDITADAS. DEC-022 ACEPTADA. T-017 EN PROGRESO; T-017.4-A CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES; ejecución T-017.4 PENDIENTE. Migración 007 no aplicada. Producción sigue en runtime T-021/RPC 26, sin idempotencia durable activa. Tests: 372/372.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 

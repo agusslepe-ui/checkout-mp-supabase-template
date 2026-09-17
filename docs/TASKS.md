@@ -6,11 +6,13 @@
 
 - **T-017.1 — Infraestructura durable:** COMPLETADA / AUDITADA. Agrega dominio UUID y migración 007 para `checkout_attempts` + RPC de 27 parámetros. SQL no aplicado. Sin deploy.
 - **T-017.2 — Integración backend durable:** COMPLETADA / AUDITADA. Conecta `orders.js` con la RPC futura de 27 parámetros; implementa matching contra snapshot, carrera `23505` acotada, claim atómico, lease de 30 s, estados `reserved`/`creating_preference`/`ready`/`unknown`, reutilización READY y recuperación Mercado Pago por `external_reference` sin recotizar MiCorreo en retries existentes.
-- **T-017.3 — Integración frontend `checkoutAttemptId`:** COMPLETADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES (2026-09-16). Genera UUID con Web Crypto, conserva el intento por digest SHA-256 en `sessionStorage`, diferencia los 409 y mantiene el UUID ante fallos temporales.
-- **T-017.4 — QA, recuperación ambigua y cierre:** PENDIENTE.
-- Webhook/HMAC y `markOrderAsPaid` permanecen intactos. Producción sigue en runtime T-021/RPC de 26 parámetros; T-017.3 no fue desplegada.
+- **T-017.3 — Integración frontend `checkoutAttemptId`:** COMPLETADA / AUDITADA. Genera UUID con Web Crypto, conserva el intento por digest SHA-256 en `sessionStorage`, diferencia los 409 y mantiene el UUID ante fallos temporales.
+- **T-017.4-A — Preparación backward-compatible:** CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES. Sin hallazgos críticos.
+- **T-017.4 — Ejecución, QA y cierre:** PENDIENTE.
+- Webhook/HMAC y `markOrderAsPaid` permanecen intactos. Producción sigue en runtime T-021/RPC de 26 parámetros; T-017 no fue desplegada.
 - **Verificación T-017.2:** 345/345 tests, 8 suites, 0 fallos; `npm test`, `node --check` y `git diff --check` correctos. SQL 007 no aplicado; sin deploy ni red real. El cutover queda para T-017.4.
 - **Verificación T-017.3:** 369/369 tests, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos. Web Crypto/sessionStorage/fetch simulados, sin red real. Migración 007 no aplicada. T-017.4 debe coordinar cutover y QA.
+- **Verificación T-017.4-A:** 372/372 tests, 9 suites, 0 fallos; `npm.cmd test`, `node --check src/orders.js` y `git diff --check` correctos. Migración 007 no aplicada; sin SQL ni red real.
 
 ## T-021 — Selección real de sucursal MiCorreo
 
@@ -88,7 +90,7 @@
 
 ### PENDIENTE
 
-- **DEC-022 ACEPTADA; T-017 EN PROGRESO.** T-017.1 completada/auditada; T-017.2 completada/auditada; T-017.3 completada localmente/auditada/APROBADA CON OBSERVACIONES; T-017.4 pendiente. Migración 007 no aplicada.
+- **DEC-022 ACEPTADA; T-017 EN PROGRESO.** T-017.1, T-017.2 y T-017.3 completadas/auditadas; T-017.4-A con cutover preparado localmente/auditado/APROBADO CON OBSERVACIONES; ejecución T-017.4 pendiente. Migración 007 no aplicada.
 - **T-021:** pendiente auditoría, aplicación controlada de la migración 006 y QA. El webhook sigue comparando contra el total persistido sin cambios de lógica.
 - Etapa D (creación de envío post-pago) pendiente. No llamar `/shipping/import`.
 - Reemplazar medidas QA (`300 g / 5 × 25 × 35 cm`) por dimensiones/peso reales **antes de usar tarifas en producción**. Los perfiles 1–4 siguen TEMPORAL/QA.
@@ -1245,8 +1247,9 @@ Evitar que un mismo intento lógico de compra cree múltiples pedidos `pending` 
 
 - T-017.1: infraestructura durable — completada / auditada.
 - T-017.2: integración backend, concurrencia, retry y recuperación — completada / auditada.
-- T-017.3: generación y envío frontend de `checkoutAttemptId` — completada localmente / auditada / APROBADA CON OBSERVACIONES.
-- T-017.4: QA y cierre — pendiente.
+- T-017.3: generación y envío frontend de `checkoutAttemptId` — completada / auditada.
+- T-017.4-A: preparación backward-compatible — cutover preparado localmente / auditado / APROBADO CON OBSERVACIONES.
+- T-017.4 ejecución, QA y cierre — pendiente.
 
 #### Estado de T-017.1
 
@@ -1281,6 +1284,28 @@ Observaciones no bloqueantes trasladadas a T-017.4:
 7. T-017.4 debe probar doble click/concurrencia real, storage real y Web Crypto real en navegador.
 
 Producción sigue en T-021/RPC 26, sin migración 007 aplicada, sin frontend T-017.3 desplegado y sin idempotencia durable activa. T-017.4 debe coordinar migración 007 + runtime backend RPC 27 + frontend T-017.3 + deploy + QA real.
+
+#### Estado de T-017.4-A
+
+La estrategia de cutover ya no reemplaza la RPC productiva. La migración 007 mantiene `public.create_pending_order_with_items` de 26 parámetros y crea `public.create_pending_order_with_items_v2` con el contrato idempotente de 27 parámetros, `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` exclusivo de `service_role`. La v2 crea order, items y attempt en una transacción; un UUID duplicado conserva el rollback total. `orders.js` llama exclusivamente v2 para la creación idempotente.
+
+Auditoría: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. Confirmó la firma v2 de 27 parámetros con `p_checkout_attempt_id uuid` primero, la preservación de RPC 26, `claim_checkout_attempt`, RLS y permisos mínimos, y la viabilidad de rollback a T-021.
+
+Plan futuro:
+
+1. **Precheck:** git limpio y commit identificado, tests verdes, backup/verificación Supabase, RPC 26 existente y 007 no aplicada.
+2. **Aplicar 007:** ejecutar la migración solo con autorización.
+3. **Schema reload:** esperar y verificar la recarga del schema cache de PostgREST posterior a `NOTIFY pgrst`.
+4. **Verificación SQL:** comprobar tabla `checkout_attempts`, `claim_checkout_attempt`, RPC 26 conservada, RPC v2 creada y permisos correctos. El runtime viejo debe continuar funcionando.
+5. **Deploy:** recién entonces desplegar runtime T-017 y frontend T-017.3; el runtime nuevo usa v2.
+6. **Smoke QA:** carga, carrito, cotizaciones HOME/AGENCY, generación de attempt y redirect Mercado Pago.
+7. **Idempotency QA:** mismo intent/retry, doble click, browser back, 409 busy, READY, mismatch y nueva intención.
+8. **Payment QA:** solo con monto/ambiente controlado, validar pago, webhook, `pending → paid` y ausencia de duplicados.
+9. **Cleanup futuro:** tras estabilidad, migración separada para retirar RPC 26; no implementada ahora.
+
+Rollback documentado: si 007 falla antes del deploy, el runtime viejo conserva RPC 26 y no requiere reversión inmediata por compatibilidad. Si falla el deploy nuevo, volver al deployment anterior para regresar a T-021/RPC 26. No automatizar comandos destructivos.
+
+Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de aplicar 007; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia y `23505`, recovery `Preference.search/get`, browser back con READY, order ya paid con attempt READY, sessionStorage/Web Crypto/ESM reales, errores de storage y doble click.
 
 #### Resultado esperado del cutover T-017.4
 

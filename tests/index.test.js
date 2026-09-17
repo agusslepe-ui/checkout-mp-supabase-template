@@ -1116,7 +1116,7 @@ describe("creación de preferencias", () => {
 
     const [rpcName, rpcParameters] =
       supabaseMock.createPendingOrderRpc.mock.calls[0];
-    expect(rpcName).toBe("create_pending_order_with_items");
+    expect(rpcName).toBe("create_pending_order_with_items_v2");
     expect(rpcParameters.p_expected_amount).toBe(1000);
     expect(rpcParameters.p_currency).toBe("ARS");
     expect(rpcParameters.p_items).toEqual([
@@ -1207,7 +1207,7 @@ describe("creación de preferencias", () => {
     expect(response.statusCode).toBe(200);
     const [rpcName, rpcParameters] =
       supabaseMock.createPendingOrderRpc.mock.calls[0];
-    expect(rpcName).toBe("create_pending_order_with_items");
+    expect(rpcName).toBe("create_pending_order_with_items_v2");
     expect(rpcParameters).toEqual({
       p_checkout_attempt_id: VALID_CHECKOUT_ATTEMPT_ID,
       p_expected_amount: 1000,
@@ -1469,7 +1469,7 @@ describe("checkout multítem", () => {
     expect(supabaseMock.createPendingOrderRpc).toHaveBeenCalledTimes(1);
     expect(preferenceCreate).toHaveBeenCalledTimes(1);
     const [name, parameters] = supabaseMock.createPendingOrderRpc.mock.calls[0];
-    expect(name).toBe("create_pending_order_with_items");
+    expect(name).toBe("create_pending_order_with_items_v2");
     expect(parameters.p_expected_amount).toBe(amount);
     expect(parameters.p_products_subtotal).toBe(amount);
     expect(parameters.p_shipping_amount).toBe(0);

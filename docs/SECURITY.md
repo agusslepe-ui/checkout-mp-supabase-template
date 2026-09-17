@@ -1,5 +1,18 @@
 # Seguridad
 
+## T-017.4-A — auditado / APROBADO CON OBSERVACIONES
+
+- La migración 007 no elimina ni redefine `create_pending_order_with_items` de 26 parámetros; esto mantiene operativo el runtime T-021 durante la ventana SQL→deploy.
+- `create_pending_order_with_items_v2` contiene el contrato idempotente de 27 parámetros, usa `SECURITY INVOKER`, `search_path = pg_catalog, public` y revoca `EXECUTE` a `PUBLIC`, `anon` y `authenticated`; solo `service_role` recibe ejecución.
+- La v2 inserta order, items y attempt en una transacción. La UNIQUE de `checkout_attempt_id` sigue provocando rollback completo y no se oculta con `ON CONFLICT`.
+- RLS, privilegios por columna, coherencia de estados/lease y `claim_checkout_attempt` permanecen sin relajación. `markOrderAsPaid`, webhook y HMAC no cambian.
+- Rollback compatible: antes del deploy, continuar con T-021/RPC 26; ante fallo del deploy nuevo, restaurar el deployment anterior. No hay comandos destructivos ni rollback SQL automático.
+- La RPC 26 solo se retirará mediante una migración futura separada después de estabilidad y QA; no está creada en esta fase.
+- Estado local: **372/372 tests**, 9 suites, 0 fallos; sintaxis y `git diff --check` correctos. Migración 007 no aplicada; sin SQL/red real, deploy, commit ni push. Producción sigue T-021/RPC 26.
+- Auditoría sin hallazgos críticos: RPC 26 permanece intacta; v2 conserva 27 parámetros con UUID primero; `orders.js` usa exclusivamente v2; claim, RLS y privilegios mínimos continúan seguros.
+- Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de aplicar 007; los tests SQL actuales son mayormente estáticos. El QA real debe cubrir concurrencia, recovery Mercado Pago, browser back/READY, sessionStorage/Web Crypto reales, paid order y doble click.
+- Orden de seguridad obligatorio: precheck → 007 → esperar/verificar reload PostgREST → comprobar RPC 26/v2/permisos → deploy → smoke QA → idempotency QA → payment QA → cleanup futuro separado.
+
 ## T-017.3 — UUID y digest frontend local
 
 - `checkoutAttemptId` se genera únicamente con `crypto.randomUUID()`; no se acepta desde parámetros externos ni se usa `Math.random`.

@@ -1,5 +1,5 @@
 -- T-017.1: durable checkout idempotency infrastructure.
--- Review and apply manually only during the coordinated T-017.2 cutover.
+-- Review and apply manually only during the coordinated T-017.4 cutover.
 
 begin;
 
@@ -71,15 +71,9 @@ grant update (
 revoke all on sequence public.checkout_attempts_id_seq from public, anon, authenticated;
 grant usage on sequence public.checkout_attempts_id_seq to service_role;
 
--- Remove only the 26-parameter T-021 signature. Keeping it would create an
--- ambiguous and unsafe PostgREST overload after the new function is created.
-drop function public.create_pending_order_with_items(
-  numeric, numeric, numeric, text, text, text, text, text, text, text,
-  text, text, text, text, text, text, text, text, text, text, text, text,
-  text, text, text, jsonb
-);
-
-create function public.create_pending_order_with_items(
+-- Keep the 26-parameter T-021 function available for the old runtime during
+-- cutover. The idempotent contract uses a distinct name to avoid overloads.
+create function public.create_pending_order_with_items_v2(
   p_checkout_attempt_id uuid,
   p_expected_amount numeric,
   p_products_subtotal numeric,
@@ -411,20 +405,20 @@ begin
 end;
 $function$;
 
-comment on function public.create_pending_order_with_items(
+comment on function public.create_pending_order_with_items_v2(
   uuid, numeric, numeric, numeric, text, text, text, text, text, text,
   text, text, text, text, text, text, text, text, text, text, text, text,
   text, text, text, text, jsonb
 ) is
   'Atomically reserves a durable checkout attempt and creates one pending order with validated items and shipping snapshot. Backend only.';
 
-revoke execute on function public.create_pending_order_with_items(
+revoke execute on function public.create_pending_order_with_items_v2(
   uuid, numeric, numeric, numeric, text, text, text, text, text, text,
   text, text, text, text, text, text, text, text, text, text, text, text,
   text, text, text, text, jsonb
 ) from public, anon, authenticated;
 
-grant execute on function public.create_pending_order_with_items(
+grant execute on function public.create_pending_order_with_items_v2(
   uuid, numeric, numeric, numeric, text, text, text, text, text, text,
   text, text, text, text, text, text, text, text, text, text, text, text,
   text, text, text, text, jsonb
