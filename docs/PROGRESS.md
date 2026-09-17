@@ -1,23 +1,32 @@
 # Progreso
 
+## 2026-09-17 — cierre definitivo T-017 validado en producción
+
+- **T-017: COMPLETADA / VALIDADA EN PRODUCCIÓN. DEC-022: ACEPTADA.** Migraciones 007/008, `checkout_attempts`, RPC v2, claim y privilegios endurecidos están productivos; RPC 26 permanece temporalmente disponible.
+- Frontend y backend T-017 están desplegados juntos en EasyPanel. El QA previo confirmó reutilización para la misma intención, separación para una intención nueva y ausencia de duplicados ante doble clic/retry normal.
+- El hardening final se validó reutilizando una `checkout_attempt` real en `ready` cuya order estaba `paid`. `POST /crear-preferencia` con la intención original completa devolvió HTTP 409 con `type: checkout_attempt_already_paid` y `error: Esta compra ya fue pagada.`.
+- No hubo redirección a Mercado Pago, nueva order ni nueva preference; `max(order.id)` no cambió, el attempt permaneció `ready` y la order permaneció `paid`.
+- La reconstrucción correcta usó `order_items` reales. Un primer request armado con columnas legacy produjo correctamente mismatch y cero efectos secundarios.
+- `success.html`, cleanup post-pago, `/shipping/import`, catálogo/stock/imágenes, perfiles reales, precio, secretos, npm y dominio/frontend/SEO continúan pendientes, pero quedan fuera de T-017.
+
 ## 2026-09-17 — T-017 hardening READY + order paid implementado localmente
 
 - Backend: un attempt `ready` con order `paid` responde 409 con `type: checkout_attempt_already_paid` y mensaje público `Esta compra ya fue pagada.`; READY + `pending` continúa reutilizando la preference durable.
 - El rechazo ocurre sobre el intento persistido antes de cotizar o crear recursos. No llama MiCorreo/Mercado Pago, no crea order/preference/attempt y no modifica attempt/order.
 - Frontend: el nuevo 409 elimina solo `sessionStorage["lemont.checkoutAttempt.v1"]`, conserva el carrito, no redirige y muestra el mensaje de compra pagada. Los demás 409 conservan su comportamiento.
 - Regresiones agregadas en flujo, integración HTTP y frontend. Suite completa: **380/380 tests**, 9 suites, 0 fallos.
-- Estado: IMPLEMENTADO LOCALMENTE. T-017 continúa EN PROGRESO hasta deploy y QA real; esta sesión no hizo commit, push ni deploy.
+- Estado histórico de esa implementación: quedó local y pendiente de deploy/QA durante esa sesión. El cierre productivo posterior está registrado en el bloque superior.
 
 ## 2026-09-17 — estado productivo real: T-017 activo y T-020 cerrado
 
 - Migraciones 007 y 008 aplicadas en producción. Se verificaron `checkout_attempts`, RPC 26 conservada, RPC v2 de 27 parámetros, `claim_checkout_attempt`, `SECURITY INVOKER`, `search_path`, RLS y permisos.
 - El exceso de privilegios heredado por `service_role` desde default privileges de Supabase fue corregido manualmente; la 008 auditada y aplicada deja la corrección reproducible.
 - Runtime T-017 desplegado en EasyPanel. QA real de idempotencia aprobado para los casos ejecutados: mismo intento/intención reutiliza attempt, order y preference; intención distinta crea nuevas entidades; doble clic/retry normal no duplicó la orden. La idempotencia durable está ACTIVA EN PRODUCCIÓN.
-- T-017 continúa EN PROGRESO: el hardening READY + order `paid` está implementado localmente y falta desplegarlo/validarlo en producción.
+- Estado superado por el cierre posterior: en este corte previo T-017 seguía en progreso; el bloque superior registra su validación productiva definitiva.
 - T-020 quedó COMPLETADA / AUDITADA / VALIDADA EN PRODUCCIÓN y DEC-025 ACEPTADA. Un pago real con shipping incluido llegó por webhook y llevó `orders.status` de `pending` a `paid`.
 - Incidencia resuelta durante el pago: DNS de `checkout.lemont01.com` apuntaba a la IP anterior; se corrigió al VPS EasyPanel actual. Tras comprobar puerto 80 y regenerar Traefik, Let's Encrypt emitió un certificado válido. Un POST sin firma a `/webhook` respondió 401 controlado y la notificación válida posterior fue procesada.
 - T-021/DEC-026 permanecen COMPLETADA/ACEPTADA.
-- Pendientes: deploy/QA de READY + paid; página de agradecimiento; limpieza segura de carrito/sessionStorage; `/shipping/import`; stock real; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales; auditoría npm; dominio/frontend/SEO posteriores.
+- Pendientes posteriores y fuera de T-017: página de agradecimiento; limpieza segura de carrito/sessionStorage; `/shipping/import`; stock real; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales; auditoría npm; dominio/frontend/SEO.
 
 ## 2026-09-16 — T-017.4 / migración 008 auditada y APROBADA CON OBSERVACIONES
 
@@ -41,7 +50,7 @@
 - Regresiones SQL/runtime verifican ausencia de DROP/redefinición de RPC 26, firma v2 de 27 parámetros con UUID, atomicidad, permisos, claim, llamada exclusiva v2 y preservación del pago.
 - Verificación: **372/372 tests**, 9 suites, 0 fallos; `npm.cmd test`, `node --check src/orders.js` y `git diff --check` correctos.
 - Auditoría final: **APROBADO CON OBSERVACIONES**, sin hallazgos críticos. Confirmó RPC 26 intacta, v2 con 27 parámetros y UUID primero, uso exclusivo de v2, claim/RLS/permisos seguros, compatibilidad hacia atrás y rollback viable a T-021.
-- T-017 sigue EN PROGRESO. T-017.4-A queda con CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES; la ejecución T-017.4 permanece PENDIENTE.
+- Estado histórico de ese corte: T-017 seguía EN PROGRESO. T-017.4-A quedaba con CUTOVER PREPARADO LOCALMENTE / AUDITADO / APROBADO CON OBSERVACIONES; la ejecución T-017.4 permanecía PENDIENTE.
 - Orden documentado en esa preparación: precheck → 007 → reload/verificación → deploy → QA. Los pasos hasta la verificación de base se completaron posteriormente; el estado vigente y el hallazgo de privilegios constan en el bloque superior.
 - Rollback: antes del deploy, RPC 26 mantiene operativo el runtime viejo; si falla el deploy nuevo, volver al deployment T-021. No se implementaron comandos destructivos ni migración de limpieza.
 - Observaciones no bloqueantes: posible ventana breve de schema cache tras `NOTIFY pgrst`; nunca desplegar Node T-017 antes de 007; tests SQL mayormente estáticos; QA real pendiente de concurrencia, recovery MP, browser back/READY, sessionStorage/Web Crypto, paid order y doble click.
@@ -79,7 +88,7 @@
 
 - Cierre documental post-auditoría. Sin código, SQL, tests, `.env`, commit ni push.
 - T-017.1: IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES. Sin hallazgos críticos.
-- DEC-022 permanece ACEPTADA (2026-09-16). T-017 EN PROGRESO. T-017.2/.3/.4 pendientes.
+- Estado histórico de ese corte: DEC-022 permanecía ACEPTADA (2026-09-16); T-017 estaba EN PROGRESO y T-017.2/.3/.4 seguían pendientes.
 - Estado histórico del cierre T-017.1: la migración 007 todavía no estaba aplicada y producción usaba RPC 26. El estado vigente consta en el bloque superior.
 - Observaciones no bloqueantes para T-017.2: `updated_at` explícito en UPDATEs; coherencia de `ready` con preference_id/checkout_url; coherencia de `creating_preference` con lease; no reescribir `checkout_attempt_id`; unique violation `23505` reutiliza el attempt existente; cutover 26→27 coordinado.
 
@@ -160,7 +169,7 @@
 - Checkout, Mercado Pago, webhook, HMAC, migraciones, frontend y configuración de startup intactos. Contrato de cotización, límite quantity 1, medidas TEMPORAL/QA y total sin envío conservados.
 - En esa sesión: sin lectura de `.env`, instalación de dependencias, llamadas reales, commit ni push.
 
-Última revisión documental: 2026-09-17. T-017 EN PROGRESO con migraciones 007/008 aplicadas, runtime T-017 desplegado e idempotencia durable activa tras QA real. RPC 26 permanece disponible. T-020 cerrada con paid QA real y DEC-025 aceptada; T-021/DEC-026 permanecen cerradas. El bloque cronológico superior prevalece sobre estados históricos posteriores de este archivo.
+Última revisión documental: 2026-09-17. T-017 COMPLETADA / VALIDADA EN PRODUCCIÓN con migraciones 007/008 aplicadas, runtime desplegado e idempotencia durable activa, incluido READY + order `paid`. RPC 26 permanece disponible. T-020 cerrada con paid QA real y DEC-025 aceptada; T-021/DEC-026 permanecen cerradas. El bloque cronológico superior prevalece sobre estados históricos posteriores de este archivo.
 
 ## T-016 Paso 4 — COMPLETADO — 2026-09-13
 

@@ -2,19 +2,19 @@
 
 ## Actualización vigente — producción al 2026-09-17
 
-**DEC-022 ACEPTADA. T-017 EN PROGRESO, CON IDEMPOTENCIA DURABLE ACTIVA EN PRODUCCIÓN. T-020 COMPLETADA Y DEC-025 ACEPTADA. T-021 COMPLETADA Y DEC-026 ACEPTADA.**
+**DEC-022 ACEPTADA. T-017 COMPLETADA / VALIDADA EN PRODUCCIÓN, CON IDEMPOTENCIA DURABLE ACTIVA. T-020 COMPLETADA Y DEC-025 ACEPTADA. T-021 COMPLETADA Y DEC-026 ACEPTADA.**
 
 Las migraciones 007 y 008 están aplicadas en producción. Se verificaron `checkout_attempts`, la RPC anterior `create_pending_order_with_items` de 26 parámetros, `create_pending_order_with_items_v2` de 27 parámetros, `claim_checkout_attempt`, `SECURITY INVOKER`, `search_path`, RLS y permisos. Los default privileges excesivos de `service_role` se corrigieron manualmente y la 008 aplicada reproduce ese hardening. RPC 26 continúa disponible.
 
 La migración 006 también está aplicada en producción. Las columnas `shipping_agency_*` existen y T-021/DEC-026 están productivas y cerradas.
 
-El runtime T-017 fue desplegado en EasyPanel y usa v2. El QA real confirmó que el mismo intento/intención reutiliza la misma `checkout_attempt`, order y preferencia Mercado Pago; una intención distinta genera un nuevo intento, orden y preferencia; doble clic y retry normal no generaron una orden duplicada. El hardening READY + order `paid` quedó IMPLEMENTADO LOCALMENTE: el backend responde 409 `checkout_attempt_already_paid` sin cotizar, persistir ni llamar Mercado Pago; el frontend elimina solo `lemont.checkoutAttempt.v1`, conserva el carrito y muestra que la compra ya fue pagada. T-017 permanece EN PROGRESO hasta desplegar y validar esta corrección en producción.
+El runtime T-017 fue desplegado en EasyPanel y usa v2. El QA real confirmó que el mismo intento/intención reutiliza la misma `checkout_attempt`, order y preferencia Mercado Pago; una intención distinta genera un nuevo intento, orden y preferencia; doble clic y retry normal no generaron una orden duplicada. El hardening READY + order `paid` también fue desplegado y validado con una `checkout_attempt` real: el request con la intención original completa devolvió HTTP 409 `checkout_attempt_already_paid`, no redirigió, no creó order/preference y mantuvo el attempt en `ready` y la order en `paid`. T-017 queda COMPLETADA / VALIDADA EN PRODUCCIÓN.
 
 T-020 cerró su paid QA con un pago real y shipping incluido. Tras corregir DNS y HTTPS, Mercado Pago entregó el webhook y la orden pasó de `pending` a `paid`. Esto valida `checkout → shipping incluido → Mercado Pago → pago real → webhook → validación → orders.status=paid`; DEC-025 queda ACEPTADA el 2026-09-17.
 
 Incidencia resuelta: `checkout.lemont01.com` apuntaba a la IP anterior del VPS. Se corrigió al EasyPanel actual, se comprobó el puerto 80 y Traefik regeneró un certificado válido de Let's Encrypt después de un estado inicial no confiable. HTTPS quedó operativo; un `POST /webhook` sin firma llegó a Express y respondió `401 {"error":"Webhook inválido"}`, y la notificación válida posterior fue procesada.
 
-T-021/DEC-026 permanecen cerradas. Continúan pendientes: deploy/QA productivo del hardening READY + order `paid`; página real de agradecimiento; limpieza segura de carrito/`sessionStorage`; MiCorreo `POST /shipping/import`; stock por SKU; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales expuestas; auditoría npm; y etapas posteriores de dominio/frontend/SEO.
+T-021/DEC-026 permanecen cerradas. Continúan pendientes fuera de T-017: página real de agradecimiento; limpieza segura de carrito/`sessionStorage`; MiCorreo `POST /shipping/import`; stock por SKU; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales expuestas; auditoría npm; y etapas posteriores de dominio/frontend/SEO.
 
 La tienda todavía **NO está lista para lanzamiento comercial**.
 
@@ -26,7 +26,7 @@ Cotización dual items o legacy, resolver común, tope 4 unidades totales, perfi
 
 En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío** y T-021 todavía estaba solo local; ambos estados fueron superados por los cierres productivos posteriores.
 
-> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008 aplicadas; runtime T-017 desplegado; idempotencia durable activa y QA real satisfactorio; RPC 26 conservada; T-020 cerrada con pago real y DEC-025 aceptada; T-021/DEC-026 cerradas. El hardening READY + order `paid` está implementado localmente y pendiente de deploy/QA; T-017 sigue en progreso. El estado vigente está en `docs/STATUS.md`.
+> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008 aplicadas; runtime T-017 desplegado; idempotencia durable y hardening READY + order `paid` validados en producción; RPC 26 conservada; T-017/T-020/T-021 cerradas y DEC-022/DEC-025/DEC-026 aceptadas. El estado vigente está en `docs/STATUS.md`.
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -169,7 +169,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 **T-016 COMPLETADA**, Pasos 1–4 COMPLETADOS. No quedan pasos de T-016 pendientes.
 
-**T-017 EN PROGRESO:** DEC-022 aceptada el 2026-09-16. T-017.1/T-017.2/T-017.3 y T-017.4-A completadas/auditadas; 007/008 aplicadas, runtime desplegado e idempotencia real validada. Falta resolver READY con order ya `paid`. No mezclar este pendiente con T-016.
+**T-017 COMPLETADA / VALIDADA EN PRODUCCIÓN:** DEC-022 aceptada el 2026-09-16. T-017.1–T-017.4 completadas; 007/008 aplicadas, runtime/frontend desplegados e idempotencia real validada, incluido READY con order `paid`. Los trabajos de success/cleanup y demás evoluciones no pertenecen a T-017.
 
 **Pendiente obligatorio antes del lanzamiento público:** rotar el Access Token y Webhook Secret de Mercado Pago y la credencial privada de Supabase. Las credenciales actuales se usarán solo durante esta etapa privada/controlada de desarrollo y no deben reutilizarse para declarar la tienda lista para clientes reales. Ver `docs/SECURITY.md`.
 
@@ -194,7 +194,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | DEC-019 | **Implementada por T-015.** Política HTTP de `POST /webhook`: 401 para firma ausente/inválida; 200 para éxito y resultados definitivos/idempotentes; 503 para fallos temporales o excepciones inesperadas. Conserva HMAC, transición atómica e idempotencia. |
 | DEC-020 | `orders` + `order_items` se crean atómicamente mediante RPC estricta; PostgreSQL genera `external_reference`, Node conserva autoridad comercial y Mercado Pago reutiliza exactamente esa referencia. |
 | DEC-021 | **Aceptada e implementada por T-016 Pasos 1–4 (cierre 2026-09-13).** Carrito no autoritativo `{ version, items: [{ sku, quantity }] }`; backend agrupa, precifica y alimenta RPC + Mercado Pago; `POST /carrito/resumen`; compatibilidad temporal con `{ sku, quantity, customer, delivery }`; 50 entradas originales antes de agrupar; `maxQuantity: 4` temporal (no es stock); sin migración nueva; webhook sin recálculo de catálogo; Correo Argentino fuera de alcance. |
-| DEC-022 | **ACEPTADA (2026-09-16).** Idempotencia durable mediante UUID y `checkout_attempts` UNIQUE. 007/008 aplicadas; hardening productivo verificado; runtime T-017 desplegado e idempotencia activa. RPC 26 permanece disponible. Pendiente: READY con order ya `paid`. |
+| DEC-022 | **ACEPTADA (2026-09-16). T-017 COMPLETADA / VALIDADA EN PRODUCCIÓN (2026-09-17).** Idempotencia durable mediante UUID y `checkout_attempts` UNIQUE. 007/008 aplicadas; hardening productivo verificado, incluido READY con order `paid`; RPC 26 permanece disponible. |
 | DEC-025 | **ACEPTADA (2026-09-17).** T-020 completada y validada mediante paid QA real con shipping incluido y transición `pending → paid`. |
 | DEC-026 | **ACEPTADA (2026-09-16).** T-021 completada; migración 006 aplicada y selección autoritativa de agencia productiva. |
 
@@ -264,11 +264,10 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. Cerrar el hardening de T-017 para impedir que un attempt READY reutilice una preferencia vieja cuando su order asociada ya está `paid`.
-2. Mejorar `success.html` y la experiencia real de “Gracias por tu compra”.
-3. Definir y validar el cleanup seguro del carrito y `sessionStorage` después del retorno exitoso.
-4. Continuar con la Etapa D de MiCorreo: `POST /shipping/import` post-pago.
-5. Después, avanzar con catálogo dinámico desde Supabase y stock real por SKU; imágenes y descripciones dinámicas pertenecen a esa evolución.
+1. Mejorar `success.html` y la experiencia real de “Gracias por tu compra”.
+2. Definir y validar el cleanup seguro del carrito y `sessionStorage` después del retorno exitoso.
+3. Continuar con la Etapa D de MiCorreo: `POST /shipping/import` post-pago.
+4. Después, avanzar con catálogo dinámico desde Supabase y stock real por SKU; imágenes y descripciones dinámicas pertenecen a esa evolución.
 
 Antes del lanzamiento comercial también deben reemplazarse los perfiles TEMPORAL/QA, restaurarse el precio comercial, rotarse las credenciales expuestas y completarse la auditoría npm.
 

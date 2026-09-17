@@ -1,11 +1,11 @@
 # Seguridad
 
-## T-017 — hardening READY + order `paid` local
+## T-017 — hardening READY + order `paid` productivo
 
 - Un intento READY cuya order ya está `paid` devuelve 409 `checkout_attempt_already_paid`; no expone ni reutiliza `checkout_url` ni preference id.
 - La comprobación usa el snapshot persistido ya cargado y ocurre antes de MiCorreo, creación de order/attempt, claim/recovery y Mercado Pago. No modifica el intento ni la order pagada.
 - El frontend elimina solo `lemont.checkoutAttempt.v1`; no borra `lemont.cart`, no redirige y muestra `Esta compra ya fue pagada.`. Los demás conflictos 409 mantienen su tratamiento anterior.
-- Verificación local: 380/380 tests, 9 suites, 0 fallos. La corrección todavía no está desplegada ni validada en producción; T-017 continúa EN PROGRESO.
+- Verificación local: 380/380 tests, 9 suites, 0 fallos. La corrección fue desplegada y validada después con una `checkout_attempt` real en `ready` y una order `paid`: HTTP 409 controlado, sin nueva order/preference ni mutaciones. T-017 está COMPLETADA / VALIDADA EN PRODUCCIÓN.
 
 ## T-017.4 — hallazgo real de default privileges / migración 008
 
@@ -16,7 +16,7 @@
 - La migración 008 reproduce este estado mediante REVOKE ALL seguido de grants mínimos. Es idempotente respecto del estado corregido y no toca RPCs, claim, tablas ni constraints.
 - La 008 fue AUDITADA / APROBADA CON OBSERVACIONES, pusheada y APLICADA EN PRODUCCIÓN, sin hallazgos críticos. La 007 permaneció intacta.
 - Observaciones no bloqueantes: el hash test de 007 depende de LF/CRLF; no hay asserts explícitos de `BEGIN`/`COMMIT`; 008 no necesita `NOTIFY pgrst`; endurece solo `service_role`; y el archivo estaba untracked durante `git diff --check`.
-- Suite histórica del hardening: **377/377 tests**, 9 suites, 0 fallos. Producción ejecuta runtime T-017 mediante RPC v2; RPC 26 permanece disponible. La idempotencia durable está activa, aunque T-017 no se declara completa por el caso pendiente READY + order `paid`.
+- Suite histórica del hardening de privilegios: **377/377 tests**, 9 suites, 0 fallos. Producción ejecuta runtime T-017 mediante RPC v2; RPC 26 permanece disponible. La idempotencia durable y el caso READY + order `paid` quedaron validados posteriormente.
 
 ## T-017.4-A — auditado / APROBADO CON OBSERVACIONES
 
@@ -28,7 +28,7 @@
 - La RPC 26 solo se retirará mediante una migración futura separada después de estabilidad y QA; no está creada en esta fase.
 - Estado histórico previo al cutover: **372/372 tests**, 9 suites, 0 fallos. El estado vigente de 007 y privilegios está documentado en la sección superior.
 - Auditoría sin hallazgos críticos: RPC 26 permanece intacta; v2 conserva 27 parámetros con UUID primero; `orders.js` usa exclusivamente v2; claim, RLS y privilegios mínimos continúan seguros.
-- Observaciones no bloqueantes históricas: se respetó el orden 007 antes de Node T-017 y el QA real confirmó reutilización del mismo intento, nueva identidad ante cambio de intención y ausencia de duplicado ante doble clic/retry normal. Sigue pendiente cubrir y corregir READY cuando la order ya está `paid`.
+- Observaciones no bloqueantes históricas: se respetó el orden 007 antes de Node T-017 y el QA real confirmó reutilización del mismo intento, nueva identidad ante cambio de intención y ausencia de duplicado ante doble clic/retry normal. En ese corte todavía quedaba pendiente READY + order `paid`; fue cubierto y corregido en el cierre productivo posterior.
 - Orden de seguridad obligatorio: precheck → 007 → esperar/verificar reload PostgREST → comprobar RPC 26/v2/permisos → deploy → smoke QA → idempotency QA → payment QA → cleanup futuro separado.
 
 ## T-017.3 — UUID y digest frontend local
@@ -40,7 +40,7 @@
 - Records corruptos/inválidos se descartan. Mismatch elimina solo el attempt; errores temporales lo conservan para recovery.
 - Sin Web Crypto no se envía el checkout. No existe retry automático.
 - T-017.3 está completada localmente, auditada y APROBADA CON OBSERVACIONES. Verificación final: **369/369 tests**, 9 suites, 0 fallos; `npm test`, sintaxis frontend y `git diff --check` correctos.
-- Observaciones históricas de auditoría: normalización rara de espacios, sort de SKU, cobertura nominal de HTTP 500/storage y límites de los tests VM. Tras el deploy y QA real, el pendiente de seguridad vigente es impedir la reutilización de una preferencia READY cuando la order ya está `paid` y definir la limpieza segura posterior al retorno.
+- Observaciones históricas de auditoría: normalización rara de espacios, sort de SKU, cobertura nominal de HTTP 500/storage y límites de los tests VM. La reutilización READY + order `paid` fue cerrada mediante QA productivo; la limpieza segura posterior al retorno continúa pendiente fuera de T-017.
 - La 007 y la 008 están aplicadas; T-017.3 fue desplegada con el runtime T-017. La idempotencia durable está activa en producción y RPC 26 se conserva.
 
 ## T-017.2 / DEC-022 — completada / auditada
@@ -77,7 +77,7 @@
 - Mercado Pago recibe productos + un ítem `Envío`, nunca `shipments`. El webhook/HMAC no fue modificado y compara exclusivamente contra `orders.amount` y `orders.currency`.
 - La migración 005 mantiene snapshots históricos en null, restringe valores cobrables y conserva RPC `SECURITY INVOKER`, `search_path` fijo y `EXECUTE` solo para `service_role`. Fue aplicada en el despliegue T-020 informado.
 - Tests 242/242 con dotenv, Supabase, Mercado Pago y red simulados. No se leyeron secretos ni se hicieron llamadas reales.
-- Pago real validado el 2026-09-17: shipping incluido, webhook procesado y orden `pending → paid`. La idempotencia durable T-017 elimina el pendiente anterior de doble checkout normal; permanece el caso específico READY con order ya `paid`.
+- Pago real validado el 2026-09-17: shipping incluido, webhook procesado y orden `pending → paid`. La idempotencia durable T-017 cubre el doble checkout normal y el caso específico READY con order ya `paid`, validado posteriormente con 409 sin efectos secundarios.
 - Incidencia de transporte resuelta: DNS apuntaba al VPS anterior y HTTPS presentó inicialmente un certificado no confiable. Tras corregir DNS y regenerar Traefik, Let's Encrypt emitió un certificado válido. Un POST externo sin firma a `/webhook` llegó a Express y fue rechazado correctamente con HTTP 401; la notificación válida posterior de Mercado Pago fue aceptada.
 - Riesgos pendientes: perfiles TEMPORAL/QA, credenciales por rotar, falta de stock real y limpieza segura del estado del navegador. Producción comercial bloqueada.
 

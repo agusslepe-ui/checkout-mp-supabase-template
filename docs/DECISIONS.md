@@ -1218,7 +1218,7 @@ El modelo de persistencia ya soporta múltiples ítems. Falta el contrato de car
 
 **Fecha de aceptación:** 2026-09-16.
 **Estado:** ACEPTADA.
-**Tarea:** T-017.
+**Tarea:** T-017 COMPLETADA / VALIDADA EN PRODUCCIÓN (2026-09-17).
 
 ### Contexto
 
@@ -1234,12 +1234,13 @@ DEC-021 dejó este problema fuera de alcance a propósito. El usuario pidió reg
 - La orden, sus items y la reserva del intento se crean en la misma RPC/transacción. Un UUID duplicado provoca una violación UNIQUE y rollback total; no se usa `ON CONFLICT DO NOTHING`.
 - No se almacena `request_fingerprint`: T-017.2 compara retries con el snapshot autoritativo ya persistido en `orders` y `order_items`.
 - Estados iniciales: `reserved`, `creating_preference`, `ready`, `unknown`; lease y datos de preferencia quedan preparados para fases posteriores.
-- T-017.1, T-017.2 y T-017.3 están completadas/auditadas. T-017.4-A está completada/auditada. El runtime y frontend T-017 fueron desplegados y el QA real de idempotencia validó reutilización del mismo intento, separación de una intención distinta y ausencia de duplicado ante doble clic/retry normal.
+- T-017.1–T-017.4 están completadas. El runtime y frontend T-017 fueron desplegados y el QA real validó reutilización del mismo intento, separación de una intención distinta, ausencia de duplicado ante doble clic/retry normal y rechazo seguro de READY + order `paid`.
 
 ### Consecuencias
 
-- T-017 queda EN PROGRESO por el caso pendiente de un attempt `ready` cuya order asociada ya está `paid`; debe impedirse reutilizar una preferencia vieja.
+- T-017 queda COMPLETADA / VALIDADA EN PRODUCCIÓN. Un attempt real `ready` asociado a una order `paid` respondió HTTP 409 con `checkout_attempt_already_paid`; no redirigió, no creó order/preference y no modificó el attempt ni la order.
 - Las migraciones 007 y 008 están aplicadas en producción. El exceso de privilegios de `service_role` descubierto durante el cutover fue corregido manualmente y quedó reproducido por la 008.
 - El runtime T-017 usa la firma v2 de 27 parámetros y `checkoutAttemptId`; la RPC anterior de 26 parámetros permanece disponible.
 - La idempotencia durable está ACTIVA EN PRODUCCIÓN después del deploy en EasyPanel y del QA real descrito arriba.
+- La verificación final reconstruyó la intención desde `order_items` reales; `max(order.id)` permaneció igual, el attempt siguió `ready` y la order siguió `paid`. Un request previo basado en columnas legacy produjo el mismatch esperado sin efectos secundarios.
 - El recovery usa `Preference.search` por `external_reference` y `Preference.get({ preferenceId: ... })` cuando necesita completar una preferencia. Este contrato corrige el hallazgo bloqueante inicial de auditoría.

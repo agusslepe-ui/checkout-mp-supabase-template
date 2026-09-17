@@ -1,10 +1,10 @@
 # Diseño técnico
 
-## T-017 — hardening READY + order `paid` local
+## T-017 — hardening READY + order `paid` productivo
 
 Cuando el retry coincide con el snapshot y el intento está `ready`, el backend inspecciona el estado de la order ya cargada antes de construir la respuesta durable. Si la order está `paid`, responde HTTP 409 con `type: checkout_attempt_already_paid` y el mensaje público `Esta compra ya fue pagada.`. El corte ocurre antes de cualquier cotización, RPC de creación, claim, recovery o llamada a Mercado Pago; tampoco modifica el attempt ni la order. READY + `pending` conserva la reutilización existente.
 
-El frontend clasifica este caso por el `type` estable, no redirige a Mercado Pago, elimina únicamente `sessionStorage["lemont.checkoutAttempt.v1"]`, conserva `localStorage["lemont.cart"]` y muestra el mensaje de compra pagada. Los demás HTTP 409 conservan su comportamiento. Implementado y verificado localmente con 380/380 tests; pendiente de deploy y QA productivo, por lo que T-017 continúa EN PROGRESO.
+El frontend clasifica este caso por el `type` estable, no redirige a Mercado Pago, elimina únicamente `sessionStorage["lemont.checkoutAttempt.v1"]`, conserva `localStorage["lemont.cart"]` y muestra el mensaje de compra pagada. Los demás HTTP 409 conservan su comportamiento. La implementación local pasó 380/380 tests y luego fue desplegada y validada con un attempt/order real: no creó recursos ni alteró los estados `ready`/`paid`. T-017 está COMPLETADA / VALIDADA EN PRODUCCIÓN.
 
 ## T-017.4 — hardening reproducible de privilegios efectivos
 
@@ -50,12 +50,12 @@ Resultado del cutover:
 5. **Deploy:** completado en EasyPanel; las creaciones nuevas usan v2.
 6. **Smoke/checkout QA:** completado dentro del flujo productivo informado.
 7. **Idempotency QA:** mismo intent/retry conservó attempt/order/preference; nueva intención creó nuevas entidades; doble clic/retry normal no duplicó la orden.
-8. **Payment QA:** pago real con shipping, webhook y `pending → paid` completado. El hardening READY con order ya `paid` fue implementado después y permanece pendiente de deploy/QA productivo.
+8. **Payment QA:** pago real con shipping, webhook y `pending → paid` completado. El hardening READY con order ya `paid` fue desplegado y validado posteriormente.
 9. **Cleanup futuro:** tras estabilidad, una migración separada podrá retirar RPC 26. No forma parte de T-017.4-A.
 
 Rollback: si 007 ya fue aplicada pero el deploy aún no, el runtime viejo continúa mediante RPC 26 y no se revierte por compatibilidad. Si falla el runtime nuevo, se restaura el deployment T-021, que sigue teniendo RPC 26. No se automatizan operaciones destructivas.
 
-Observaciones históricas de preparación: podía existir una ventana breve de schema cache tras `NOTIFY pgrst`, Node T-017 no debía desplegarse antes de 007 y los tests SQL eran mayormente estáticos. El orden de cutover se respetó y el QA real cubrió los escenarios informados de reutilización, cambio de intención y doble clic/retry. El caso order `paid` + attempt READY ya tiene corrección local; su deploy/QA sigue pendiente.
+Observaciones históricas de preparación: podía existir una ventana breve de schema cache tras `NOTIFY pgrst`, Node T-017 no debía desplegarse antes de 007 y los tests SQL eran mayormente estáticos. El orden de cutover se respetó y el QA real cubrió reutilización, cambio de intención, doble clic/retry y, en el cierre final, order `paid` + attempt READY.
 
 ## T-017.3 — identidad durable en frontend local
 
@@ -76,7 +76,7 @@ Los HTTP 409 se clasifican por código: `shipping_changed`, `agency_changed`, `c
 
 T-017.3 está completada y auditada. El frontend/runtime T-017 está desplegado y la idempotencia durable está activa en producción; RPC 26 se conserva por compatibilidad.
 
-Observaciones históricas de auditoría de T-017.3: normalización rara de email/`streetNumber`, sort de SKU, cobertura nominal de HTTP 500/storage y límites de los tests VM. El estado productivo del 2026-09-17 prevalece; el pendiente explícito derivado del record conservado es impedir reutilizar una preferencia READY si la order ya está `paid` y definir la limpieza segura tras el retorno.
+Observaciones históricas de auditoría de T-017.3: normalización rara de email/`streetNumber`, sort de SKU, cobertura nominal de HTTP 500/storage y límites de los tests VM. El estado productivo del 2026-09-17 prevalece: READY + order `paid` ya está cerrado; la limpieza segura tras el retorno continúa como evolución separada.
 
 ## T-017.2 / DEC-022 — integración backend durable local
 
@@ -98,7 +98,7 @@ El claim es una función SQL con un único UPDATE condicional: admite `reserved`
 
 UNKNOWN y leases vencidas consultan primero `Preference.search` por `external_reference`: cero resultados permite crear; uno exacto/utilizable se persiste READY; más de uno queda ambiguo y no se elige. Si el summary único necesita completarse, el SDK 3.1.0 recibe `Preference.get({ preferenceId: ... })`. La preferencia se reconstruye desde `orders` + `order_items`, incluido el envío, y su total se valida en centavos contra `orders.amount`.
 
-La migración 007 contiene la RPC v2 de 27 parámetros, coherencia de estados y claim atómico; fue aplicada en producción y conserva RPC 26. El hardening efectivo de columnas se corrigió manualmente y quedó reproducido por la migración 008, también aplicada. T-017.2 y T-017.3 están completadas/auditadas; el deploy y QA principal de T-017.4 se ejecutaron, pero falta resolver READY con order ya `paid`.
+La migración 007 contiene la RPC v2 de 27 parámetros, coherencia de estados y claim atómico; fue aplicada en producción y conserva RPC 26. El hardening efectivo de columnas se corrigió manualmente y quedó reproducido por la migración 008, también aplicada. T-017.1–T-017.4 están completadas; el runtime y el hardening READY + order `paid` fueron validados en producción.
 
 Observaciones no bloqueantes de diseño para las fases restantes: el reconocimiento `23505` conserva fallback por nombre de constraint en `message/details`; una lease vencida combinada con una búsqueda todavía no indexada tiene riesgo teórico de segunda preference; `Preference.search` puede modificar opciones de timeout del cliente SDK compartido; el matching de SKU no agrega `trim`; y el claim concurrente aún no tiene prueba SQL real. T-017.4 debe probar recovery y concurrencia de forma real/controlada.
 
@@ -332,7 +332,7 @@ La RPC usa `SECURITY INVOKER`, `search_path` fijo y ejecución reservada a `serv
 
 - Puerto fijo y catálogo versionado en backend; sin fuente administrable externa todavía.
 - La ruta `GET /webhook` queda restringida a entornos no productivos.
-- La idempotencia durable está activa en producción. T-017 sigue EN PROGRESO por el caso READY asociado a una order ya `paid`. El rate limiting continúa pendiente.
+- La idempotencia durable está activa y T-017 está COMPLETADA / VALIDADA EN PRODUCCIÓN, incluido el caso READY asociado a una order ya `paid`. El rate limiting continúa pendiente y no forma parte de T-017.
 - `success.html` todavía no ofrece la experiencia final de agradecimiento y falta definir el cleanup seguro de carrito/`sessionStorage`.
 - MiCorreo `POST /shipping/import`, catálogo dinámico y stock real por SKU todavía no están implementados.
 - El backend endurecido está desplegado en EasyPanel/VPS desde la rama `main` de `checkout-mp-supabase-template`, bajo `checkout.lemont01.com`; no hay infraestructura como código.
