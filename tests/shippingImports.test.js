@@ -149,6 +149,25 @@ describe("shipping import repository", () => {
     const repository = createShippingImportsRepository(fake.client);
     await expect(repository.expireShippingImportLeases()).resolves.toHaveLength(1);
   });
+
+  test.each([
+    [[], 0],
+    [null, 0],
+    [[validImport({ state: "unknown", lease_token: null, lease_expires_at: null })], 1],
+  ])("expire acepta resultado %# y devuelve %s filas", async (data, expectedLength) => {
+    const fake = fakeClient({ expire_order_shipping_import_leases: { data, error: null } });
+    const repository = createShippingImportsRepository(fake.client);
+    await expect(repository.expireShippingImportLeases()).resolves.toHaveLength(expectedLength);
+  });
+
+  test("expire rechaza tipos inesperados sin ocultar errores", async () => {
+    const fake = fakeClient({
+      expire_order_shipping_import_leases: { data: { unexpected: true }, error: null },
+    });
+    const repository = createShippingImportsRepository(fake.client);
+    await expect(repository.expireShippingImportLeases())
+      .rejects.toBeInstanceOf(ShippingImportRepositoryError);
+  });
 });
 
 describe("migración 009 de infraestructura durable", () => {

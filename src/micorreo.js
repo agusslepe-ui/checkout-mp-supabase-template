@@ -52,7 +52,12 @@ async function importShipment(payload) {
       token = await authenticate();
     } catch (error) {
       // El POST previo fue rechazado explícitamente con 401; aún no se hizo el retry.
-      throw classifyImportTransportError(error, false);
+      const classified = classifyImportTransportError(error, false);
+      if (classified instanceof ShippingProviderError) {
+        classified.previousRequestAttempted = true;
+        classified.ambiguous = true;
+      }
+      throw classified;
     }
     response = await requestImport(payload, token);
   }

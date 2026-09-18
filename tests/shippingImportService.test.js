@@ -145,7 +145,7 @@ describe("T-022.3 mapping de importación", () => {
   test.each([
     "weight_grams", "height_cm", "width_cm", "length_cm",
   ])("%s exige un entero positivo sin coerción", async (field) => {
-    for (const value of [null, " ", false, NaN, Infinity, 0, -1]) {
+    for (const value of [null, " ", "5", false, NaN, Infinity, 1.5, 0, -1]) {
       const provider = { importShipment: jest.fn() };
       const service = createShippingImportService(provider, { customerId: "backend-customer" });
       await expect(service.importShipment(snapshot({ [field]: value })))
@@ -165,6 +165,24 @@ describe("T-022.3 mapping de importación", () => {
     const service = createShippingImportService(provider, { customerId: "backend-customer" });
     await expect(service.importShipment(snapshot({ [field]: undefined })))
       .rejects.toMatchObject({ type: SHIPPING_IMPORT_ERROR_TYPES.VALIDATION });
+    expect(provider.importShipment).not.toHaveBeenCalled();
+  });
+
+  test("HOME rechaza whitespace en un campo obligatorio", async () => {
+    const provider = { importShipment: jest.fn() };
+    const service = createShippingImportService(provider, { customerId: "backend-customer" });
+    await expect(service.importShipment(snapshot({ shipping_street_number: " " })))
+      .rejects.toMatchObject({ type: SHIPPING_IMPORT_ERROR_TYPES.VALIDATION });
+    expect(provider.importShipment).not.toHaveBeenCalled();
+  });
+
+  test("AGENCY rechaza agency code whitespace", async () => {
+    const provider = { importShipment: jest.fn() };
+    const service = createShippingImportService(provider, { customerId: "backend-customer" });
+    await expect(service.importShipment(snapshot({
+      shipping_delivery_type: "agency",
+      shipping_agency_code: " ",
+    }))).rejects.toMatchObject({ type: SHIPPING_IMPORT_ERROR_TYPES.VALIDATION });
     expect(provider.importShipment).not.toHaveBeenCalled();
   });
 

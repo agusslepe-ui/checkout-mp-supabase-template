@@ -1,5 +1,15 @@
 # Seguridad
 
+## T-022.4 — worker local no activado
+
+- Sólo retorna outcome, order ID y attempt count; nunca snapshot, PII, extOrderId, payload, body o secretos.
+- No agrega logs. Los códigos persistidos son allowlisted/cortos (`auth`, `timeout`, `internal_error`, etc.), sin stack ni mensaje externo.
+- Normaliza `numeric` sólo con tipo number válido o regex decimal canónica; rechaza exponentes, whitespace, booleanos, null, colecciones, infinidades y negativos.
+- Un resultado incierto se marca unknown y nunca retryable. La falla de renovación posterior a POST 401 conserva `previousRequestAttempted` y se trata conservadoramente.
+- Un segundo POST 401 también termina unknown: no se presupone ausencia de efectos externos, no se agenda retry y no existe tercera llamada.
+- Lease perdido no dispara una segunda transición. Una falla de persistencia deja actuar al recovery de lease existente.
+- No hay timer, loop, cron, env nueva, ruta pública, webhook ni activación desde `index.js`.
+
 ## T-022.3 — límites de datos y transporte
 
 - `customerId` se toma sólo de configuración backend; nunca de order/frontend y no se registra.

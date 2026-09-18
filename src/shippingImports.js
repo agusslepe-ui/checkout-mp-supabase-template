@@ -86,6 +86,7 @@ function createShippingImportsRepository(client = supabase) {
   async function expireShippingImportLeases() {
     const { data, error } = await client.rpc("expire_order_shipping_import_leases");
     if (error) throw error;
+    if (data == null) return [];
     if (!Array.isArray(data)) throw new ShippingImportRepositoryError();
     data.forEach((row) => validateImport(row, SHIPPING_IMPORT_STATES.UNKNOWN));
     return data;
@@ -153,5 +154,6 @@ module.exports = {
   SHIPPING_IMPORT_STATES,
   ShippingImportRepositoryError,
   createShippingImportsRepository,
+  ShippingImportsRepository,
   ...ShippingImportsRepository,
 };

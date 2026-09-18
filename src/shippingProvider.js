@@ -17,6 +17,7 @@ class ShippingProviderError extends Error {
     this.type = type;
     this.status = status;
     this.requestAttempted = details.requestAttempted === true;
+    this.previousRequestAttempted = details.previousRequestAttempted === true;
     this.ambiguous = details.ambiguous === true;
     this.retryable = details.retryable === true;
   }

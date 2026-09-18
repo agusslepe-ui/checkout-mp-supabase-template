@@ -1,8 +1,16 @@
 # Contexto actual del proyecto
 
+## T-022.4 local — 2026-09-18
+
+**T-022.4 está IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** `shippingImportWorker.js` expone una iteración única y expiración manual de leases; no contiene loop, polling ni scheduling. Usa exclusivamente `shippingImports` para claim/transiciones y `ShippingImportService` para dominio/provider. T-022.3 está IMPLEMENTADA / AUDITADA / DESPLEGADA COMO CAPA INACTIVA.
+
+La política local usa lease de 60 s, backoff 1/5/15 min y máximo cuatro attempts. `RATE_LIMIT`, AUTH previo al POST y fallos de red/timeout con evidencia explícita de ocurrir antes del POST son retryable; permanentes terminan failed; todo resultado posiblemente enviado pero incierto termina unknown. Tanto POST 401 + fallo de renovación como segundo POST 401 terminan unknown. `numeric` string se normaliza con regex canónica en el borde del worker. La expiración acepta `null`/array vacío como cero filas y rechaza otros tipos inesperados.
+
+`/shipping/import` continúa INACTIVO PRODUCTIVAMENTE. `index.js`, `app.js` y webhook no importan el worker; paid+queue no está conectado; no se aplicó SQL ni se creó migración. Suite local: 528/528, 14 suites.
+
 ## T-022.3 local — 2026-09-18
 
-**T-022.3 está IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA.** La auditoría independiente de Grok cerró sin bloqueantes. `ShippingImportService` construye el contrato mínimo desde `order_shipping_imports` y `MiCorreoProvider.importShipment` contiene el futuro POST, con validación estricta de `createdAt` y errores tipados. Sólo Classic se admite localmente; Express queda bloqueado y no se asume CP/EP. Piso/departamento combinado se omite sin truncar ni separar. Todo el transporte está mockeado en tests.
+**T-022.3 está IMPLEMENTADA / AUDITADA / DESPLEGADA COMO CAPA INACTIVA.** La auditoría independiente de Grok cerró sin bloqueantes. `ShippingImportService` construye el contrato mínimo desde `order_shipping_imports` y `MiCorreoProvider.importShipment` contiene el POST aún sin caller productivo. Sólo Classic se admite; Express queda bloqueado y no se asume CP/EP.
 
 Las observaciones bloqueantes de la primera revisión fueron corregidas localmente y la auditoría final las aprobó. Persisten observaciones no bloqueantes para T-022.4 sobre el antecedente de un POST 401 si falla la renovación, normalización explícita de `numeric` en el borde repository/worker, cobertura adicional de tipos/whitespace y la nueva exportación interna de `normalizeProvince`.
 

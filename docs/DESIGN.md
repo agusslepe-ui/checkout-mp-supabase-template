@@ -1,5 +1,22 @@
 # Diseño técnico
 
+## T-022.4 — worker durable local no activado
+
+```text
+processNextShippingImport (máximo una fila)
+  → UUID + lease 60 s
+  → ShippingImportsRepository.claimNextShippingImport
+  → normalización decimal explícita
+  → ShippingImportService.importShipment
+  → repository: created | retryable | unknown | failed
+```
+
+El worker no construye payloads, recalcula paquetes, toca orders ni ejecuta SQL directo. Un resultado holder-only nulo produce `lease_lost`; una excepción de persistencia no provoca transición alternativa. `expireStaleShippingImportLeases` está separada y sin scheduler; el repository interpreta `null` como cero filas, valida arrays y rechaza otros tipos.
+
+Backoff determinista: 1, 5 y 15 minutos para attempts 1–3; el cuarto termina failed. No hay jitter en esta etapa para mantener operación y tests reproducibles. Red/timeout sólo son retryable con evidencia explícita de que ocurrieron antes del POST; errores ambiguos nunca entran en retry automático. El caso 401 + fallo de renovación y el segundo POST 401 terminan unknown conservadoramente.
+
+El módulo no es alcanzable desde entrypoints o webhook. Su activación, frecuencia y observabilidad operativa pertenecen a etapas posteriores.
+
 ## T-022.3 — importación local no activada
 
 `claim/snapshot → ShippingImportService → ShippingProvider.importShipment → MiCorreoProvider → POST /shipping/import`.

@@ -4,9 +4,25 @@
 
 **Estado general:** EN PROGRESO.
 
+### T-022.4 — Worker durable para shipping import
+
+**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA (2026-09-18).
+
+- `processNextShippingImport()` genera UUID de lease, reclama como máximo un trabajo, normaliza el snapshot, invoca una sola vez `ShippingImportService` y persiste una única salida holder-only.
+- Lease documentada de 60 segundos. Una transición sin fila devuelve `lease_lost` y no intenta una segunda transición. Los errores del RPC final se propagan para que la expiración SQL futura lleve el trabajo a `unknown`.
+- `declared_value` acepta sólo number finito no negativo o string decimal canónico de PostgREST; se convierte a number antes del service. Peso/dimensiones permanecen estrictos, sin coerción.
+- Estados: éxito confirmado → `created`; `VALIDATION`/`UNSUPPORTED_SERVICE`/`PROVIDER_REJECTED` → `failed`; `RATE_LIMIT`, AUTH previo al POST y red/timeout explícitamente previos al POST → `retryable` hasta el límite; cualquier AUTH posterior al POST, red/timeout posteriores, 5xx, 408 y respuesta ambigua → `unknown`.
+- Política AUTH endurecida: fallo inicial antes del POST es retryable; fallo de renovación después de un POST 401 y segundo POST 401 son `unknown`. Se mantienen máximo dos POST, mismo payload/extOrderId y ninguna tercera llamada.
+- Backoff sin jitter: attempts 1/2/3 → 1/5/15 minutos; attempt 4 → `failed` con código de límite. Se usa el `attempt_count` ya incrementado por claim.
+- `expireStaleShippingImportLeases()` sólo delega en la RPC existente y no se agenda automáticamente. El repository normaliza respuesta `null` o `[]` a cero filas, valida arrays y rechaza otros tipos.
+- Sin activación: no hay import desde `index.js`, `app.js`, webhook o repository; tampoco cron, interval, timeout de scheduling o nueva variable obligatoria.
+- Verificación local: 528/528 tests, 14 suites, transporte mockeado y sin requests reales.
+
+**Pendiente:** activación controlada del worker; T-022.5 paid+queue legacy-safe; T-022.6 cutover/QA; Classic/Express; perfiles físicos reales; reconciliación de `unknown`; prueba real MiCorreo.
+
 ### T-022.3 — Provider + mapping para `/shipping/import`
 
-**Estado:** IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA (2026-09-18).
+**Estado:** IMPLEMENTADA / AUDITADA / DESPLEGADA COMO CAPA INACTIVA (2026-09-18).
 
 **Cierre de auditoría independiente:** Grok emitió **APROBADO CON OBSERVACIONES**, sin bloqueantes. `declared_value` exige `number` finito no negativo sin coerción; peso/dimensiones exigen enteros positivos; `createdAt` valida formato y calendario real; HTTP 408 es ambiguo; errores inesperados se preservan; y la distinción `TIMEOUT` es opt-in exclusivo del import, manteniendo `micorreo_network_error` para token/rates/agencies.
 

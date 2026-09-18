@@ -152,6 +152,25 @@ describe("T-022.3 MiCorreoProvider.importShipment", () => {
       .mockResolvedValueOnce(response(401, {}));
     await expect(importShipment(payload())).rejects.toMatchObject({ type: "AUTH", status: 401 });
     expect(global.fetch).toHaveBeenCalledTimes(4);
+    expect(global.fetch.mock.calls.filter(([url]) => url.endsWith("/shipping/import")))
+      .toHaveLength(2);
+  });
+
+  test("fallo renovando tras primer POST 401 conserva antecedente ambiguo", async () => {
+    const { importShipment } = load();
+    global.fetch
+      .mockResolvedValueOnce(response(200, { token: "old" }))
+      .mockResolvedValueOnce(response(401, {}))
+      .mockResolvedValueOnce(response(500, {}));
+    await expect(importShipment(payload())).rejects.toMatchObject({
+      type: "AUTH",
+      requestAttempted: false,
+      previousRequestAttempted: true,
+      ambiguous: true,
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(global.fetch.mock.calls.filter(([url]) => url.endsWith("/shipping/import")))
+      .toHaveLength(1);
   });
 
   test.each([

@@ -1,5 +1,17 @@
 # Decisiones técnicas
 
+## T-022.4 — política del worker durable local
+
+**Fecha:** 2026-09-18. **Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.
+
+- Una invocación procesa como máximo un claim. La DB/RPC mantiene la exclusión concurrente; Node no agrega locks.
+- Lease 60 s; backoff determinista 1/5/15 min; máximo cuatro attempts. Sin jitter por ahora.
+- `RATE_LIMIT`, AUTH previo al POST y transporte marcado con certeza como previo al POST son retryable hasta el límite. VALIDATION, servicio no soportado y rechazo del provider son failed. Todo resultado ambiguo es unknown.
+- El primer fallo AUTH antes del POST puede reintentarse; POST 401 seguido por fallo de renovación y segundo POST 401 son unknown. No existe retry logístico ni tercer POST en esa iteración.
+- `numeric` string se normaliza exclusivamente en el borde worker mediante formato decimal canónico. El servicio conserva contrato number estricto.
+- Cierre holder-only nulo produce `lease_lost` sin otra escritura. Recovery de leases vencidos usa sólo la RPC existente y no se agenda.
+- No se activa worker, webhook, paid+queue ni `/shipping/import`; no hay SQL nuevo.
+
 ## T-022.3 — política contractual local (sin número DEC asignado)
 
 **Fecha:** 2026-09-18. **Estado:** IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA.
