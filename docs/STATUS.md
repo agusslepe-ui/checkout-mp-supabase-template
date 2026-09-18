@@ -4,6 +4,13 @@
 
 Este archivo resume el estado real vigente. Los bloques históricos de otros documentos que describan T-017 sin desplegar, las migraciones 007/008 sin aplicar, producción en runtime T-021, T-020 sin paid QA o T-021 pendiente deben leerse como antecedentes superados por este corte.
 
+## Desarrollo local T-022
+
+- **T-022: EN PROGRESO.**
+- **T-022.2: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** La migración 009 prepara `order_shipping_imports`, una RPC v3 aditiva para crear el snapshot junto con order/items/checkout attempt, la futura transición atómica `pending → paid` + `not_requested → queued`, claim con lease y transiciones holder-only. `src/shippingImports.js` expone el repositorio futuro, pero no está conectado a un worker ni al webhook.
+- **Migración 009: CREADA LOCALMENTE / NO APLICADA.** Producción continúa con las migraciones 001–008 y el runtime vigente. Las RPC de 26 parámetros y v2 se conservan; el runtime local de creación queda preparado para v3 y no debe desplegarse antes de aplicar/verificar 009.
+- No hubo llamada a MiCorreo `/shipping/import`, proveedor real, SQL real, deploy ni backfill. Los perfiles congelados siguen siendo `300 g / 5 × 25 × 35 cm` TEMPORAL/QA.
+
 ## Producción
 
 - **Runtime T-017: DESPLEGADO EN EASYPANEL.** La creación durable usa `create_pending_order_with_items_v2` (27 parámetros); la RPC anterior `create_pending_order_with_items` (26 parámetros) permanece disponible.
@@ -33,7 +40,8 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 ## Pendientes reales
 
 - Sustituir los perfiles TEMPORAL/QA de `300 g / 5 × 25 × 35 cm` por medidas reales y repetir QA.
-- Etapa D: crear el envío post-pago mediante MiCorreo `POST /shipping/import`.
+- T-022.1: cerrar el contrato restante, incluido Classic/Express y la reconciliación práctica por `extOrderId`.
+- Completar T-022: provider real, worker activo, integración del webhook con la RPC atómica y posterior deploy/QA de MiCorreo `POST /shipping/import`.
 - Implementar catálogo y stock reales desde Supabase, con imágenes y descripciones dinámicas.
 - Completar el hardening comercial: restaurar el precio definitivo, rotar credenciales privadas previamente expuestas, ejecutar la auditoría npm y abordar dominio definitivo, frontend final y SEO.
 

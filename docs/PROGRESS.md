@@ -1,5 +1,17 @@
 # Progreso
 
+## 2026-09-17 — T-022.2 infraestructura durable implementada localmente
+
+- **T-022: EN PROGRESO. T-022.2: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.**
+- Nueva migración 009, no aplicada: tabla `order_shipping_imports`, snapshot físico y `declared_value = products_subtotal`, estados logísticos independientes, RLS y grants explícitos.
+- Nueva RPC v3 envuelve la v2 para crear order/items/checkout attempt/import en una transacción. Conserva RPC 26 y v2. `ext_order_id` reutiliza el `external_reference` único e inmutable.
+- Preparadas RPC de paid+queue atómica, claim con `SKIP LOCKED`, finalizaciones holder-only y expiración segura `processing → unknown`.
+- Nuevo repositorio `shippingImports.js`; no está importado por el runtime, no ejecuta polling y no llama MiCorreo. El webhook permanece sin cambios y no encola todavía.
+- `orders.js` local llama v3 y congela el perfil actual según unidades. Los valores 300/5/25/35 no cambiaron y siguen TEMPORAL/QA.
+- Cobertura agregada para tabla/constraints, snapshots, declared value, compatibilidad, atomicidad preparada, claim/lease, stale worker, retry schedule, expiración, RLS/grants y ausencia de backfill/provider. Resultado: **402/402 tests, 11 suites, 0 fallos**.
+- Limitación: la concurrencia y seguridad SQL se verificaron estáticamente/mocks; no se aplicó 009 ni se ejecutó una prueba PostgreSQL real.
+- Pendientes: T-022.1, perfiles reales, Classic/Express, reconciliación práctica, provider, worker activo, webhook, deploy y QA.
+
 ## 2026-09-17 — cierre productivo de post-pago UX + cleanup
 
 - **Estado: COMPLETADO / DESPLEGADO / VALIDADO EN PRODUCCIÓN.** La implementación fue auditada por Grok, tuvo commit y push, y fue desplegada en EasyPanel.

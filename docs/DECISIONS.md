@@ -1,5 +1,17 @@
 # Decisiones técnicas
 
+## T-022 — arquitectura durable aprobada (sin número DEC asignado)
+
+**Estado:** T-022 EN PROGRESO; T-022.2 IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.
+
+- Estado financiero y logístico independientes; un error de importación nunca revierte una order `paid`.
+- Una fila por order y `ext_order_id = orders.external_reference`, estable e inmutable entre retries.
+- Snapshot físico en el checkout y `declared_value = products_subtotal`, excluyendo shipping. Perfiles actuales exclusivamente TEMPORAL/QA.
+- `unknown` representa resultado externo incierto y no se reintenta automáticamente. Un lease expirado termina en `unknown`.
+- El claim es durable, concurrente-seguro y holder-only. Las RPC anteriores se conservan; v3 agrega el snapshot sin romper RPC 26/v2.
+- La migración 009 y el repositorio son preparación local. No autorizan provider, `/shipping/import`, worker, webhook nuevo, aplicación SQL ni deploy.
+- Pendientes de decisión/cierre: T-022.1, Classic/Express, reconciliación práctica de duplicados por `extOrderId`, perfiles reales y contrato final del proveedor. No se asumen tracking, shipment ID ni labels.
+
 ## DEC-026 — Selección autoritativa de agencia
 
 **Fecha:** 2026-09-15.

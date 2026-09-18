@@ -1,6 +1,7 @@
 const { createClient } = require("@supabase/supabase-js");
 const { supabaseUrl, supabaseServiceRoleKey } = require("./config");
 const { log } = require("./logger");
+const { getPackageProfile } = require("./packageProfiles");
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
@@ -19,8 +20,14 @@ async function createPendingOrder({
   delivery,
   items,
 }) {
+  const totalUnits = items.reduce((total, item) => total + item.quantity, 0);
+  const packageProfile = getPackageProfile(totalUnits);
+  if (!packageProfile) {
+    throw new Error("invalid package profile for pending order");
+  }
+
   const { data, error } = await supabase
-    .rpc("create_pending_order_with_items_v2", {
+    .rpc("create_pending_order_with_items_v3", {
       p_checkout_attempt_id: checkoutAttemptId,
       p_expected_amount: expectedAmount,
       p_products_subtotal: productsSubtotal,
@@ -48,6 +55,10 @@ async function createPendingOrder({
       p_shipping_apartment: delivery.apartment,
       p_shipping_notes: delivery.notes,
       p_items: items,
+      p_package_weight_grams: packageProfile.weight,
+      p_package_height_cm: packageProfile.height,
+      p_package_width_cm: packageProfile.width,
+      p_package_length_cm: packageProfile.length,
     })
     .single();
 

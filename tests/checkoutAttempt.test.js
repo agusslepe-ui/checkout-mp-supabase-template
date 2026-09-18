@@ -305,13 +305,14 @@ describe("cutover backward-compatible de orders", () => {
     "utf8"
   );
 
-  test("createPendingOrder llama exclusivamente la RPC idempotente v2", () => {
+  test("createPendingOrder llama exclusivamente la RPC v3 que envuelve la v2", () => {
     expect(ordersSource).toMatch(
-      /\.rpc\("create_pending_order_with_items_v2",\s*\{[\s\S]*?p_checkout_attempt_id:\s*checkoutAttemptId/i
+      /\.rpc\("create_pending_order_with_items_v3",\s*\{[\s\S]*?p_checkout_attempt_id:\s*checkoutAttemptId/i
     );
     expect(ordersSource).not.toMatch(
-      /\.rpc\("create_pending_order_with_items",/i
+      /\.rpc\("create_pending_order_with_items(?:_v2)?",/i
     );
+    expect(ordersSource).toMatch(/p_package_weight_grams:\s*packageProfile\.weight/i);
   });
 
   test("markOrderAsPaid conserva la transición pending a paid", () => {

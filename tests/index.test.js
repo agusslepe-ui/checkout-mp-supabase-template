@@ -1145,7 +1145,7 @@ describe("creación de preferencias", () => {
 
     const [rpcName, rpcParameters] =
       supabaseMock.createPendingOrderRpc.mock.calls[0];
-    expect(rpcName).toBe("create_pending_order_with_items_v2");
+    expect(rpcName).toBe("create_pending_order_with_items_v3");
     expect(rpcParameters.p_expected_amount).toBe(1000);
     expect(rpcParameters.p_currency).toBe("ARS");
     expect(rpcParameters.p_items).toEqual([
@@ -1236,7 +1236,7 @@ describe("creación de preferencias", () => {
     expect(response.statusCode).toBe(200);
     const [rpcName, rpcParameters] =
       supabaseMock.createPendingOrderRpc.mock.calls[0];
-    expect(rpcName).toBe("create_pending_order_with_items_v2");
+    expect(rpcName).toBe("create_pending_order_with_items_v3");
     expect(rpcParameters).toEqual({
       p_checkout_attempt_id: VALID_CHECKOUT_ATTEMPT_ID,
       p_expected_amount: 1000,
@@ -1273,6 +1273,10 @@ describe("creación de preferencias", () => {
           unit_price: 1000,
         },
       ],
+      p_package_weight_grams: 300,
+      p_package_height_cm: 5,
+      p_package_width_cm: 25,
+      p_package_length_cm: 35,
     });
     expect(preferenceCreate.mock.calls[0][0].body.items[0]).toEqual({
       title: `Remera LEMONT - Talle ${size}`,
@@ -1498,7 +1502,7 @@ describe("checkout multítem", () => {
     expect(supabaseMock.createPendingOrderRpc).toHaveBeenCalledTimes(1);
     expect(preferenceCreate).toHaveBeenCalledTimes(1);
     const [name, parameters] = supabaseMock.createPendingOrderRpc.mock.calls[0];
-    expect(name).toBe("create_pending_order_with_items_v2");
+    expect(name).toBe("create_pending_order_with_items_v3");
     expect(parameters.p_expected_amount).toBe(amount);
     expect(parameters.p_products_subtotal).toBe(amount);
     expect(parameters.p_shipping_amount).toBe(0);
@@ -1511,6 +1515,12 @@ describe("checkout multítem", () => {
       product_sku: "LEM-REM-001-" + size, product_name: "Remera LEMONT",
       product_size: size, quantity, unit_price: 1000,
     })));
+    expect(parameters).toEqual(expect.objectContaining({
+      p_package_weight_grams: 300,
+      p_package_height_cm: 5,
+      p_package_width_cm: 25,
+      p_package_length_cm: 35,
+    }));
     expect(preferenceCreate.mock.calls[0][0].body).toEqual({
       items: [...lines.map(([size, quantity]) => ({
         title: "Remera LEMONT - Talle " + size, quantity, unit_price: 1000, currency_id: "ARS",

@@ -1,5 +1,23 @@
 # Tareas
 
+## T-022 — MiCorreo shipping import post-pago
+
+**Estado general:** EN PROGRESO.
+
+### T-022.2 — Infraestructura durable
+
+**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA (2026-09-17).
+
+- Migración local 009: una fila `order_shipping_imports` por order, `ext_order_id = orders.external_reference`, estados `not_requested`, `queued`, `processing`, `created`, `retryable`, `unknown` y `failed`, snapshot físico/declared value, leases, reintentos y RLS/grants mínimos.
+- RPC v3 backward-compatible: invoca v2 y crea en la misma transacción el snapshot inicial `not_requested`. RPC 26 y v2 no se eliminan ni redefinen. `declared_value = products_subtotal`, sin shipping.
+- SQL preparado, todavía sin uso del webhook, para `orders pending → paid` y `order_shipping_imports not_requested → queued` atómicos.
+- Claim futuro con `FOR UPDATE SKIP LOCKED`, solo orders pagadas y trabajos `queued` o `retryable` cuyo horario ya venció. Incrementa `attempt_count` y asigna lease. `unknown` nunca es elegible automáticamente.
+- Transiciones `processing → created|retryable|unknown|failed` exigen el token y lease vigentes. Un lease expirado pasa a `unknown`, no a `queued`.
+- Repositorio backend creado, pero no importado por `app.js`, no programado y sin llamadas al provider. No existe worker activo.
+- Verificación local: 402/402 tests, 11 suites, 0 fallos. Las pruebas de concurrencia/RLS son de contrato estático y mocks; no se aplicó SQL a una base real.
+
+**Pendiente:** T-022.1 contractual restante; perfiles físicos reales; mapping Classic/Express en `/shipping/import`; reconciliación práctica de `extOrderId`; provider y worker reales; conexión del webhook; tratamiento financiero de orders legacy sin fila; aplicación controlada de 009; deploy y QA. No llamar `/shipping/import` hasta completar esas etapas.
+
 ## Post-pago UX — success + cleanup seguro
 
 **Estado:** COMPLETADO / DESPLEGADO / VALIDADO EN PRODUCCIÓN (2026-09-17).

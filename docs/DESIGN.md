@@ -1,5 +1,35 @@
 # Diseño técnico
 
+## T-022.2 — outbox durable de shipping import (local, no productivo)
+
+La migración 009 modela el estado financiero y el logístico por separado. Cada order nueva obtiene exactamente una fila `order_shipping_imports`; no existe backfill automático. `ext_order_id` copia `orders.external_reference`, que es `NOT NULL`, `UNIQUE` y no se actualiza en el flujo, evitando generar otro UUID en retries.
+
+```text
+create_pending_order_with_items_v3
+  └─ llama v2: order + order_items + checkout_attempt
+  └─ inserta order_shipping_imports/not_requested
+     └─ ext_order_id + peso/dimensiones + products_subtotal congelados
+
+T-022.5 futuro
+  Mercado Pago approved
+    → RPC: order pending→paid + import not_requested→queued
+    → webhook 200
+
+worker futuro (inactivo)
+  queued | retryable vencido
+    → claim SKIP LOCKED + lease + attempt_count
+    → provider futuro
+    → created | retryable | unknown | failed
+```
+
+Los perfiles provienen de `packageProfiles.js` según la cantidad total, se pasan a v3 y quedan congelados. Los valores siguen siendo 300 g / 5 × 25 × 35 cm TEMPORAL/QA. `declared_value` congela solo `products_subtotal`; excluye shipping.
+
+El claim solo toma una order `paid` en `queued` o `retryable` con `next_attempt_at <= now()`, usa `FOR UPDATE SKIP LOCKED`, incrementa intentos y devuelve snapshot, destinatario y selección logística mínimos. Las transiciones desde `processing` comparan `lease_token` y lease no vencido. Un proceso antiguo recibe cero filas y no puede sobrescribir al nuevo. Expirar un lease produce `unknown`, nunca `queued`, porque el request externo pudo haber sido enviado. `unknown` no participa del claim automático.
+
+La RPC paid+queue está preparada pero no conectada a `markOrderAsPaid`; el repositorio no se importa desde `app.js` y no hay scheduler/worker. T-022.1, Classic/Express, reconciliación real, payload del provider, activación y QA siguen pendientes. RPC 26 y v2 permanecen intactas; el runtime local usa v3 y no es desplegable antes del cutover de 009.
+
+El cutover futuro debe tratar explícitamente las orders `pending` creadas antes de v3 o durante la ventana 009→deploy: por decisión no reciben backfill y, al no tener snapshot logístico, no pueden usar paid+queue. T-022.5 debe conservar una ruta financiera segura para esas orders legacy o eliminar la ventana mediante coordinación operativa, sin fabricar snapshots retrospectivos.
+
 ## Post-pago UX — diseño productivo validado
 
 `GET /success` continúa sirviendo una vista estática y no participa en la confirmación del pago. La página no lee parámetros de retorno ni consulta backend, Mercado Pago o Supabase; `POST /webhook` y `Payment.get` conservan la autoridad sobre `orders.status`.
