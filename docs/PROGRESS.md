@@ -1,5 +1,17 @@
 # Progreso
 
+## 2026-09-18 — T-022.3 provider + mapping local
+
+- **Auditoría independiente Grok: APROBADO CON OBSERVACIONES, sin bloqueantes.** T-022.3 queda IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA.
+- Las correcciones aprobadas cubren validación numérica sin coerción, calendario RFC3339 real, timeout legacy sin regresión, 408 ambiguo y propagación de errores inesperados. Las observaciones no bloqueantes para T-022.4 están registradas en `TASKS.md`.
+
+- Implementados `ShippingImportService` y `MiCorreoProvider.importShipment` sin conectar ejecución productiva.
+- Mapping desde snapshot: HOME `D` con domicilio/provincia normalizada; AGENCY `S` con agency code y sin domicilio; recipient mínimo; declared value y medidas persistidas, sin `getPackageProfile()`.
+- Classic-only temporal. Express se rechaza antes de transporte; `productType`, floor y apartment se omiten hasta resolver contrato/modelo.
+- Éxito exige 2xx + `createdAt` parseable y retorna sólo ese campo. No hay retry logístico interno, sólo renovación única por 401.
+- Tests exclusivamente mock. Sin llamadas externas, SQL, migraciones, worker, webhook, cambios financieros, deploy, commit o push. `/shipping/import` permanece INACTIVO.
+- Pendientes: Classic/Express, perfiles reales, T-022.4, T-022.5, T-022.6, reconciliación de `unknown` y prueba real MiCorreo.
+
 ## 2026-09-17 — cierre productivo de T-022.2
 
 - **T-022: EN PROGRESO. T-022.2: DESPLEGADA / VALIDADA EN PRODUCCIÓN.**

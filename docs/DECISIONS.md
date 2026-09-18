@@ -1,5 +1,18 @@
 # Decisiones técnicas
 
+## T-022.3 — política contractual local (sin número DEC asignado)
+
+**Fecha:** 2026-09-18. **Estado:** IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA.
+
+- Se conserva `ShippingImportService → ShippingProvider → MiCorreoProvider`; worker y transiciones son posteriores.
+- Sólo Classic puede construirse localmente. Express falla con `UNSUPPORTED_SERVICE` y no se asume `classic → CP` ni `express → EP`; se omite `productType` hasta confirmar contrato.
+- `shipping_apartment` no se trunca ni divide: floor/apartment se omiten temporalmente.
+- HOME usa el domicilio de la order; AGENCY usa `shipping_agency_code`. Ambos consumen medidas y declared value congelados.
+- Sólo 2xx + `createdAt` válido confirma creación; resultados inciertos quedan ambiguos para el worker futuro.
+- No se activa llamada, worker, webhook ni transición SQL. Pendientes: contrato, perfiles reales, T-022.4/5/6, reconciliación y prueba real.
+- La auditoría independiente de Grok aprobó con observaciones y sin bloqueantes las validaciones sin coerción, calendario estricto, HTTP 408 ambiguo y timeout separado sólo mediante opt-in de import; los contratos históricos de timeout de token/rates/agencies permanecen intactos.
+- Observaciones para T-022.4: interpretar conservadoramente el fallo de renovación posterior a un POST 401; normalizar de forma explícita un posible `numeric` string en el borde repository/worker; ampliar cobertura de tipos/whitespace; y considerar la exportación de `normalizeProvince` como API interna de riesgo bajo.
+
 ## T-022 — arquitectura durable aprobada (sin número DEC asignado)
 
 **Estado:** T-022 EN PROGRESO; T-022.2 DESPLEGADA / VALIDADA EN PRODUCCIÓN (2026-09-17).

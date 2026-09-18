@@ -1,5 +1,21 @@
 # Diseño técnico
 
+## T-022.3 — importación local no activada
+
+`claim/snapshot → ShippingImportService → ShippingProvider.importShipment → MiCorreoProvider → POST /shipping/import`.
+
+El servicio valida y arma el payload; el provider conoce autenticación, Bearer, timeout, retry único de 401 y clasificación HTTP/transporte. Ninguna pieza modifica SQL. El worker T-022.4 traducirá resultados a `created|retryable|unknown|failed`.
+
+HOME usa `deliveryType: D`, domicilio y `AR-J → J`; no incluye agency. AGENCY usa `deliveryType: S` y `agency = shipping_agency_code`; no incluye domicilio. Ambos usan recipient mínimo y snapshot físico/económico. `shipping_apartment` se omite porque combina piso/departamento y no se separa heurísticamente.
+
+Sólo Classic atraviesa el mapping y el payload omite `productType`; Express retorna `UNSUPPORTED_SERVICE` antes de red. Un éxito exige 2xx y `createdAt` válido. Red, timeout o 5xx luego del POST y 2xx inválido son potencialmente ambiguos y no disparan retry logístico.
+
+El servicio no está enlazado a Express, webhook, repositorio ni entrypoint. No existe worker o polling y `/shipping/import` sigue INACTIVO.
+
+Corrección posterior a auditoría: `declared_value` acepta sólo `number` finito no negativo y el perfil físico sólo enteros positivos; `createdAt` valida componentes de calendario y offset sin depender de la normalización de `Date.parse`. El transporte compartido conserva por defecto `micorreo_network_error`; únicamente import opta por distinguir timeout. HTTP 408 se clasifica `TIMEOUT` ambiguo sin retry. Los errores no tipados se propagan como internos y no se inventa que el POST fue intentado.
+
+La auditoría independiente cerró **APROBADA CON OBSERVACIONES**, sin bloqueantes. Para T-022.4, un fallo al renovar después de un POST 401 debe interpretarse conservadoramente: `requestAttempted: false` sólo describe el retry que no se ejecutó. El borde repository/worker deberá normalizar explícitamente cualquier `numeric` recibido como string antes del servicio. `normalizeProvince` se exporta como API interna reutilizada, con riesgo bajo.
+
 ## T-022.2 — outbox durable desplegado y validado
 
 La migración 009 modela el estado financiero y el logístico por separado. Cada order nueva obtiene exactamente una fila `order_shipping_imports`; no existe backfill automático. `ext_order_id` copia `orders.external_reference`, que es `NOT NULL`, `UNIQUE` y no se actualiza en el flujo, evitando generar otro UUID en retries.
@@ -22,11 +38,11 @@ worker futuro (inactivo)
     → created | retryable | unknown | failed
 ```
 
-Los perfiles provienen de `packageProfiles.js` según la cantidad total, se pasan a v3 y quedan congelados. Los valores siguen siendo 300 g / 5 × 25 × 35 cm TEMPORAL/QA. `declared_value` congela solo `products_subtotal`; excluye shipping.
+**HISTÓRICO T-022.2 / infraestructura:** los perfiles provienen de `packageProfiles.js` según la cantidad total, se pasan a v3 y quedan congelados. Los valores siguen siendo 300 g / 5 × 25 × 35 cm TEMPORAL/QA. `declared_value` congela solo `products_subtotal`; excluye shipping. T-022.3 consume ese snapshot y no vuelve a llamar `getPackageProfile()`.
 
 El claim solo toma una order `paid` en `queued` o `retryable` con `next_attempt_at <= now()`, usa `FOR UPDATE SKIP LOCKED`, incrementa intentos y devuelve snapshot, destinatario y selección logística mínimos. Las transiciones desde `processing` comparan `lease_token` y lease no vencido. Un proceso antiguo recibe cero filas y no puede sobrescribir al nuevo. Expirar un lease produce `unknown`, nunca `queued`, porque el request externo pudo haber sido enviado. `unknown` no participa del claim automático.
 
-La migración 009 está aplicada y el runtime productivo usa v3; RPC 26 y v2 permanecen intactas. El QA PostgreSQL validó atomicidad, rollback, snapshot y state machine hasta claim, y un checkout productivo sin pago confirmó la creación `pending/not_requested`. La RPC paid+queue existe, pero no está conectada a `markOrderAsPaid`; el repositorio no tiene scheduler/worker activo. T-022.1, Classic/Express, reconciliación real, payload del provider y QA del import siguen pendientes.
+**HISTÓRICO T-022.2 / SUPERADO sólo respecto del payload local:** la migración 009 está aplicada y el runtime productivo usa v3; RPC 26 y v2 permanecen intactas. El QA PostgreSQL validó atomicidad, rollback, snapshot y state machine hasta claim, y un checkout productivo sin pago confirmó la creación `pending/not_requested`. La RPC paid+queue existe, pero no está conectada a `markOrderAsPaid`; el repositorio no tiene scheduler/worker activo. Classic/Express, reconciliación real, worker y QA real del import siguen pendientes; el payload local fue implementado después en T-022.3.
 
 T-022.5 debe tratar explícitamente las orders `pending` creadas antes de v3: por decisión no recibieron backfill y, al no tener snapshot logístico, no pueden usar paid+queue. Debe conservarse una ruta financiera segura para esas orders legacy, sin fabricar snapshots retrospectivos. Por este motivo paid+queue no debe conectarse todavía al webhook.
 

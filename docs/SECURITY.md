@@ -1,5 +1,16 @@
 # Seguridad
 
+## T-022.3 — límites de datos y transporte
+
+- `customerId` se toma sólo de configuración backend; nunca de order/frontend y no se registra.
+- El payload contiene correlación estable, recipient mínimo, destino requerido y snapshot físico/económico. No inventa tracking, shipment ID, label, cancelación o webhook.
+- No se loguean payload/response, PII, domicilio, customerId o JWT. La capa nueva no agrega logs.
+- Validaciones permanentes y bloqueo de Express ocurren antes de red. El único retry interno es la renovación ante 401, reutilizando payload/extOrderId.
+- Timeout/red/5xx posteriores al POST y 2xx inválido se marcan ambiguos; no se reintentan automáticamente.
+- No hay endpoint, worker o integración webhook. Todos los tests sustituyen el transporte; no hubo tráfico real.
+- Corrección posterior a auditoría: se eliminaron coerciones de tipos, se valida calendario real, los errores internos no se etiquetan como red y el timeout específico requiere opt-in del import. Token/rates/agencies conservan su error histórico.
+- Auditoría independiente: **APROBADO CON OBSERVACIONES**, sin bloqueantes. T-022.4 debe tratar conservadoramente el historial de un POST que respondió 401 si luego falla la renovación, y normalizar `numeric` exclusivamente en el borde de persistencia con una regla explícita.
+
 ## T-022.2 — seguridad productiva de la infraestructura logística
 
 - `order_shipping_imports` tiene RLS habilitado y cero policies. La migración 009 revoca explícitamente defaults de `PUBLIC`, `anon`, `authenticated` y `service_role`; luego concede a `service_role` solo SELECT, INSERT y UPDATE sobre las columnas operativas. IDs, correlación, perfil, declared value y `created_at` no son actualizables por ese rol.

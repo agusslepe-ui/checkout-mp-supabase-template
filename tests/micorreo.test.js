@@ -253,6 +253,23 @@ describe("T-018 autenticacion interna y provider", () => {
       .rejects.toMatchObject({ type: "micorreo_network_error" });
   });
 
+  test("quoteRates conserva micorreo_network_error ante timeout", async () => {
+    jest.useFakeTimers();
+    const { quoteRates } = load();
+    global.fetch
+      .mockResolvedValueOnce(response(200, {
+        token: "fixture-token", expires: "2026-09-14T13:00:00Z",
+      }))
+      .mockImplementationOnce((url, { signal }) => new Promise((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("private timeout")));
+      }));
+    const result = expect(quoteRates({})).rejects.toMatchObject({
+      type: "micorreo_network_error",
+    });
+    await jest.advanceTimersByTimeAsync(8000);
+    await result;
+  });
+
   test("ShippingService mapea provincia y filtra snapshot público", async () => {
     load();
     const { createShippingService } = require("../src/shipping");

@@ -1,5 +1,13 @@
 # Contexto actual del proyecto
 
+## T-022.3 local — 2026-09-18
+
+**T-022.3 está IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA.** La auditoría independiente de Grok cerró sin bloqueantes. `ShippingImportService` construye el contrato mínimo desde `order_shipping_imports` y `MiCorreoProvider.importShipment` contiene el futuro POST, con validación estricta de `createdAt` y errores tipados. Sólo Classic se admite localmente; Express queda bloqueado y no se asume CP/EP. Piso/departamento combinado se omite sin truncar ni separar. Todo el transporte está mockeado en tests.
+
+Las observaciones bloqueantes de la primera revisión fueron corregidas localmente y la auditoría final las aprobó. Persisten observaciones no bloqueantes para T-022.4 sobre el antecedente de un POST 401 si falla la renovación, normalización explícita de `numeric` en el borde repository/worker, cobertura adicional de tipos/whitespace y la nueva exportación interna de `normalizeProvince`.
+
+Esta capa no está importada por `app.js`, webhook, `shippingImports.js` ni `index.js`. No hay worker, polling, nueva ruta, llamadas reales, modificación SQL, migración, deploy, commit o push. T-022 continúa EN PROGRESO y T-022.2 permanece DESPLEGADA / VALIDADA EN PRODUCCIÓN.
+
 ## Actualización vigente — producción al 2026-09-17
 
 **DEC-022 ACEPTADA. T-017 COMPLETADA / VALIDADA EN PRODUCCIÓN, CON IDEMPOTENCIA DURABLE ACTIVA. T-020 COMPLETADA Y DEC-025 ACEPTADA. T-021 COMPLETADA Y DEC-026 ACEPTADA.**
@@ -32,7 +40,7 @@ Cotización dual items o legacy, resolver común, tope 4 unidades totales, perfi
 
 En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío** y T-021 todavía estaba solo local; ambos estados fueron superados por los cierres productivos posteriores.
 
-> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008/009 aplicadas; runtime v3 desplegado; T-017/T-020/T-021 cerradas y DEC-022/DEC-025/DEC-026 aceptadas. UX post-pago validada. T-022 sigue en progreso: T-022.2 está productiva, pero no existen worker/provider de importación ni integración webhook y `/shipping/import` permanece inactivo. El estado vigente está en `docs/STATUS.md`.
+> **HISTÓRICO / SUPERADO para el provider local.** Resumen al 2026-09-17, anterior a T-022.3. Migraciones 007/008/009 aplicadas; runtime v3 desplegado; T-017/T-020/T-021 cerradas y DEC-022/DEC-025/DEC-026 aceptadas. En ese corte todavía no existía provider local de importación. Hoy siguen sin existir worker/provider productivo ni integración webhook y `/shipping/import` permanece inactivo. El estado vigente está en `docs/STATUS.md`.
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 

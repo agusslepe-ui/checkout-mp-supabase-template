@@ -244,4 +244,5 @@ module.exports = {
   listShippingAgencies,
   createShippingService,
   ShippingService,
+  normalizeProvince,
 };

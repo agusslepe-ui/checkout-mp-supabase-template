@@ -4,6 +4,29 @@
 
 **Estado general:** EN PROGRESO.
 
+### T-022.3 — Provider + mapping para `/shipping/import`
+
+**Estado:** IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA (2026-09-18).
+
+**Cierre de auditoría independiente:** Grok emitió **APROBADO CON OBSERVACIONES**, sin bloqueantes. `declared_value` exige `number` finito no negativo sin coerción; peso/dimensiones exigen enteros positivos; `createdAt` valida formato y calendario real; HTTP 408 es ambiguo; errores inesperados se preservan; y la distinción `TIMEOUT` es opt-in exclusivo del import, manteniendo `micorreo_network_error` para token/rates/agencies.
+
+- `ShippingImportService` valida y mapea el snapshot persistido; no recalcula perfil ni declared value y conserva exactamente `ext_order_id`.
+- HOME genera `deliveryType: D`, domicilio con `city = shipping_locality` y provincia sin prefijo `AR-`; omite agency, piso y departamento. AGENCY genera `deliveryType: S` con sólo el código de agencia y omite el domicilio.
+- `customerId` proviene sólo de configuración backend. Recipient usa nombre completo, email y teléfono. Peso, dimensiones y `declared_value` provienen del snapshot.
+- Política temporal: sólo Classic; Express produce `UNSUPPORTED_SERVICE` antes de red. No se envía `productType` hasta confirmar Classic/Express.
+- El provider contiene el futuro POST, timeout y una única renovación/repetición ante 401. Éxito sólo con 2xx y `createdAt` válido; retorna únicamente `{ createdAt }`.
+- Errores: `VALIDATION`, `UNSUPPORTED_SERVICE`, `AUTH`, `RATE_LIMIT`, `PROVIDER_REJECTED`, `NETWORK`, `TIMEOUT`, `SERVER` y `AMBIGUOUS_RESPONSE`.
+- Sin activación: `app.js`, webhook, `shippingImports.js` e `index.js` no ejecutan el servicio. Tests mockean transporte; sin requests reales, SQL, migración, deploy, commit ni push.
+
+**Pendiente:** confirmar Classic/Express y perfiles reales; worker T-022.4; paid+queue legacy-safe T-022.5; cutover/QA T-022.6; reconciliación de `unknown`; prueba real MiCorreo.
+
+**Observaciones no bloqueantes para T-022.4:**
+
+- Si un POST respondió 401 y luego falla la renovación del token, `requestAttempted: false` describe que el retry no llegó a ejecutarse, pero no significa que nunca hubo un POST. El worker debe conservar ese antecedente y decidir de forma conservadora.
+- PostgreSQL/Supabase puede representar `numeric` como string. El repositorio/worker futuro debe normalizar `declared_value` explícitamente en el borde de persistencia antes de `ShippingImportService`, sin reintroducir coerción genérica dentro del mapping.
+- Cobertura futura deseable: fracciones y strings en dimensiones, whitespace individual en todos los campos HOME y agency code compuesto sólo por whitespace.
+- `normalizeProvince` ahora se exporta desde `shipping.js`; es una ampliación de API interna de riesgo bajo.
+
 ### T-022.2 — Infraestructura durable
 
 **Estado:** DESPLEGADA / VALIDADA EN PRODUCCIÓN (2026-09-17).

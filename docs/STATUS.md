@@ -1,16 +1,17 @@
 # Estado vigente del proyecto
 
-**Última actualización:** 2026-09-17
+**Última actualización:** 2026-09-18
 
 Este archivo resume el estado real vigente. Los bloques históricos de otros documentos que describan T-017 sin desplegar, las migraciones 007/008 sin aplicar, producción en runtime T-021, T-020 sin paid QA o T-021 pendiente deben leerse como antecedentes superados por este corte.
 
 ## T-022 — estado productivo vigente
 
 - **T-022: EN PROGRESO.**
+- **T-022.3: IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA** (2026-09-18). La auditoría independiente de Grok cerró sin bloqueantes. Existe mapping validado desde el snapshot durable y `MiCorreoProvider.importShipment`, con transporte mockeado en tests. `declared_value`/dimensiones tienen validación estricta, `createdAt` valida calendario real, token/rates/agencies preservan su timeout histórico e import distingue `TIMEOUT`. Classic es el único servicio admitido localmente; Express se bloquea antes de red y no se envía `productType` hasta confirmar el contrato.
 - **T-022.2: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-17). La migración 009 y el runtime v3 fueron desplegados en ese orden. Un checkout productivo real sin pago creó order `pending`, `order_items`, `checkout_attempt` y `order_shipping_imports/not_requested`, y llegó correctamente a Mercado Pago.
 - **Migración 009: APLICADA EN PRODUCCIÓN.** Existen RPC 26, v2, v3, paid+queue, claim y transiciones/recovery. RPC 26 y v2 permanecen disponibles. El QA PostgreSQL real validó atomicidad y rollback sin residuos, snapshot 300/5/25/35, `declared_value = products_subtotal`, `ext_order_id = orders.external_reference` y la secuencia `pending+not_requested → paid+queued → processing+lease`, sin llamar MiCorreo.
 - RLS, ausencia de policies públicas, denegación a `anon`/`authenticated`, EXECUTE exclusivo de `service_role` y UPDATE limitado a las nueve columnas operativas fueron verificados en producción. No hubo backfill: la tabla quedó inicialmente con cero filas.
-- **`POST /shipping/import` continúa INACTIVO.** No existe provider real de importación ni worker productivo; no se crean envíos reales. El webhook tampoco usa paid+queue todavía.
+- **`POST /shipping/import` continúa INACTIVO.** La operación del provider existe sólo como código local no conectado. No existe worker productivo, ninguna ruta ni webhook la invoca y no se crean envíos reales. El webhook tampoco usa paid+queue todavía.
 
 ## Producción
 
@@ -42,7 +43,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 - Sustituir los perfiles TEMPORAL/QA de `300 g / 5 × 25 × 35 cm` por medidas reales y repetir QA.
 - T-022.1: cerrar el contrato restante, incluido Classic/Express y la reconciliación práctica por `extOrderId`.
-- Completar T-022: provider real, worker activo, retries/reconciliación, manejo legacy-safe e integración del webhook con la RPC atómica; después desplegar y validar MiCorreo `POST /shipping/import`.
+- Completar T-022: confirmar Classic/Express y perfiles físicos reales; implementar worker T-022.4; resolver paid+queue legacy-safe T-022.5; ejecutar cutover/QA T-022.6; definir reconciliación real de `unknown`; y realizar una prueba real controlada de MiCorreo.
 - Implementar catálogo y stock reales desde Supabase, con imágenes y descripciones dinámicas.
 - Completar el hardening comercial: restaurar el precio definitivo, rotar credenciales privadas previamente expuestas, ejecutar la auditoría npm y abordar dominio definitivo, frontend final y SEO.
 
