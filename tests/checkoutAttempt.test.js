@@ -322,8 +322,8 @@ describe("cutover backward-compatible de orders", () => {
 
     expect(start).toBeGreaterThan(-1);
     expect(markOrderSource).toMatch(/\.from\("orders"\)/);
-    expect(markOrderSource).toMatch(/status:\s*"paid"/);
-    expect(markOrderSource).toMatch(/\.eq\("status",\s*"pending"\)/);
+    expect(markOrderSource).toMatch(/\.rpc\("mark_order_paid_and_queue_shipping_import_v2"/);
+    expect(markOrderSource).not.toMatch(/\.from\("orders"\)[\s\S]*?\.update\(/);
     expect(markOrderSource).toMatch(/importesCoinciden\(transaction_amount, order\.amount\)/);
   });
 });

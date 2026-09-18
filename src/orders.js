@@ -137,17 +137,16 @@ async function markOrderAsPaid({
     return null;
   }
 
+  const updatedAt = new Date().toISOString();
   const { data: updatedOrder, error } = await supabase
-    .from("orders")
-    .update({
-      status: "paid",
-      mercadopago_payment_id,
-      mercadopago_status,
-      updated_at: new Date().toISOString(),
+    .rpc("mark_order_paid_and_queue_shipping_import_v2", {
+      p_external_reference: external_reference,
+      p_mercadopago_payment_id: mercadopago_payment_id,
+      p_mercadopago_status: mercadopago_status,
+      p_transaction_amount: transaction_amount,
+      p_currency: currency_id,
+      p_updated_at: updatedAt,
     })
-    .eq("external_reference", external_reference)
-    .eq("status", "pending")
-    .select()
     .maybeSingle();
 
   if (error) {
@@ -157,6 +156,21 @@ async function markOrderAsPaid({
   if (!updatedOrder) {
     log("info", "webhook duplicado ignorado", logContext);
     return null;
+  }
+
+  const hasValidOrderId =
+    (typeof updatedOrder.order_id === "number" &&
+      Number.isSafeInteger(updatedOrder.order_id) &&
+      updatedOrder.order_id > 0) ||
+    (typeof updatedOrder.order_id === "string" &&
+      /^[1-9][0-9]*$/.test(updatedOrder.order_id));
+
+  if (
+    !hasValidOrderId ||
+    updatedOrder.status !== "paid" ||
+    typeof updatedOrder.shipping_queued !== "boolean"
+  ) {
+    throw new Error("invalid paid order RPC response");
   }
 
   return updatedOrder;

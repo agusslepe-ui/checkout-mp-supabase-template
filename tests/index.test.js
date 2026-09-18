@@ -365,7 +365,10 @@ function loadApp({
       return result;
     }),
     findOrder: jest.fn(supabase.findOrder || (async () => ({ data: { status: "pending", amount: 100, currency: "ARS" }, error: null }))),
-    updateOrder: jest.fn(supabase.updateOrder || (async () => ({ data: { status: "paid" }, error: null }))),
+    updateOrder: jest.fn(supabase.updateOrder || (async () => ({
+      data: { order_id: 1, status: "paid", shipping_queued: true },
+      error: null,
+    }))),
   };
   const QueryBuilder = createQueryBuilder(supabaseMock);
   const checkoutAttemptsMock = {
@@ -434,11 +437,23 @@ function loadApp({
   jest.doMock("@supabase/supabase-js", () => ({
     createClient: jest.fn(() => ({
       from: jest.fn(() => new QueryBuilder()),
-      rpc: jest.fn((functionName, parameters) => ({
-        single: jest.fn(() =>
-          supabaseMock.createPendingOrderRpc(functionName, parameters)
-        ),
-      })),
+      rpc: jest.fn((functionName, parameters) => {
+        if (functionName === "create_pending_order_with_items_v3") {
+          return {
+            single: jest.fn(() =>
+              supabaseMock.createPendingOrderRpc(functionName, parameters)
+            ),
+          };
+        }
+
+        if (functionName === "mark_order_paid_and_queue_shipping_import_v2") {
+          return {
+            maybeSingle: jest.fn(() => supabaseMock.updateOrder(parameters)),
+          };
+        }
+
+        throw new Error(`Unexpected RPC in test double: ${functionName}`);
+      }),
     })),
   }));
   jest.doMock("../src/checkoutAttempts", () => checkoutAttemptsMock);
@@ -3763,20 +3778,15 @@ describe("webhook de pagos", () => {
 
     expect(response.statusCode).toBe(200);
     expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(1);
-    const [filters, payload] = supabaseMock.updateOrder.mock.calls[0];
-    expect(filters).toEqual(
-      expect.arrayContaining([
-        ["external_reference", "ORDERTEST"],
-        ["status", "pending"],
-      ])
-    );
-    expect(payload).toEqual(
-      expect.objectContaining({
-        status: "paid",
-        mercadopago_payment_id: "PAYMENTTEST",
-        mercadopago_status: "approved",
-      })
-    );
+    const [parameters] = supabaseMock.updateOrder.mock.calls[0];
+    expect(parameters).toEqual(expect.objectContaining({
+      p_external_reference: "ORDERTEST",
+      p_mercadopago_payment_id: "PAYMENTTEST",
+      p_mercadopago_status: "approved",
+      p_transaction_amount: 100,
+      p_currency: "ARS",
+      p_updated_at: expect.any(String),
+    }));
   });
 
   test("marca como paid un importe equivalente con decimal normalizado", async () => {
@@ -3798,6 +3808,44 @@ describe("webhook de pagos", () => {
     await routes.post["/webhook"](makeWebhookRequest({ headers: validHeaders() }), createResponse());
 
     expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(1);
+  });
+
+  test("shipping_queued false sigue siendo una confirmación financiera exitosa", async () => {
+    const { routes, supabaseMock } = loadApp({
+      mercadoPago: {
+        paymentGet: async () => ({
+          id: "PAYMENTTEST",
+          status: "approved",
+          transaction_amount: 100,
+          currency_id: "ARS",
+          external_reference: "ORDERTEST",
+        }),
+      },
+      supabase: {
+        updateOrder: async () => ({
+          data: { order_id: 1, status: "paid", shipping_queued: false },
+          error: null,
+        }),
+      },
+    });
+    const response = createResponse();
+
+    await routes.post["/webhook"](
+      makeWebhookRequest({ headers: validHeaders() }),
+      response
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(supabaseMock.updateOrder).toHaveBeenCalledTimes(1);
+    expect(parseLogEntries(logSpy, warnSpy, errorSpy)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "info",
+          event: "pedido actualizado a pagado",
+          order_status: "paid",
+        }),
+      ])
+    );
   });
 
   test("webhook acepta el total persistido de productos más shipping", async () => {
@@ -3975,13 +4023,14 @@ describe("webhook de pagos", () => {
           await bothReadsStarted;
           return { data: { status: "pending", amount: 100 }, error: null };
         },
-        updateOrder: async (filters) => {
-          const hasPendingCondition = filters.some(([field, value]) => field === "status" && value === "pending");
-
-          if (hasPendingCondition && sharedStatus === "pending") {
+        updateOrder: async () => {
+          if (sharedStatus === "pending") {
             sharedStatus = "paid";
             successfulUpdates += 1;
-            return { data: { status: "paid" }, error: null };
+            return {
+              data: { order_id: 1, status: "paid", shipping_queued: true },
+              error: null,
+            };
           }
 
           return { data: null, error: null };

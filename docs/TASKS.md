@@ -1,12 +1,24 @@
 # Tareas
 
+## T-022.5 — Paid + queue legacy-safe (estado vigente)
+
+**Estado: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18).
+
+- Migración aditiva 010 propuesta, no aplicada: conserva la RPC anterior y agrega `mark_order_paid_and_queue_shipping_import_v2`.
+- La RPC bloquea la order, valida estado/importe/moneda y ejecuta una sola transición `pending → paid`. Si existe snapshot `not_requested`, lo mueve a `queued` en la misma transacción.
+- Una order legacy sin snapshot, o con snapshot en otro estado, queda `paid` y retorna `shipping_queued=false`; no se crea ni reconstruye trabajo logístico.
+- El webhook usa localmente la RPC nueva mediante `markOrderAsPaid`; duplicados siguen siendo no-op y los errores RPC continúan como indisponibilidad controlada.
+- T-022.4 está desplegada como worker inactivo/no activado. `/shipping/import` continúa inactivo.
+
+**Pendiente:** revisión/aplicación autorizada de 010; QA PostgreSQL real de atomicidad y concurrencia; T-022.6/activación controlada; Classic/Express; perfiles físicos reales; reconciliación de `unknown`; prueba real MiCorreo.
+
 ## T-022 — MiCorreo shipping import post-pago
 
 **Estado general:** EN PROGRESO.
 
 ### T-022.4 — Worker durable para shipping import
 
-**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA (2026-09-18).
+**Estado:** DESPLEGADA COMO WORKER INACTIVO / NO ACTIVADO (2026-09-18).
 
 - `processNextShippingImport()` genera UUID de lease, reclama como máximo un trabajo, normaliza el snapshot, invoca una sola vez `ShippingImportService` y persiste una única salida holder-only.
 - Lease documentada de 60 segundos. Una transición sin fila devuelve `lease_lost` y no intenta una segunda transición. Los errores del RPC final se propagan para que la expiración SQL futura lleve el trabajo a `unknown`.

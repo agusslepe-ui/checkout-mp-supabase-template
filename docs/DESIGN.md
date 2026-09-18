@@ -1,6 +1,14 @@
 # Diseño técnico
 
-## T-022.4 — worker durable local no activado
+## T-022.5 — paid + queue legacy-safe local
+
+`mark_order_paid_and_queue_shipping_import_v2` es una RPC aditiva propuesta por la migración 010. Bajo un lock `FOR UPDATE` de la order, revalida que siga `pending` y que moneda/importe coincidan. Después persiste `paid` y, si existe el snapshot elegible, ejecuta `not_requested → queued` en la misma transacción.
+
+La cola es subordinada al pago. Su actualización vive en un subbloque PL/pgSQL: snapshot ausente, snapshot `queued`/`processing` u otra anomalía logística producen `shipping_queued=false` sin inventar filas y sin revertir la confirmación financiera. La respuesta mínima no contiene PII: `order_id`, `status`, `shipping_queued`.
+
+Dos webhooks simultáneos se serializan en PostgreSQL; sólo el primero puede observar `pending`. La RPC anterior queda preservada para un cutover reversible. Esta garantía todavía es de diseño y tests estáticos: migración 010 no aplicada y QA PostgreSQL real pendiente. El worker sigue inactivo y no llama `/shipping/import`.
+
+## T-022.4 — worker durable desplegado y no activado
 
 ```text
 processNextShippingImport (máximo una fila)

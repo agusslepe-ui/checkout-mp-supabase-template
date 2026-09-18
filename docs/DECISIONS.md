@@ -1,8 +1,19 @@
 # Decisiones técnicas
 
+## T-022.5 — pago autoritativo y cola logística opcional
+
+**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA (2026-09-18).
+
+- Se adopta una RPC v2 aditiva en migración 010; la función de 009 se preserva durante el cutover.
+- La confirmación financiera es autoritativa: una order válida pasa de `pending` a `paid` aunque falte el snapshot o éste no esté en `not_requested`.
+- Cuando el snapshot elegible existe, `paid + queued` comparte transacción. La cola se intenta después del pago en un subbloque para que una excepción logística no revierta la confirmación.
+- No hay backfill ni reconstrucción. `shipping_queued=false` representa legacy, estado logístico no elegible o anomalía; no convierte el pago en fallo.
+- PostgreSQL serializa webhooks concurrentes con `FOR UPDATE`; Node conserva las comparaciones previas y consume el resultado mínimo de la RPC.
+- La migración 010 no está aplicada. Quedan pendientes QA PostgreSQL real, T-022.6/activación, Classic/Express, perfiles reales, reconciliación de `unknown` y prueba real MiCorreo.
+
 ## T-022.4 — política del worker durable local
 
-**Fecha:** 2026-09-18. **Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.
+**Fecha:** 2026-09-18. **Estado:** DESPLEGADA COMO WORKER INACTIVO / NO ACTIVADO.
 
 - Una invocación procesa como máximo un claim. La DB/RPC mantiene la exclusión concurrente; Node no agrega locks.
 - Lease 60 s; backoff determinista 1/5/15 min; máximo cuatro attempts. Sin jitter por ahora.

@@ -1,13 +1,21 @@
 # Progreso
 
-## 2026-09-18 — T-022.4 worker durable local
+## 2026-09-18 — T-022.5 paid + queue legacy-safe local
+
+- **T-022.5: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** Se agregó la propuesta de migración 010 con una RPC v2 aditiva y se conectó `markOrderAsPaid` localmente.
+- El pago válido ya no depende de que exista un snapshot logístico. Con snapshot `not_requested`, `paid + queued` ocurre en la misma transacción; sin snapshot o con otro estado, queda `paid` y `shipping_queued=false`.
+- La order se bloquea con `FOR UPDATE`; importe, moneda y estado se vuelven a validar en PostgreSQL. Los duplicados no repiten la transición ni la cola.
+- La RPC anterior permanece disponible. La nueva es `SECURITY INVOKER`, fija `search_path` y limita `EXECUTE` a `service_role`.
+- Migración 010 no aplicada; concurrencia/atomicidad aún requieren QA PostgreSQL real. Worker y `/shipping/import` continúan inactivos. Sin requests reales, commit, push o deploy.
+
+## 2026-09-18 — T-022.4 worker durable desplegado e inactivo
 
 - Implementado módulo invocable de una iteración; idle, created, retryable, unknown, failed y lease_lost, sin activación automática.
 - Lease 60 s; backoff determinista 1/5/15 min; cuarto attempt falla. Normalización decimal canónica en el borde y `attempt_count` del claim sin incrementarlo en Node.
 - AUTH inicial previo al POST es retryable; fallo de renovación tras POST 401 y segundo POST 401 son unknown. Red, timeout, HTTP 408, server y respuesta ambigua posteriores al POST también son unknown.
 - Hardening final: expiración tolera respuesta `null` como cero filas; arrays se validan y tipos inesperados fallan. Se ampliaron regresiones de tipos, fracciones y whitespace.
 - Expiración de leases es una función separada que sólo llama la RPC de 009. Concurrencia permanece bajo autoridad DB/RPC, sin locks Node.
-- 528/528 tests, 14 suites. Sin requests reales, SQL, migración, webhook, flujo financiero, timer, commit, push o deploy. Worker y `/shipping/import` siguen INACTIVOS productivamente.
+- En este corte T-022.4 está desplegada como capa inactiva: sin timer, scheduler ni caller productivo. `/shipping/import` sigue INACTIVO productivamente.
 
 ## 2026-09-18 — T-022.3 provider + mapping local
 

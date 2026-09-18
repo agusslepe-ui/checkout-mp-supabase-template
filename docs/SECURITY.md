@@ -1,6 +1,13 @@
 # Seguridad
 
-## T-022.4 — worker local no activado
+## T-022.5 — prioridad financiera y privilegios mínimos
+
+- La RPC v2 propuesta es `SECURITY INVOKER`, usa `search_path = pg_catalog, public` y revoca `EXECUTE` a `public`, `anon` y `authenticated`; sólo `service_role` recibe ejecución.
+- No se agregan grants de tablas. La RPC retorna sólo `order_id`, estado financiero y `shipping_queued`; no expone PII ni el snapshot.
+- El lock y las condiciones de estado quedan en PostgreSQL. La ausencia o anomalía logística no impide registrar un pago válido; tampoco crea snapshots tardíos ni muta trabajos que no estén `not_requested`.
+- Migración 010 pendiente de aplicación y QA PostgreSQL real. Worker y `/shipping/import` permanecen inactivos.
+
+## T-022.4 — worker desplegado no activado
 
 - Sólo retorna outcome, order ID y attempt count; nunca snapshot, PII, extOrderId, payload, body o secretos.
 - No agrega logs. Los códigos persistidos son allowlisted/cortos (`auth`, `timeout`, `internal_error`, etc.), sin stack ni mensaje externo.
