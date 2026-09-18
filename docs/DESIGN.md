@@ -1,6 +1,6 @@
 # Diseño técnico
 
-## T-022.2 — outbox durable de shipping import (local, no productivo)
+## T-022.2 — outbox durable desplegado y validado
 
 La migración 009 modela el estado financiero y el logístico por separado. Cada order nueva obtiene exactamente una fila `order_shipping_imports`; no existe backfill automático. `ext_order_id` copia `orders.external_reference`, que es `NOT NULL`, `UNIQUE` y no se actualiza en el flujo, evitando generar otro UUID en retries.
 
@@ -26,9 +26,11 @@ Los perfiles provienen de `packageProfiles.js` según la cantidad total, se pasa
 
 El claim solo toma una order `paid` en `queued` o `retryable` con `next_attempt_at <= now()`, usa `FOR UPDATE SKIP LOCKED`, incrementa intentos y devuelve snapshot, destinatario y selección logística mínimos. Las transiciones desde `processing` comparan `lease_token` y lease no vencido. Un proceso antiguo recibe cero filas y no puede sobrescribir al nuevo. Expirar un lease produce `unknown`, nunca `queued`, porque el request externo pudo haber sido enviado. `unknown` no participa del claim automático.
 
-La RPC paid+queue está preparada pero no conectada a `markOrderAsPaid`; el repositorio no se importa desde `app.js` y no hay scheduler/worker. T-022.1, Classic/Express, reconciliación real, payload del provider, activación y QA siguen pendientes. RPC 26 y v2 permanecen intactas; el runtime local usa v3 y no es desplegable antes del cutover de 009.
+La migración 009 está aplicada y el runtime productivo usa v3; RPC 26 y v2 permanecen intactas. El QA PostgreSQL validó atomicidad, rollback, snapshot y state machine hasta claim, y un checkout productivo sin pago confirmó la creación `pending/not_requested`. La RPC paid+queue existe, pero no está conectada a `markOrderAsPaid`; el repositorio no tiene scheduler/worker activo. T-022.1, Classic/Express, reconciliación real, payload del provider y QA del import siguen pendientes.
 
-El cutover futuro debe tratar explícitamente las orders `pending` creadas antes de v3 o durante la ventana 009→deploy: por decisión no reciben backfill y, al no tener snapshot logístico, no pueden usar paid+queue. T-022.5 debe conservar una ruta financiera segura para esas orders legacy o eliminar la ventana mediante coordinación operativa, sin fabricar snapshots retrospectivos.
+T-022.5 debe tratar explícitamente las orders `pending` creadas antes de v3: por decisión no recibieron backfill y, al no tener snapshot logístico, no pueden usar paid+queue. Debe conservarse una ruta financiera segura para esas orders legacy, sin fabricar snapshots retrospectivos. Por este motivo paid+queue no debe conectarse todavía al webhook.
+
+El despliegue de esta infraestructura no activa `/shipping/import`: no existe provider real de importación, worker, retries externos ni reconciliación operativa de `unknown`, y no se crean envíos en MiCorreo.
 
 ## Post-pago UX — diseño productivo validado
 
@@ -301,7 +303,7 @@ Antes de procesar, el webhook valida HMAC-SHA256. No recalcula precios del catá
 
 ## Persistencia
 
-La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio implementado es a `paid`. Las migraciones 001–004 definen pedidos, variantes, cliente/entrega, `order_items` y la RPC atómica; la 005 aplicada agrega subtotal, envío y snapshot HOME. La 006 está aplicada en producción: las columnas nullable `shipping_agency_*` existen y T-021 persiste el snapshot autoritativo para AGENCY sin completar pedidos históricos. Las migraciones 007 y 008 también están aplicadas; agregan `checkout_attempts`, RPC v2, claim y hardening reproducible de privilegios. El runtime productivo crea mediante RPC v2, mientras RPC 26 permanece temporalmente disponible para rollback. Los pedidos nuevos guardan cliente, destino y uno o más items; durante la transición, el primer item también completa las columnas legacy de producto en `orders`. La transición `pending → paid` permanece atómica e idempotente mediante `UPDATE WHERE status = 'pending'` (T-003, DEC-010).
+La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio financiero implementado es a `paid`. Las migraciones 001–004 definen pedidos, variantes, cliente/entrega, `order_items` y la RPC atómica; la 005 aplicada agrega subtotal, envío y snapshot HOME. La 006 está aplicada en producción: las columnas nullable `shipping_agency_*` existen y T-021 persiste el snapshot autoritativo para AGENCY sin completar pedidos históricos. Las migraciones 007 y 008 agregan `checkout_attempts`, RPC v2, claim y hardening reproducible de privilegios. La 009 también está aplicada: agrega el outbox logístico y RPC v3, que es la usada por el checkout productivo y envuelve v2; RPC 26 y v2 permanecen disponibles. Los pedidos nuevos guardan cliente, destino, uno o más items y el snapshot logístico `not_requested`; durante la transición, el primer item también completa las columnas legacy de producto en `orders`. El webhook conserva por ahora la transición `pending → paid` existente; paid+queue no está conectado hasta resolver el caso legacy-safe de T-022.5.
 
 ## Flujo de compra con entrega
 

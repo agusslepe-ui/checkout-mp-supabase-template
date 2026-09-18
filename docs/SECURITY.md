@@ -1,15 +1,15 @@
 # Seguridad
 
-## T-022.2 — seguridad de la infraestructura logística local
+## T-022.2 — seguridad productiva de la infraestructura logística
 
 - `order_shipping_imports` tiene RLS habilitado y cero policies. La migración 009 revoca explícitamente defaults de `PUBLIC`, `anon`, `authenticated` y `service_role`; luego concede a `service_role` solo SELECT, INSERT y UPDATE sobre las columnas operativas. IDs, correlación, perfil, declared value y `created_at` no son actualizables por ese rol.
 - Todas las RPC nuevas son `SECURITY INVOKER`, fijan `search_path = pg_catalog, public`, revocan ejecución amplia y conceden EXECUTE solo a `service_role`.
 - El claim usa bloqueo de fila y lease. Toda finalización exige order, estado `processing`, token coincidente y lease vigente; un worker obsoleto no puede escribir. Lease expirado pasa a `unknown` para evitar un retry ciego potencialmente duplicado.
 - El snapshot copia PII de entrega solo al devolver un claim backend; la tabla logística persiste exclusivamente correlación, perfil, valor declarado y estado operativo. No expone endpoint público ni datos al navegador.
 - La RPC paid+queue evita separar la confirmación financiera de la creación del trabajo. Aún no está conectada al webhook: no se alteró la autoridad de Mercado Pago ni se activó logística.
-- 009 no se aplicó y los tests SQL son estáticos/mocks; grants, RLS, locks y carreras requieren verificación real controlada antes de producción.
-- Riesgo de cutover pendiente: una order legacy `pending` no tiene fila logística porque no hay backfill. T-022.5 debe permitir confirmar financieramente esos pagos sin inventar un snapshot, y coordinar 009→runtime v3 para minimizar nuevas orders sin fila.
-- No se llamó `/shipping/import`, no se usaron credenciales ni red real y no existe worker activo. Classic/Express y reconciliación quedan bloqueados hasta cerrar T-022.1.
+- La verificación productiva confirmó 009 aplicada, cero policies públicas, denegación a `anon`/`authenticated`, grants columna por columna, EXECUTE exclusivo de `service_role`, claim/lease y rollback transaccional real. No hubo backfill.
+- Riesgo pendiente: una order legacy `pending` no tiene fila logística porque no hubo backfill. T-022.5 debe permitir confirmar financieramente esos pagos sin inventar un snapshot; hasta entonces paid+queue no debe conectarse al webhook.
+- `/shipping/import` permanece INACTIVO y no existe worker/provider productivo. Classic/Express, retries externos y reconciliación de `unknown` quedan bloqueados hasta sus tareas posteriores.
 
 ## Post-pago UX — cleanup frontend no autoritativo
 

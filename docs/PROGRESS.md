@@ -1,8 +1,20 @@
 # Progreso
 
-## 2026-09-17 — T-022.2 infraestructura durable implementada localmente
+## 2026-09-17 — cierre productivo de T-022.2
 
-- **T-022: EN PROGRESO. T-022.2: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.**
+- **T-022: EN PROGRESO. T-022.2: DESPLEGADA / VALIDADA EN PRODUCCIÓN.**
+- Migración 009 aplicada correctamente; existen RPC 26, v2, v3, paid+queue, claim y transiciones/recovery. RPC 26 y v2 permanecen disponibles.
+- Seguridad verificada: RLS activa, cero policies públicas, `anon`/`authenticated` sin acceso, EXECUTE de RPC solo para `service_role`; tabla con SELECT/INSERT y UPDATE limitado a `state`, `attempt_count`, leases, scheduling, timestamps/resultados y error. El snapshot no es actualizable.
+- No hubo backfill: `order_shipping_imports` comenzó con cero filas.
+- QA PostgreSQL transaccional real: v3 creó order, items, attempt e import atómicamente; snapshot 300/5/25/35, declared value igual al subtotal y estado `not_requested`; rollback completo sin residuos.
+- QA real de state machine: `pending+not_requested → paid+queued → processing+lease`; se validaron intentos, token, expiración, snapshot del claim y rollback, sin llamada a MiCorreo.
+- Runtime v3 desplegado después de 009. Un checkout productivo real sin pago creó order `pending` + import `not_requested`, correlación correcta y llegó a Mercado Pago.
+- `/shipping/import` continúa INACTIVO: no hay provider/worker productivos, retries externos, reconciliación de `unknown` ni creación real de envíos. El webhook aún no usa paid+queue.
+- Riesgo reservado a T-022.5: paid+queue exige snapshot y no puede conectarse al webhook hasta resolver orders legacy sin fila sin bloquear su transición financiera a `paid`.
+
+## 2026-09-17 — HISTÓRICO: T-022.2 implementada localmente antes del cutover
+
+- **Estado de ese corte:** T-022 EN PROGRESO; T-022.2 IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA. Este estado fue superado por el cierre productivo registrado arriba.
 - Nueva migración 009, no aplicada: tabla `order_shipping_imports`, snapshot físico y `declared_value = products_subtotal`, estados logísticos independientes, RLS y grants explícitos.
 - Nueva RPC v3 envuelve la v2 para crear order/items/checkout attempt/import en una transacción. Conserva RPC 26 y v2. `ext_order_id` reutiliza el `external_reference` único e inmutable.
 - Preparadas RPC de paid+queue atómica, claim con `SKIP LOCKED`, finalizaciones holder-only y expiración segura `processing → unknown`.

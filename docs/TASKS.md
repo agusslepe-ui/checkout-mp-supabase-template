@@ -6,17 +6,22 @@
 
 ### T-022.2 — Infraestructura durable
 
-**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA (2026-09-17).
+**Estado:** DESPLEGADA / VALIDADA EN PRODUCCIÓN (2026-09-17).
 
-- Migración local 009: una fila `order_shipping_imports` por order, `ext_order_id = orders.external_reference`, estados `not_requested`, `queued`, `processing`, `created`, `retryable`, `unknown` y `failed`, snapshot físico/declared value, leases, reintentos y RLS/grants mínimos.
+- Migración 009 aplicada en producción: una fila `order_shipping_imports` por order, `ext_order_id = orders.external_reference`, estados `not_requested`, `queued`, `processing`, `created`, `retryable`, `unknown` y `failed`, snapshot físico/declared value, leases, reintentos y RLS/grants mínimos.
 - RPC v3 backward-compatible: invoca v2 y crea en la misma transacción el snapshot inicial `not_requested`. RPC 26 y v2 no se eliminan ni redefinen. `declared_value = products_subtotal`, sin shipping.
 - SQL preparado, todavía sin uso del webhook, para `orders pending → paid` y `order_shipping_imports not_requested → queued` atómicos.
 - Claim futuro con `FOR UPDATE SKIP LOCKED`, solo orders pagadas y trabajos `queued` o `retryable` cuyo horario ya venció. Incrementa `attempt_count` y asigna lease. `unknown` nunca es elegible automáticamente.
 - Transiciones `processing → created|retryable|unknown|failed` exigen el token y lease vigentes. Un lease expirado pasa a `unknown`, no a `queued`.
-- Repositorio backend creado, pero no importado por `app.js`, no programado y sin llamadas al provider. No existe worker activo.
-- Verificación local: 402/402 tests, 11 suites, 0 fallos. Las pruebas de concurrencia/RLS son de contrato estático y mocks; no se aplicó SQL a una base real.
+- Runtime v3 desplegado después de aplicar 009. Un checkout productivo real sin pago creó una order `pending` y su fila `not_requested` con snapshot 300/5/25/35, declared value correcto y ext order id coincidente; el checkout llegó a Mercado Pago.
+- QA PostgreSQL real: creación v3 y rollback atómicos; paid+queue y claim validados hasta `processing`, incluidos `attempt_count`, token, vencimiento y payload de snapshot. Sin llamada a MiCorreo.
+- Seguridad productiva verificada: RLS activa, cero policies públicas, sin acceso `anon`/`authenticated`, EXECUTE de RPC solo `service_role`, SELECT/INSERT y UPDATE exclusivo sobre las nueve columnas operativas. No hubo backfill; la tabla comenzó vacía.
+- Repositorio backend creado, pero no conectado a un worker ni al webhook. No existe worker activo ni provider real de importación.
+- Verificación local previa al cutover: 402/402 tests, 11 suites, 0 fallos; en ese momento las pruebas de concurrencia/RLS eran estáticas y no se había aplicado SQL. La evidencia PostgreSQL productiva posterior está registrada arriba.
 
-**Pendiente:** T-022.1 contractual restante; perfiles físicos reales; mapping Classic/Express en `/shipping/import`; reconciliación práctica de `extOrderId`; provider y worker reales; conexión del webhook; tratamiento financiero de orders legacy sin fila; aplicación controlada de 009; deploy y QA. No llamar `/shipping/import` hasta completar esas etapas.
+**Pendiente:** T-022.1 contractual restante; perfiles físicos reales; mapping Classic/Express en `/shipping/import`; reconciliación de `unknown`/`extOrderId`; provider, retries y worker reales; conexión del webhook; tratamiento financiero de orders legacy sin fila; deploy y QA del import real. No llamar `/shipping/import` hasta completar esas etapas.
+
+**Riesgo vigente para T-022.5:** `mark_order_paid_and_queue_shipping_import` exige snapshot. No debe conectarse todavía al webhook porque una order legacy sin fila logística podría impedir su transición financiera a `paid`.
 
 ## Post-pago UX — success + cleanup seguro
 

@@ -8,7 +8,7 @@ Las migraciones 007 y 008 están aplicadas en producción. Se verificaron `check
 
 La migración 006 también está aplicada en producción. Las columnas `shipping_agency_*` existen y T-021/DEC-026 están productivas y cerradas.
 
-El runtime T-017 fue desplegado en EasyPanel y usa v2. El QA real confirmó que el mismo intento/intención reutiliza la misma `checkout_attempt`, order y preferencia Mercado Pago; una intención distinta genera un nuevo intento, orden y preferencia; doble clic y retry normal no generaron una orden duplicada. El hardening READY + order `paid` también fue desplegado y validado con una `checkout_attempt` real: el request con la intención original completa devolvió HTTP 409 `checkout_attempt_already_paid`, no redirigió, no creó order/preference y mantuvo el attempt en `ready` y la order en `paid`. T-017 queda COMPLETADA / VALIDADA EN PRODUCCIÓN.
+El runtime T-017 fue desplegado en EasyPanel y conserva su semántica v2; desde el cutover T-022.2 el checkout llama v3, que envuelve v2 y agrega el snapshot logístico. El QA real confirmó que el mismo intento/intención reutiliza la misma `checkout_attempt`, order y preferencia Mercado Pago; una intención distinta genera un nuevo intento, orden y preferencia; doble clic y retry normal no generaron una orden duplicada. El hardening READY + order `paid` también fue desplegado y validado con una `checkout_attempt` real: el request con la intención original completa devolvió HTTP 409 `checkout_attempt_already_paid`, no redirigió, no creó order/preference y mantuvo el attempt en `ready` y la order en `paid`. T-017 queda COMPLETADA / VALIDADA EN PRODUCCIÓN.
 
 T-020 cerró su paid QA con un pago real y shipping incluido. Tras corregir DNS y HTTPS, Mercado Pago entregó el webhook y la orden pasó de `pending` a `paid`. Esto valida `checkout → shipping incluido → Mercado Pago → pago real → webhook → validación → orders.status=paid`; DEC-025 queda ACEPTADA el 2026-09-17.
 
@@ -18,7 +18,9 @@ T-021/DEC-026 permanecen cerradas. Continúan pendientes fuera de T-017: MiCorre
 
 La UX post-pago y el cleanup están COMPLETADOS / DESPLEGADOS / VALIDADOS EN PRODUCCIÓN. La implementación fue auditada por Grok, enviada al repositorio y desplegada en EasyPanel. El QA manual en navegador real confirmó que `/success` carga correctamente, presenta el diseño esperado, muestra “¡Gracias por tu compra!” y “Estamos preparando tu pedido”, y que “Volver al inicio” funciona. También confirmó que elimina solo `localStorage["lemont.cart"]` y `sessionStorage["lemont.checkoutAttempt.v1"]`, dejando el carrito vacío y sin attempt reutilizable. No lee query params como autoridad, no llama backend, Mercado Pago o Supabase y no modifica `orders`; el webhook continúa siendo la autoridad del pago. Visitar `/success` manualmente también limpia ambos records: este riesgo UX está aceptado en esta etapa y una protección futura mediante flag de `sessionStorage` queda como mejora no bloqueante.
 
-**T-022 está EN PROGRESO. T-022.2 está IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** La migración 009, aún no aplicada, agrega el outbox durable `order_shipping_imports`, RPC v3, claim/leases y transiciones seguras. El runtime local crea el snapshot mediante v3, pero producción conserva 001–008 y su runtime vigente. El webhook no usa todavía la RPC paid+queue y `shippingImports.js` no está conectado a ningún worker. No hubo `/shipping/import`, red real, backfill ni SQL real.
+**T-022 está EN PROGRESO. T-022.2 está DESPLEGADA / VALIDADA EN PRODUCCIÓN.** La migración 009 está aplicada y el runtime v3 desplegado. Se verificaron RPC 26/v2/v3, paid+queue, claim y recovery; RLS, policies, grants de tabla/columnas y EXECUTE; ausencia de backfill; atomicidad/rollback reales; state machine hasta `processing`; y un checkout productivo sin pago que creó el snapshot `not_requested` y llegó a Mercado Pago. `POST /shipping/import` sigue INACTIVO: no hay provider ni worker productivos, retries externos, reconciliación de `unknown` o integración webhook paid+queue.
+
+Riesgo vigente de T-022.5: paid+queue requiere una fila logística. No debe conectarse al webhook hasta disponer de manejo legacy-safe, porque una order anterior a v3 sin snapshot podría quedar impedida de pasar financieramente a `paid`.
 
 La tienda todavía **NO está lista para lanzamiento comercial**.
 
@@ -30,7 +32,7 @@ Cotización dual items o legacy, resolver común, tope 4 unidades totales, perfi
 
 En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío** y T-021 todavía estaba solo local; ambos estados fueron superados por los cierres productivos posteriores.
 
-> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008 aplicadas; runtime T-017 desplegado; T-017/T-020/T-021 cerradas y DEC-022/DEC-025/DEC-026 aceptadas. UX post-pago validada. T-022 está en progreso: 009 y T-022.2 existen solo localmente, sin worker, webhook nuevo, SQL aplicado ni `/shipping/import`. El estado vigente está en `docs/STATUS.md`.
+> Resumen compacto para agentes. Última actualización: 2026-09-17. Migraciones 007/008/009 aplicadas; runtime v3 desplegado; T-017/T-020/T-021 cerradas y DEC-022/DEC-025/DEC-026 aceptadas. UX post-pago validada. T-022 sigue en progreso: T-022.2 está productiva, pero no existen worker/provider de importación ni integración webhook y `/shipping/import` permanece inactivo. El estado vigente está en `docs/STATUS.md`.
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 
@@ -252,6 +254,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 | `supabase/migrations/006_add_order_shipping_agency.sql` | Agrega snapshot autoritativo de agencia. Aplicada en producción; T-021 productiva. |
 | `supabase/migrations/007_create_checkout_attempts.sql` | Agrega `checkout_attempts`, RPC v2 y claim. Aplicada en producción. |
 | `supabase/migrations/008_harden_checkout_attempts_privileges.sql` | Reproduce el hardening mínimo de `service_role`. Aplicada en producción. |
+| `supabase/migrations/009_create_order_shipping_imports.sql` | Agrega outbox logístico, RPC v3, paid+queue, claim y transiciones. Aplicada en producción; T-022.2 validada, sin activar `/shipping/import`. |
 | `Dockerfile` | Build de staging con Node.js 22; instala con `npm ci`, expone `3003` y ejecuta `npm start`. |
 | `.dockerignore` | Excluye `.env`, `.env.*`, `.git`, `node_modules`, logs y temporales del contexto Docker. |
 | `.env.example` | Contrato de variables de entorno (sin valores reales). Incluye `LOG_LEVEL=info`. |
@@ -268,11 +271,12 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. Auditar T-022.2 y cerrar T-022.1: contrato restante, Classic/Express y estrategia operativa de reconciliación por `extOrderId`.
+1. Cerrar T-022.1: contrato restante, Classic/Express y estrategia operativa de reconciliación por `extOrderId`/`unknown`.
 2. Reemplazar los perfiles TEMPORAL/QA por peso y dimensiones físicas reales de los paquetes y repetir QA.
-3. Implementar provider/worker e integrar de forma coordinada el webhook con paid+queue; recién entonces aplicar 009, desplegar y probar `POST /shipping/import` de forma controlada.
-4. Avanzar con catálogo y stock reales desde Supabase, incluidas imágenes y descripciones dinámicas.
-5. Completar el hardening comercial: precio definitivo, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
+3. Resolver en T-022.5 el camino legacy-safe de paid+queue antes de conectarlo al webhook.
+4. Implementar provider/worker, retries y reconciliación; recién entonces activar y probar `POST /shipping/import` de forma controlada.
+5. Avanzar con catálogo y stock reales desde Supabase, incluidas imágenes y descripciones dinámicas.
+6. Completar el hardening comercial: precio definitivo, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
 
 Antes del lanzamiento comercial también deben reemplazarse los perfiles TEMPORAL/QA, restaurarse el precio comercial, rotarse las credenciales expuestas y completarse la auditoría npm.
 

@@ -4,16 +4,17 @@
 
 Este archivo resume el estado real vigente. Los bloques históricos de otros documentos que describan T-017 sin desplegar, las migraciones 007/008 sin aplicar, producción en runtime T-021, T-020 sin paid QA o T-021 pendiente deben leerse como antecedentes superados por este corte.
 
-## Desarrollo local T-022
+## T-022 — estado productivo vigente
 
 - **T-022: EN PROGRESO.**
-- **T-022.2: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** La migración 009 prepara `order_shipping_imports`, una RPC v3 aditiva para crear el snapshot junto con order/items/checkout attempt, la futura transición atómica `pending → paid` + `not_requested → queued`, claim con lease y transiciones holder-only. `src/shippingImports.js` expone el repositorio futuro, pero no está conectado a un worker ni al webhook.
-- **Migración 009: CREADA LOCALMENTE / NO APLICADA.** Producción continúa con las migraciones 001–008 y el runtime vigente. Las RPC de 26 parámetros y v2 se conservan; el runtime local de creación queda preparado para v3 y no debe desplegarse antes de aplicar/verificar 009.
-- No hubo llamada a MiCorreo `/shipping/import`, proveedor real, SQL real, deploy ni backfill. Los perfiles congelados siguen siendo `300 g / 5 × 25 × 35 cm` TEMPORAL/QA.
+- **T-022.2: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-17). La migración 009 y el runtime v3 fueron desplegados en ese orden. Un checkout productivo real sin pago creó order `pending`, `order_items`, `checkout_attempt` y `order_shipping_imports/not_requested`, y llegó correctamente a Mercado Pago.
+- **Migración 009: APLICADA EN PRODUCCIÓN.** Existen RPC 26, v2, v3, paid+queue, claim y transiciones/recovery. RPC 26 y v2 permanecen disponibles. El QA PostgreSQL real validó atomicidad y rollback sin residuos, snapshot 300/5/25/35, `declared_value = products_subtotal`, `ext_order_id = orders.external_reference` y la secuencia `pending+not_requested → paid+queued → processing+lease`, sin llamar MiCorreo.
+- RLS, ausencia de policies públicas, denegación a `anon`/`authenticated`, EXECUTE exclusivo de `service_role` y UPDATE limitado a las nueve columnas operativas fueron verificados en producción. No hubo backfill: la tabla quedó inicialmente con cero filas.
+- **`POST /shipping/import` continúa INACTIVO.** No existe provider real de importación ni worker productivo; no se crean envíos reales. El webhook tampoco usa paid+queue todavía.
 
 ## Producción
 
-- **Runtime T-017: DESPLEGADO EN EASYPANEL.** La creación durable usa `create_pending_order_with_items_v2` (27 parámetros); la RPC anterior `create_pending_order_with_items` (26 parámetros) permanece disponible.
+- **Runtime T-017: DESPLEGADO EN EASYPANEL.** La idempotencia durable sigue apoyada en la lógica v2; el checkout productivo actual llama la RPC v3, que envuelve v2 y agrega el snapshot logístico. Las RPC de 26 parámetros y v2 permanecen disponibles.
 - **Idempotencia durable: ACTIVA EN PRODUCCIÓN.** El mismo intento/intención reutilizó la misma `checkout_attempt`, orden y preferencia Mercado Pago; una intención distinta creó un intento, orden y preferencia nuevos; doble clic y retry normal no duplicaron la orden.
 - **Migraciones 007 y 008: APLICADAS EN PRODUCCIÓN.** Se verificaron `checkout_attempts`, ambas RPC de creación, `claim_checkout_attempt`, `SECURITY INVOKER`, `search_path`, RLS y permisos.
 - Los default privileges de Supabase habían dado a `service_role` privilegios excesivos sobre `checkout_attempts`. El acceso fue corregido manualmente y la migración 008 aplicada después para dejar el hardening reproducible.
@@ -41,7 +42,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 - Sustituir los perfiles TEMPORAL/QA de `300 g / 5 × 25 × 35 cm` por medidas reales y repetir QA.
 - T-022.1: cerrar el contrato restante, incluido Classic/Express y la reconciliación práctica por `extOrderId`.
-- Completar T-022: provider real, worker activo, integración del webhook con la RPC atómica y posterior deploy/QA de MiCorreo `POST /shipping/import`.
+- Completar T-022: provider real, worker activo, retries/reconciliación, manejo legacy-safe e integración del webhook con la RPC atómica; después desplegar y validar MiCorreo `POST /shipping/import`.
 - Implementar catálogo y stock reales desde Supabase, con imágenes y descripciones dinámicas.
 - Completar el hardening comercial: restaurar el precio definitivo, rotar credenciales privadas previamente expuestas, ejecutar la auditoría npm y abordar dominio definitivo, frontend final y SEO.
 
