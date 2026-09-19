@@ -4,15 +4,16 @@
 
 - `unknown` nunca se reintenta automáticamente. La ausencia inmediata en MiCorreo no autoriza requeue.
 - La verificación manual usa la correlación estable `ext_order_id = orders.external_reference`; su valor no se registra en documentación ni logs ordinarios.
-- Si el envío existe, no se repite `/shipping/import`; la RPC local permite `unknown → created`. No inventa `provider_created_at`; `imported_at` representa confirmación local.
-- Si una persona confirma que no existe, la segunda RPC local permite exclusivamente `unknown → queued`. Mientras haya duda, permanece `unknown` sin pasar automáticamente a `failed`.
+- Si el envío existe, no se repite `/shipping/import`; la RPC productiva permite `unknown → created`. No inventa `provider_created_at`; `imported_at` representa confirmación local.
+- Si una persona confirma que no existe, la segunda RPC productiva permite exclusivamente `unknown → queued`. Mientras haya duda, permanece `unknown` sin pasar automáticamente a `failed`.
 - `shipping:process-once` no es herramienta de reconciliación y nunca debe usarse con ese fin.
-- La interfaz local es backend/admin only, no pública, condicional e idempotente desde `unknown`; no puede alterar otros estados, resetear attempts, cambiar correlación o reconstruir snapshots.
+- La interfaz es backend/admin only, no pública, condicional e idempotente desde `unknown`; no puede alterar otros estados, resetear attempts, cambiar correlación o reconstruir snapshots. El CLI todavía no está desplegado ni validado operativamente.
 - Ambas RPC son `SECURITY INVOKER`, fijan `search_path`, revocan EXECUTE a `PUBLIC`/`anon`/`authenticated` y lo conceden sólo a `service_role`. El CLI exige doble guarda antes de cargar configuración o Supabase.
 - La tabla append-only de 011 tiene RLS, cero policies y sólo `SELECT, INSERT` para `service_role`; no concede UPDATE ni DELETE. Registra UUID, order ID interno, códigos controlados, estados, attempt y fecha, sin PII, payload, respuesta provider, token, customerId ni correlación externa.
-- Los logs se reconstruyen por allowlist. `no_change` e invocaciones inválidas terminan con exit 1 para exigir revisión humana. La migración no fue aplicada ni validada contra PostgreSQL real.
+- Los logs se reconstruyen por allowlist. `no_change` e invocaciones inválidas terminan con exit 1 para exigir revisión humana.
 - Política A: el máximo de 4 limita retries automáticos, no autorizaciones humanas. Requeue preserva `attempt_count` y habilita exactamente un claim adicional; nunca renueva presupuesto ni resetea el contador. Attempt 5 retryable termina por límite; attempt 5 ambiguo vuelve a `unknown` y exige otra confirmación/evento antes de cualquier nueva requeue.
-- El reload de schema PostgREST está dentro de 011 inmediatamente antes de commit. No amplía grants ni convierte las RPC en públicas; sólo solicita actualizar el cache tras el futuro cutover.
+- El reload de schema PostgREST se ejecutó desde 011 inmediatamente antes de commit. No amplió grants ni convirtió las RPC en públicas; sólo solicitó actualizar el cache durante el cutover aplicado.
+- QA productivo confirmó RLS activa, cero policies, `service_role` sólo con `SELECT + INSERT`, ausencia de grants para `anon`/`authenticated`, EXECUTE sólo para `postgres`/`service_role`, `SECURITY INVOKER` y `search_path` fijo. Las pruebas sintéticas se revirtieron; no quedó PII ni dato QA y los conteos productivos no cambiaron.
 
 ## T-022.6-C — aislamiento productivo del proceso
 

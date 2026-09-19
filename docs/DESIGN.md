@@ -6,7 +6,7 @@
 - **AGENCY Classic automático:** selección, snapshot, checkout/backend y mapping implementados; E2E real pendiente.
 - **Express:** soporte interno conservado, oculto temporalmente de la UI pública e import bloqueado mediante `UNSUPPORTED_SERVICE` hasta confirmar contrato.
 - **Perfiles físicos:** valores TEMPORAL/QA; no se consideran resueltos.
-- **`unknown`:** estado terminal para automatización; DEC-027 agrega localmente reconciliación humana explícita, todavía sin migración aplicada ni CLI desplegado.
+- **`unknown`:** estado terminal para automatización; las RPC humanas de DEC-027 están productivas, pero el CLI aún no fue desplegado ni validado operativamente.
 
 ## Runbook — qué hacer si un envío queda `unknown`
 
@@ -38,13 +38,13 @@ Nunca ejecutar `shipping:process-once` intentando resolver `unknown`: el claim n
 - El worker sólo persiste `unknown` desde un claim `processing`; no contiene ruta de salida desde `unknown`.
 - `expire_order_shipping_import_leases` transforma `processing` vencido en `unknown`, limpia lease/scheduling y registra `lease_expired`.
 - `complete`, `retry`, `unknown` y `fail` actuales exigen `processing`, lease token coincidente y lease vigente.
-- La migración local 011 agrega exclusivamente `unknown → created` y `unknown → queued`; no está aplicada en producción. No existe salida administrativa hacia `retryable|failed`.
+- La migración 011 productiva agrega exclusivamente `unknown → created` y `unknown → queued`. No existe salida administrativa hacia `retryable|failed`.
 
-### Implementación local DEC-027 — no productiva
+### Infraestructura productiva DEC-027 — CLI pendiente
 
 `011_add_shipping_unknown_reconciliation.sql` crea una tabla append-only sin PII y dos RPC `SECURITY INVOKER`. Ambas bloquean la fila `unknown`, vuelven a condicionar el UPDATE y escriben la transición y el evento en la misma transacción. Confirmar existencia ejecuta `unknown → created`, conserva `provider_created_at` nulo y usa `p_reconciled_at` como `imported_at` local; confirmar ausencia ejecuta `unknown → queued`. Ambas preservan `attempt_count`, `ext_order_id`, perfil físico y `declared_value`.
 
-`shipping:reconcile-unknown` es un CLI administrativo excepcional. Exige `SHIPPING_IMPORT_RECONCILIATION_ENABLED=true`, `--execute`, ID positivo canónico y una pareja exacta acción/confirmación. Carga Supabase sólo después de esas validaciones, realiza una RPC y termina. Un resultado sin transición produce `outcome=no_change` y exit 1. No hay endpoint, UI, búsqueda MiCorreo, loop ni conexión al worker; la migración y el CLI siguen sin desplegar.
+`shipping:reconcile-unknown` es un CLI administrativo excepcional. Exige `SHIPPING_IMPORT_RECONCILIATION_ENABLED=true`, `--execute`, ID positivo canónico y una pareja exacta acción/confirmación. Carga Supabase sólo después de esas validaciones, realiza una RPC y termina. Un resultado sin transición produce `outcome=no_change` y exit 1. No hay endpoint, UI, búsqueda MiCorreo, loop ni conexión al worker. La migración/RPC ya están productivas; el runtime que contiene el CLI aún no fue desplegado ni validado operativamente.
 
 #### Política A de `attempt_count`
 
@@ -59,7 +59,9 @@ unknown / attempt 4
 
 No se crea otro presupuesto de cuatro retries. Un error retryable en attempt 5 finaliza según el límite vigente; un resultado ambiguo vuelve a `unknown`. Sólo desde ese nuevo `unknown`, otra confirmación humana y otro evento permiten una requeue adicional. El contador nunca vuelve a cero. Esta semántica usa sin cambios el claim SQL y `shippingImportWorker.js` existentes.
 
-La migración finaliza su DDL con `NOTIFY pgrst, 'reload schema'` antes de `COMMIT`, para que PostgREST refresque las RPC después de una futura aplicación controlada.
+La migración finaliza su DDL con `NOTIFY pgrst, 'reload schema'` antes de `COMMIT`; ese cutover ya fue aplicado.
+
+QA PostgreSQL real confirmó RLS, cero policies, grants append-only, EXECUTE restringido, `SECURITY INVOKER` y `search_path = pg_catalog, public`. Las transiciones sintéticas se ejecutaron dentro de `BEGIN/ROLLBACK`: `mark-created` preservó snapshot/correlación/attempt, no inventó `provider_created_at` y registró reconciliación local; `requeue` preservó snapshot/correlación/attempt y limpió lease/scheduling/error. Los eventos fueron correctos y el rollback dejó producción sin residuos (`created = 2`, `not_requested = 1`, `unknown = 0`).
 
 ## T-022 — restricción temporal de Express en la UI pública
 

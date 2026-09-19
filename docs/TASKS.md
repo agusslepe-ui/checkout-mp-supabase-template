@@ -8,12 +8,12 @@
 - AGENCY Classic automático: IMPLEMENTADO; E2E real pendiente. No declararlo validado hasta ejecutar una compra/sucursal real controlada.
 - Express: soporte interno conservado, oculto temporalmente del checkout público e import bloqueado con `UNSUPPORTED_SERVICE`; contrato exacto pendiente.
 - Perfiles 1–4: TEMPORAL/QA; sustitución y repetición de QA pendientes.
-- `unknown`: protegido contra retry automático; DEC-027 implementada localmente mediante RPC administrativas y CLI manual, todavía no productiva.
+- `unknown`: protegido contra retry automático; migración y RPC de DEC-027 productivas, con CLI aún no desplegado ni validado operativamente.
 - MiCorreo `orderNumber`: PENDIENTE / NO IMPLEMENTADO. `extOrderId` debe conservarse como correlación técnica estable; `/shipping/import` actualmente no envía `orderNumber`, de modo que “Número de orden” puede aparecer vacío. Evaluar un identificador operativo legible como `LEMONT-<order_id>` sin sustituir `extOrderId`.
 
 ## T-022 / DEC-027 — Implementar reconciliación administrativa de `unknown`
 
-**Estado: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-19).
+**Estado: MIGRACIÓN / RPC PRODUCTIVAS — CLI AÚN NO DESPLEGADO/VALIDADO OPERATIVAMENTE** (2026-09-19).
 
 **Auditoría Grok:** APROBADO CON OBSERVACIONES / SIN BLOQUEANTES. Hardening final incorporado localmente.
 
@@ -23,11 +23,15 @@
 - Cada transición y su evento se escriben en la misma transacción. Una llamada perdedora o un estado distinto devuelve cero filas, no muta y no audita.
 - Política A: `SHIPPING_IMPORT_MAX_ATTEMPTS = 4` limita sólo retries automáticos. La requeue humana preserva `attempt_count` y autoriza exactamente un claim adicional: 4 permanece 4 al reencolar y el claim lo incrementa a 5. Un error retryable en attempt 5 termina por attempt limit; una ambigüedad vuelve a `unknown` y exige otra confirmación/evento para una nueva requeue. Nunca se resetean attempts.
 - `shipping:reconcile-unknown` exige exactamente `SHIPPING_IMPORT_RECONCILIATION_ENABLED=true`, `--execute`, order ID canónico, acción y confirmación específica. `no_change` retorna exit 1.
-- La migración 011 ejecuta `NOTIFY pgrst, 'reload schema'` antes de `COMMIT` para refrescar las RPC en PostgREST tras el futuro cutover.
+- La migración 011 ejecutó `NOTIFY pgrst, 'reload schema'` antes de `COMMIT` durante el cutover aplicado para refrescar las RPC en PostgREST.
 - Logs allowlisted: outcome y order ID, o códigos controlados `disabled`, `invalid_arguments` y `unexpected_error`; sin mensajes crudos, PII, payload, correlación externa ni secretos.
 - No se agregó endpoint, búsqueda automática en MiCorreo, retry automático ni cambios al worker. El CLI carga configuración/Supabase sólo después de validar guardas y argumentos.
 
-**Pendiente:** aplicar migración 011; QA PostgreSQL real/controlado de atomicidad, concurrencia, RLS y grants; desplegar el CLI administrativo sin habilitar permanentemente la guarda; AGENCY Classic E2E; `orderNumber`; perfiles físicos reales; Express. No ejecutar reconciliaciones hasta completar el cutover administrativo.
+**Cutover y QA PostgreSQL real:** migración 011 aplicada en producción. Se verificaron `order_shipping_import_reconciliations`, RLS activa, `policy_count = 0`, `service_role` con `SELECT + INSERT` y sin `UPDATE/DELETE/TRUNCATE`, y ausencia de grants para `anon`/`authenticated`. Las dos RPC existen, son `SECURITY INVOKER`, fijan `search_path = pg_catalog, public` y sólo admiten EXECUTE efectivo de `postgres` y `service_role`.
+
+QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attempt/snapshot/`ext_order_id`, no inventó `provider_created_at`, registró `imported_at` local y audit row correcta; `unknown → queued` preservó attempt/snapshot/`ext_order_id`, limpió scheduling/lease/error y registró audit row correcta. Todos los datos QA fueron revertidos. El conteo productivo permaneció `created = 2`, `not_requested = 1`, `unknown = 0` antes y después.
+
+**Pendiente:** desplegar el runtime que contiene `shipping:reconcile-unknown`; smoke test seguro del guard del CLI; AGENCY Classic E2E; `orderNumber`; perfiles físicos reales; Express; tracking/labels. No declarar el CLI desplegado o validado operativamente todavía.
 
 ## T-022 — Ocultar Express temporalmente en checkout público
 
@@ -162,7 +166,7 @@
 - Repositorio, provider HOME Classic y worker aislado están conectados y validados en producción. AGENCY Classic E2E y Express permanecen pendientes.
 - Verificación local previa al cutover: 402/402 tests, 11 suites, 0 fallos; en ese momento las pruebas de concurrencia/RLS eran estáticas y no se había aplicado SQL. La evidencia PostgreSQL productiva posterior está registrada arriba.
 
-**Pendiente:** AGENCY Classic E2E; contrato/import Express; perfiles físicos reales; herramienta administrativa de DEC-027; tracking y labels.
+**Pendiente:** AGENCY Classic E2E; contrato/import Express; perfiles físicos reales; despliegue/validación operativa del CLI administrativo de DEC-027; tracking y labels.
 
 **Riesgo histórico resuelto por T-022.5:** la RPC legacy-safe permite confirmar una order sin snapshot y encola sólo cuando existe una fila elegible.
 

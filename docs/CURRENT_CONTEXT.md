@@ -6,13 +6,15 @@
 
 AGENCY Classic conserva selección de sucursal, checkout/backend y mapping, pero su E2E automático real sigue pendiente. Express conserva soporte interno, permanece oculto temporalmente del checkout público y el import continúa bloqueado mediante `UNSUPPORTED_SERVICE` hasta confirmar el contrato. Los perfiles físicos siguen TEMPORAL/QA.
 
-El estado `unknown` está protegido: no es reclamable, no tiene `next_attempt_at` y no cambia automáticamente. DEC-027 está **IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA**: la migración 011 agrega auditoría append-only y transiciones humanas condicionales `unknown → created|queued`; el CLI manual usa doble guarda y confirmaciones específicas. La migración no fue aplicada, no hubo QA PostgreSQL real ni reconciliaciones. `ext_order_id = orders.external_reference` sigue siendo la correlación estable para la búsqueda manual; nunca se documentan valores reales.
+El estado `unknown` está protegido: no es reclamable, no tiene `next_attempt_at` y no cambia automáticamente. DEC-027 está en estado **MIGRACIÓN / RPC PRODUCTIVAS — CLI AÚN NO DESPLEGADO/VALIDADO OPERATIVAMENTE**. La migración 011 está aplicada y las transiciones humanas condicionales `unknown → created|queued` existen en producción, pero el runtime con `shipping:reconcile-unknown` aún no fue desplegado ni probado operativamente. `ext_order_id = orders.external_reference` sigue siendo la correlación estable para la búsqueda manual; nunca se documentan valores reales.
+
+El QA PostgreSQL real confirmó tabla de auditoría, RLS activa, cero policies, grants mínimos, EXECUTE restringido, `SECURITY INVOKER` y `search_path` fijo. Dentro de `BEGIN/ROLLBACK` se validaron ambas transiciones, preservación de attempt/snapshot/correlación, semántica local de `imported_at`, ausencia de fecha provider inventada, limpieza de requeue y eventos correctos. Todo dato sintético fue revertido; producción permaneció `created = 2`, `not_requested = 1`, `unknown = 0`.
 
 La auditoría Grok quedó **APROBADA CON OBSERVACIONES**, sin bloqueantes. Se adoptó la política A: el máximo de 4 attempts limita retries automáticos, mientras cada requeue humana preserva el contador y habilita exactamente un claim adicional. Así, un `unknown` en attempt 4 vuelve a `queued` manteniendo 4 y el próximo claim opera como attempt 5; retryable termina por límite y ambigüedad vuelve a `unknown`. Otra requeue requiere nueva confirmación y evento. La migración 011 incluye reload del schema PostgREST antes de commit.
 
 MiCorreo `orderNumber` permanece **PENDIENTE**. El import actual conserva `extOrderId` como correlación técnica estable y no envía `orderNumber`; por eso “Número de orden” puede aparecer vacío en MiCorreo. Se evaluará por separado un identificador operativo legible como `LEMONT-<order_id>`, sin reemplazar ni modificar `extOrderId`. No hay implementación en este cierre.
 
-**Runbook breve:** no reintentar; buscar en MiCorreo por la referencia estable; si existe, la acción administrativa `mark-created` podrá usarse sólo después del cutover de 011; si no aparece pero no está confirmado, mantener `unknown`; sólo con confirmación humana de ausencia podrá usarse `requeue`. Nunca usar `shipping:process-once` para reconciliar.
+**Runbook breve:** no reintentar; buscar en MiCorreo por la referencia estable; si existe, corresponde `mark-created`; si no aparece pero no está confirmado, mantener `unknown`; sólo con confirmación humana de ausencia corresponde `requeue`. Hasta desplegar y validar el CLI, no ejecutar estas acciones operativamente. Nunca usar `shipping:process-once` para reconciliar.
 
 ## T-022 — Express oculto temporalmente en checkout público — 2026-09-19
 
@@ -96,7 +98,7 @@ T-020 cerró su paid QA con un pago real y shipping incluido. Tras corregir DNS 
 
 Incidencia resuelta: `checkout.lemont01.com` apuntaba a la IP anterior del VPS. Se corrigió al EasyPanel actual, se comprobó el puerto 80 y Traefik regeneró un certificado válido de Let's Encrypt después de un estado inicial no confiable. HTTPS quedó operativo; un `POST /webhook` sin firma llegó a Express y respondió `401 {"error":"Webhook inválido"}`, y la notificación válida posterior fue procesada.
 
-T-021/DEC-026 permanecen cerradas. Continúan pendientes fuera de T-017: AGENCY Classic E2E, contrato/import Express, herramienta de reconciliación DEC-027, stock por SKU, catálogo dinámico, perfiles reales, precio comercial, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
+T-021/DEC-026 permanecen cerradas. Continúan pendientes fuera de T-017: AGENCY Classic E2E, contrato/import Express, despliegue y validación operativa del CLI de DEC-027, stock por SKU, catálogo dinámico, perfiles reales, precio comercial, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
 
 La UX post-pago y el cleanup están COMPLETADOS / DESPLEGADOS / VALIDADOS EN PRODUCCIÓN. La implementación fue auditada por Grok, enviada al repositorio y desplegada en EasyPanel. El QA manual en navegador real confirmó que `/success` carga correctamente, presenta el diseño esperado, muestra “¡Gracias por tu compra!” y “Estamos preparando tu pedido”, y que “Volver al inicio” funciona. También confirmó que elimina solo `localStorage["lemont.cart"]` y `sessionStorage["lemont.checkoutAttempt.v1"]`, dejando el carrito vacío y sin attempt reutilizable. No lee query params como autoridad, no llama backend, Mercado Pago o Supabase y no modifica `orders`; el webhook continúa siendo la autoridad del pago. Visitar `/success` manualmente también limpia ambos records: este riesgo UX está aceptado en esta etapa y una protección futura mediante flag de `sessionStorage` queda como mejora no bloqueante.
 
@@ -353,7 +355,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. Aplicar controladamente la migración 011, validar SQL real y desplegar el CLI administrativo sin habilitación permanente.
+1. Desplegar el runtime que contiene `shipping:reconcile-unknown` y ejecutar un smoke test seguro de la guarda, sin reconciliar filas reales.
 2. Ejecutar QA automático real de AGENCY Classic.
 3. Confirmar el contrato exacto de importación Express antes de volver a exponerlo públicamente.
 4. Reemplazar los perfiles TEMPORAL/QA por peso y dimensiones físicas reales de los paquetes y repetir QA.

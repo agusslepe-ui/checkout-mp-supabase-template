@@ -1,6 +1,16 @@
 # Progreso
 
-## 2026-09-19 — DEC-027 implementada localmente / no productiva
+## 2026-09-19 — cutover PostgreSQL real DEC-027
+
+- **Estado: MIGRACIÓN / RPC PRODUCTIVAS — CLI AÚN NO DESPLEGADO/VALIDADO OPERATIVAMENTE.** Migración 011 aplicada en producción; no se ejecutaron reconciliaciones reales.
+- Confirmadas tabla `order_shipping_import_reconciliations`, RLS activa y `policy_count = 0`.
+- Privilegios efectivos confirmados: `service_role` conserva sólo `SELECT + INSERT` sobre auditoría, sin `UPDATE/DELETE/TRUNCATE`; `anon` y `authenticated` no tienen grants.
+- Existen `reconcile_order_shipping_import_created` y `requeue_order_shipping_import_unknown`; ambas son `SECURITY INVOKER`, usan `search_path = pg_catalog, public` y tienen EXECUTE efectivo sólo para `postgres` y `service_role`.
+- QA sintético en `BEGIN/ROLLBACK`: ambas transiciones fueron validadas con preservación de attempt/snapshot/`ext_order_id`, auditoría correcta y semántica de timestamps/limpieza esperada. Todos los datos QA fueron revertidos.
+- Estado productivo sin cambios antes/después del QA: `created = 2`, `not_requested = 1`, `unknown = 0`.
+- Pendientes: desplegar runtime con `shipping:reconcile-unknown`; smoke test seguro del guard; AGENCY Classic E2E; `orderNumber`; perfiles físicos reales; Express; tracking/labels.
+
+## HISTÓRICO — 2026-09-19 — DEC-027 implementada localmente / no productiva
 
 - Auditoría Grok: **APROBADO CON OBSERVACIONES**, sin bloqueantes. Hardening final aplicado localmente sin rediseñar DEC-027.
 - Creada la migración aditiva 011 con auditoría append-only sin PII, RLS/grants explícitos y dos RPC `SECURITY INVOKER`: `unknown → created` por existencia confirmada y `unknown → queued` por ausencia humana confirmada.

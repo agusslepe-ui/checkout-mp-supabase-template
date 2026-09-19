@@ -3,14 +3,14 @@
 ## DEC-027 — Reconciliación operativa conservadora de shipping imports `unknown`
 
 **Fecha:** 2026-09-19.
-**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.
+**Estado:** MIGRACIÓN / RPC PRODUCTIVAS — CLI AÚN NO DESPLEGADO/VALIDADO OPERATIVAMENTE.
 **Tarea:** T-022.
 
 ### Contexto
 
 `unknown` significa que el resultado externo puede haber ocurrido y no existe evidencia suficiente para afirmar `created` ni para repetir `/shipping/import`. El esquema actual lo deja sin lease y sin `next_attempt_at`; `claim_order_shipping_import` sólo reclama `queued` o `retryable` vencido. El worker no reclama, transforma ni reconcilia `unknown`.
 
-`expire_order_shipping_import_leases` también lleva un `processing` vencido a `unknown`, porque el POST pudo haberse ejecutado antes de perderse el lease. Las RPC finales actuales sólo aceptan `processing` con lease vigente. No existe hoy una operación administrativa `unknown → created|queued|retryable|failed`.
+`expire_order_shipping_import_leases` también lleva un `processing` vencido a `unknown`, porque el POST pudo haberse ejecutado antes de perderse el lease. Las RPC finales del worker sólo aceptan `processing` con lease vigente. Las RPC administrativas productivas agregan únicamente `unknown → created|queued`; no existe salida administrativa a `retryable|failed`.
 
 La correlación estable para buscar el envío es `order_shipping_imports.ext_order_id = orders.external_reference`. Su valor real no debe aparecer en documentación ni logs ordinarios.
 
@@ -32,7 +32,7 @@ La correlación estable para buscar el envío es `order_shipping_imports.ext_ord
 
 Esta política ya emerge de la combinación entre la migración 011, que preserva attempts, el claim de 009, que incrementa una vez, y el worker vigente. No se modifica `shippingImportWorker.js`.
 
-### Implementación local de la herramienta
+### Implementación y estado productivo
 
 - Backend/admin only; nunca endpoint público ni acción desde el navegador del comprador.
 - Dos RPC dedicadas con `SECURITY INVOKER`, `search_path` fijo, `EXECUTE` revocado a `PUBLIC`, `anon` y `authenticated`, y concedido sólo a `service_role`.
@@ -48,7 +48,9 @@ Esta política ya emerge de la combinación entre la migración 011, que preserv
 
 Se eligió `order_shipping_import_reconciliations`: UUID propio, order ID interno, acción, reason code, estado anterior/objetivo, attempt preservado y fecha. Constraints sólo admiten `mark_created/provider_found/unknown/created` y `requeue/provider_absence_confirmed/unknown/queued`. No almacena actor, texto libre, PII, `extOrderId`, payload ni respuesta provider. RLS y grants append-only reducen exposición; retención y un eventual actor administrativo autenticado quedan para una etapa futura.
 
-La migración 011, el repositorio y el CLI están versionados localmente. **No fueron aplicados, desplegados ni ejecutados contra producción.** Faltan aplicar 011, QA PostgreSQL real/controlado y desplegar el CLI antes del cutover.
+La migración 011 fue aplicada en producción y las RPC quedaron disponibles. El repositorio y CLI están versionados, pero el runtime que contiene `shipping:reconcile-unknown` **aún no fue desplegado ni validado operativamente**.
+
+El QA PostgreSQL real verificó tabla, RLS, cero policies, grants mínimos, EXECUTE restringido, `SECURITY INVOKER` y `search_path` fijo. Ambas transiciones se validaron con datos sintéticos dentro de `BEGIN/ROLLBACK`; se comprobaron preservación, limpieza, timestamps y auditoría. El rollback eliminó toda evidencia QA y los conteos productivos permanecieron `created = 2`, `not_requested = 1`, `unknown = 0`.
 
 La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, sin bloqueantes. El hardening adopta formalmente la política A y agrega `NOTIFY pgrst, 'reload schema'` antes del commit de 011.
 
@@ -56,7 +58,7 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 
 - Evita duplicados ante resultados externos ambiguos.
 - Puede dejar filas `unknown` indefinidamente; es una propiedad de seguridad aceptada.
-- Requiere verificación humana y, mientras 011 no esté aplicada/desplegada, no existe mutación productiva disponible.
+- Requiere verificación humana. Aunque las RPC ya son productivas, no se habilita su operación ordinaria hasta desplegar y validar de forma segura el CLI administrativo.
 - T-022 conserva el núcleo HOME Classic productivo, pero no queda completamente cerrado mientras falten AGENCY Classic E2E, Express, perfiles físicos y el cutover auditado de esta reconciliación.
 
 ## T-022.6-C — despliegue aislado mediante Dockerfile dedicado
@@ -133,7 +135,7 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 - `shipping_apartment` no se trunca ni divide: floor/apartment se omiten temporalmente.
 - HOME usa el domicilio de la order; AGENCY usa `shipping_agency_code`. Ambos consumen medidas y declared value congelados.
 - Sólo 2xx + `createdAt` válido confirma creación; resultados inciertos quedan ambiguos para el worker futuro.
-- HOME Classic fue validado primero mediante llamada manual y después mediante worker automático real. Quedan pendientes AGENCY Classic E2E, contrato Express, perfiles reales e implementación de DEC-027.
+- HOME Classic fue validado primero mediante llamada manual y después mediante worker automático real. Quedan pendientes AGENCY Classic E2E, contrato Express, perfiles reales y despliegue/validación operativa del CLI de DEC-027.
 - La auditoría independiente de Grok aprobó con observaciones y sin bloqueantes las validaciones sin coerción, calendario estricto, HTTP 408 ambiguo y timeout separado sólo mediante opt-in de import; los contratos históricos de timeout de token/rates/agencies permanecen intactos.
 - Observaciones para T-022.4: interpretar conservadoramente el fallo de renovación posterior a un POST 401; normalizar de forma explícita un posible `numeric` string en el borde repository/worker; ampliar cobertura de tipos/whitespace; y considerar la exportación de `normalizeProvince` como API interna de riesgo bajo.
 
