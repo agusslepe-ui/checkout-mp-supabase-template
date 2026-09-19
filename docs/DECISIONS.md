@@ -1,8 +1,18 @@
 # Decisiones técnicas
 
+## T-022.6 — cierre de QA real y límite de activación
+
+**Estado:** QA REAL MICORREO VALIDADO END-TO-END (2026-09-18).
+
+- Se acepta como evidencia suficiente una única ejecución productiva controlada: HOME Classic, pago/webhook, `paid + queued`, claim/lease, un POST, `createdAt` válido y cierre `created` con attempt 1.
+- La verificación visual del portal confirma el envío como **Validado** y la correspondencia del snapshot QA 0,3 kg / 35 × 25 × 5 cm.
+- Esta validación cierra el QA manual de T-022.6-A, pero no autoriza automatización. El worker permanece sin caller automático, cron, polling, scheduler o endpoint.
+- Express sigue bloqueado. Perfiles definitivos, reconciliación de `unknown`, tracking API, label API y hardening comercial requieren decisiones posteriores.
+- La evidencia documental se mantiene deliberadamente libre de PII, IDs de pago, referencias, credenciales y payloads.
+
 ## T-022.6-A — activación manual con doble consentimiento
 
-**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA (2026-09-18).
+**Estado:** DESPLEGADA / VALIDADA EN PRODUCCIÓN MEDIANTE EJECUCIÓN MANUAL ONE-SHOT (2026-09-18).
 
 - Se separan process-once y expire-once; nunca se encadenan y cada invocación llama como máximo una vez la operación elegida.
 - Se exige doble consentimiento exacto (`--execute` + `SHIPPING_IMPORT_MANUAL_EXECUTION=true`) antes de cargar dependencias con capacidad de mutación.
@@ -12,18 +22,18 @@
 
 ## T-022.5 — pago autoritativo y cola logística opcional
 
-**Estado:** DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA (2026-09-18).
+**Estado:** DESPLEGADA / VALIDADA EN PRODUCCIÓN (2026-09-18).
 
 - Se adopta una RPC v2 aditiva en migración 010 aplicada; la función de 009 se preserva durante el cutover.
 - La confirmación financiera es autoritativa: una order válida pasa de `pending` a `paid` aunque falte el snapshot o éste no esté en `not_requested`.
 - Cuando el snapshot elegible existe, `paid + queued` comparte transacción. La cola se intenta después del pago en un subbloque para que una excepción logística no revierta la confirmación.
 - No hay backfill ni reconstrucción. `shipping_queued=false` representa legacy, estado logístico no elegible o anomalía; no convierte el pago en fallo.
 - PostgreSQL serializa webhooks concurrentes con `FOR UPDATE`; Node conserva las comparaciones previas y consume el resultado mínimo de la RPC.
-- La migración 010 está aplicada y validada a nivel infraestructura. Quedan pendientes T-022.6/activación controlada, Classic/Express, perfiles reales, reconciliación de `unknown` y prueba real MiCorreo.
+- La migración 010 y el flujo paid+queue están validados en producción. Quedan pendientes automatización controlada, Classic/Express, perfiles reales y reconciliación de `unknown`.
 
 ## T-022.4 — política del worker durable local
 
-**Fecha:** 2026-09-18. **Estado:** DESPLEGADA COMO WORKER INACTIVO / NO ACTIVADO.
+**Fecha:** 2026-09-18. **Estado:** IMPLEMENTADO / DESPLEGADO / SIN ACTIVACIÓN AUTOMÁTICA.
 
 - Una invocación procesa como máximo un claim. La DB/RPC mantiene la exclusión concurrente; Node no agrega locks.
 - Lease 60 s; backoff determinista 1/5/15 min; máximo cuatro attempts. Sin jitter por ahora.
@@ -31,18 +41,18 @@
 - El primer fallo AUTH antes del POST puede reintentarse; POST 401 seguido por fallo de renovación y segundo POST 401 son unknown. No existe retry logístico ni tercer POST en esa iteración.
 - `numeric` string se normaliza exclusivamente en el borde worker mediante formato decimal canónico. El servicio conserva contrato number estricto.
 - Cierre holder-only nulo produce `lease_lost` sin otra escritura. Recovery de leases vencidos usa sólo la RPC existente y no se agenda.
-- No se activa worker, webhook, paid+queue ni `/shipping/import`; no hay SQL nuevo.
+- La única activación fue el one-shot manual validado. No se habilitan startup, webhook, scheduler, cron o polling.
 
 ## T-022.3 — política contractual local (sin número DEC asignado)
 
-**Fecha:** 2026-09-18. **Estado:** IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA.
+**Fecha:** 2026-09-18. **Estado:** DESPLEGADA / VALIDADA.
 
 - Se conserva `ShippingImportService → ShippingProvider → MiCorreoProvider`; worker y transiciones son posteriores.
 - Sólo Classic puede construirse localmente. Express falla con `UNSUPPORTED_SERVICE` y no se asume `classic → CP` ni `express → EP`; se omite `productType` hasta confirmar contrato.
 - `shipping_apartment` no se trunca ni divide: floor/apartment se omiten temporalmente.
 - HOME usa el domicilio de la order; AGENCY usa `shipping_agency_code`. Ambos consumen medidas y declared value congelados.
 - Sólo 2xx + `createdAt` válido confirma creación; resultados inciertos quedan ambiguos para el worker futuro.
-- No se activa llamada, worker, webhook ni transición SQL. Pendientes: contrato, perfiles reales, T-022.4/5/6, reconciliación y prueba real.
+- Classic fue validado mediante llamada manual real. No se activa worker automático; quedan pendientes contrato completo, perfiles reales y reconciliación.
 - La auditoría independiente de Grok aprobó con observaciones y sin bloqueantes las validaciones sin coerción, calendario estricto, HTTP 408 ambiguo y timeout separado sólo mediante opt-in de import; los contratos históricos de timeout de token/rates/agencies permanecen intactos.
 - Observaciones para T-022.4: interpretar conservadoramente el fallo de renovación posterior a un POST 401; normalizar de forma explícita un posible `numeric` string en el borde repository/worker; ampliar cobertura de tipos/whitespace; y considerar la exportación de `normalizeProvince` como API interna de riesgo bajo.
 

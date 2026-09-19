@@ -1,21 +1,33 @@
 # Tareas
 
+## T-022.6 — cierre QA real end-to-end
+
+**Estado QA REAL MICORREO: VALIDADO END-TO-END** (2026-09-18).
+
+- Una compra real HOME Classic completó checkout, aprobación de Mercado Pago, webhook productivo y transición `orders.status=paid` + `order_shipping_imports.state=queued` mediante la RPC legacy-safe.
+- La fila partió con `attempt_count=0` y sin lease. Una única ejecución manual de `shipping:process-once` realizó claim/lease, un POST real a `/shipping/import` y finalizó `outcome=created`, `attemptCount=1`.
+- Estado final verificado: order `paid`; shipping `created`; attempt 1; lease/token y vencimiento nulos; `provider_created_at` e `imported_at` registrados; `next_attempt_at` y `last_error_type` nulos.
+- El envío fue verificado visualmente como **Validado** en MiCorreo. Las dimensiones visibles coincidieron con el snapshot QA: 0,3 kg y 35 × 25 × 5 cm.
+- La evidencia no registra PII, identificadores de pago, dirección, email, teléfono, JWT, customerId ni secretos.
+
+**Pendientes:** perfiles físicos reales para 1–4 remeras; automatización controlada; política/reconciliación de `unknown`; mantener Express bloqueado hasta confirmar contrato; hardening comercial final.
+
 ## T-022.6-A — Activación manual one-shot y observabilidad segura
 
-**Estado: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18).
+**Estado: DESPLEGADA / VALIDADA EN PRODUCCIÓN MEDIANTE EJECUCIÓN MANUAL ONE-SHOT** (2026-09-18).
 
 - `npm run shipping:process-once -- --execute` procesa como máximo un claim; `npm run shipping:expire-once -- --execute` expira leases una sola vez y permanece separado.
 - Ambos comandos requieren además `SHIPPING_IMPORT_MANUAL_EXECUTION=true`. Si falta cualquier guarda, terminan con código 1, muestran `manual execution disabled` y no cargan worker/configuración/cliente.
 - Outcomes controlados retornan código 0. Configuración inválida, resultado inválido o error inesperado retornan 1 con salida sanitizada, sin message, stack, payload, PII ni secretos.
-- No hay loop, timer, scheduler, polling, endpoint HTTP ni activación desde startup/webhook. Los CLI no fueron ejecutados contra MiCorreo real.
+- No hay loop, timer, scheduler, polling, endpoint HTTP ni activación desde startup/webhook. `process-once` fue ejecutado una única vez de forma controlada y validó un envío real.
 
-**QA futuro, no ejecutar aún:** crear una única order real; confirmar pago y `queued`; comprobar Classic; invocar `process-once` una vez; verificar una transición, DB y MiCorreo; no repetir si queda `unknown`; sólo después decidir automatización.
+**QA ejecutado:** una única order real Classic fue confirmada, procesada una vez y verificada en DB y MiCorreo. La regla futura se mantiene: no repetir manualmente un caso que quede `unknown`.
 
-**Pendiente:** auditoría de T-022.6-A, prueba real controlada, Classic/Express, perfiles físicos reales y reconciliación de `unknown`.
+**Pendiente:** automatización controlada, perfiles físicos reales, contrato Classic/Express y reconciliación de `unknown`.
 
 ## T-022.5 — Paid + queue legacy-safe (estado vigente)
 
-**Estado: DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA** (2026-09-18).
+**Estado: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-18).
 
 - Migración aditiva 010 aplicada: conserva la RPC anterior y agrega `mark_order_paid_and_queue_shipping_import_v2`.
 - La RPC bloquea la order, valida estado/importe/moneda y ejecuta una sola transición `pending → paid`. Si existe snapshot `not_requested`, lo mueve a `queued` en la misma transacción.
@@ -31,7 +43,7 @@
 
 ### T-022.4 — Worker durable para shipping import
 
-**Estado:** DESPLEGADA COMO WORKER INACTIVO / NO ACTIVADO (2026-09-18).
+**Estado:** WORKER IMPLEMENTADO / DESPLEGADO / SIN ACTIVACIÓN AUTOMÁTICA (2026-09-18).
 
 - `processNextShippingImport()` genera UUID de lease, reclama como máximo un trabajo, normaliza el snapshot, invoca una sola vez `ShippingImportService` y persiste una única salida holder-only.
 - Lease documentada de 60 segundos. Una transición sin fila devuelve `lease_lost` y no intenta una segunda transición. Los errores del RPC final se propagan para que la expiración SQL futura lleve el trabajo a `unknown`.
@@ -40,14 +52,14 @@
 - Política AUTH endurecida: fallo inicial antes del POST es retryable; fallo de renovación después de un POST 401 y segundo POST 401 son `unknown`. Se mantienen máximo dos POST, mismo payload/extOrderId y ninguna tercera llamada.
 - Backoff sin jitter: attempts 1/2/3 → 1/5/15 minutos; attempt 4 → `failed` con código de límite. Se usa el `attempt_count` ya incrementado por claim.
 - `expireStaleShippingImportLeases()` sólo delega en la RPC existente y no se agenda automáticamente. El repository normaliza respuesta `null` o `[]` a cero filas, valida arrays y rechaza otros tipos.
-- Sin activación: no hay import desde `index.js`, `app.js`, webhook o repository; tampoco cron, interval, timeout de scheduling o nueva variable obligatoria.
-- Verificación local: 528/528 tests, 14 suites, transporte mockeado y sin requests reales.
+- Sin activación automática: no hay import desde `index.js`, `app.js` o webhook; tampoco cron, interval o scheduler. La única ejecución real fue el one-shot controlado documentado arriba.
+- Verificación real: claim/lease y cierre `created` con attempt 1, sin lease residual.
 
-**Pendiente:** activación controlada del worker; T-022.5 paid+queue legacy-safe; T-022.6 cutover/QA; Classic/Express; perfiles físicos reales; reconciliación de `unknown`; prueba real MiCorreo.
+**Pendiente:** automatización controlada del worker; Classic/Express; perfiles físicos reales; reconciliación de `unknown`.
 
 ### T-022.3 — Provider + mapping para `/shipping/import`
 
-**Estado:** IMPLEMENTADA / AUDITADA / DESPLEGADA COMO CAPA INACTIVA (2026-09-18).
+**Estado:** DESPLEGADA / VALIDADA (2026-09-18).
 
 **Cierre de auditoría independiente:** Grok emitió **APROBADO CON OBSERVACIONES**, sin bloqueantes. `declared_value` exige `number` finito no negativo sin coerción; peso/dimensiones exigen enteros positivos; `createdAt` valida formato y calendario real; HTTP 408 es ambiguo; errores inesperados se preservan; y la distinción `TIMEOUT` es opt-in exclusivo del import, manteniendo `micorreo_network_error` para token/rates/agencies.
 
@@ -57,9 +69,9 @@
 - Política temporal: sólo Classic; Express produce `UNSUPPORTED_SERVICE` antes de red. No se envía `productType` hasta confirmar Classic/Express.
 - El provider contiene el futuro POST, timeout y una única renovación/repetición ante 401. Éxito sólo con 2xx y `createdAt` válido; retorna únicamente `{ createdAt }`.
 - Errores: `VALIDATION`, `UNSUPPORTED_SERVICE`, `AUTH`, `RATE_LIMIT`, `PROVIDER_REJECTED`, `NETWORK`, `TIMEOUT`, `SERVER` y `AMBIGUOUS_RESPONSE`.
-- Sin activación: `app.js`, webhook, `shippingImports.js` e `index.js` no ejecutan el servicio. Tests mockean transporte; sin requests reales, SQL, migración, deploy, commit ni push.
+- Sin activación automática: `app.js`, webhook e `index.js` no ejecutan el servicio. HOME Classic fue validado mediante el one-shot real; Express permanece bloqueado.
 
-**Pendiente:** confirmar Classic/Express y perfiles reales; worker T-022.4; paid+queue legacy-safe T-022.5; cutover/QA T-022.6; reconciliación de `unknown`; prueba real MiCorreo.
+**Pendiente:** confirmar Classic/Express y perfiles reales; automatización controlada; reconciliación de `unknown`.
 
 **Observaciones no bloqueantes para T-022.4:**
 

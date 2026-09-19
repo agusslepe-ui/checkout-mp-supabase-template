@@ -1,6 +1,15 @@
 # Progreso
 
-## 2026-09-18 — T-022.6-A CLI manual one-shot local
+## 2026-09-18 — cierre QA real T-022.6
+
+- **QA REAL MICORREO: VALIDADO END-TO-END EN PRODUCCIÓN.** Compra HOME Classic, pago real aprobado, webhook, `paid + queued`, claim/lease, POST real y cierre `created` confirmados.
+- La única ejecución manual devolvió `outcome=created`, `attemptCount=1`; no hubo segunda ejecución.
+- DB final: order `paid`; import `created`; attempt 1; lease nulo; timestamps de provider/import presentes; sin next attempt ni error.
+- Portal MiCorreo: envío visible como **Validado**; 0,3 kg y 35 × 25 × 5 cm coinciden con el snapshot QA.
+- T-022.3 queda DESPLEGADA / VALIDADA; T-022.5, DESPLEGADA / VALIDADA EN PRODUCCIÓN; T-022.6-A, DESPLEGADA / VALIDADA EN PRODUCCIÓN mediante one-shot manual.
+- Sin PII ni identificadores sensibles en la evidencia. La automatización del worker continúa pendiente.
+
+## 2026-09-18 — HISTÓRICO: T-022.6-A CLI manual one-shot local
 
 - Implementados comandos separados `shipping:process-once` y `shipping:expire-once`, sin ejecución automática.
 - Doble guarda exacta: argumento `--execute` y `SHIPPING_IMPORT_MANUAL_EXECUTION=true`. Una invocación bloqueada no carga el worker ni toca DB/provider.
@@ -26,7 +35,7 @@
 - Expiración de leases es una función separada que sólo llama la RPC de 009. Concurrencia permanece bajo autoridad DB/RPC, sin locks Node.
 - En este corte T-022.4 está desplegada como capa inactiva: sin timer, scheduler ni caller productivo. `/shipping/import` sigue INACTIVO productivamente.
 
-## 2026-09-18 — T-022.3 provider + mapping local
+## 2026-09-18 — HISTÓRICO: T-022.3 provider + mapping local
 
 - **Auditoría independiente Grok: APROBADO CON OBSERVACIONES, sin bloqueantes.** T-022.3 queda IMPLEMENTADA LOCALMENTE / AUDITADA / APROBADA CON OBSERVACIONES / NO PRODUCTIVA.
 - Las correcciones aprobadas cubren validación numérica sin coerción, calendario RFC3339 real, timeout legacy sin regresión, 408 ambiguo y propagación de errores inesperados. Las observaciones no bloqueantes para T-022.4 están registradas en `TASKS.md`.

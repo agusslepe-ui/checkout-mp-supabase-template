@@ -1,5 +1,13 @@
 # Seguridad
 
+## T-022.6 — evidencia productiva minimizada
+
+- El cierre registra sólo estados, attempt, limpieza de lease, presencia de timestamps, resultado del provider y dimensiones QA.
+- Se excluyen PII del destinatario, IDs de Mercado Pago, referencias de order/provider, direcciones, emails, teléfonos, JWT, customerId, payloads, bodies y secretos.
+- La ejecución fue manual, one-shot y con doble guarda. No se habilitó endpoint, scheduler, cron o polling.
+- Un resultado `unknown` continúa siendo no repetible manualmente sin reconciliación; el caso validado terminó inequívocamente en `created`.
+- La prueba real de Classic no autoriza Express, tracking, labels ni perfiles físicos definitivos.
+
 ## T-022.6-A — guardas y salida CLI
 
 - La ejecución manual requiere simultáneamente `--execute` y `SHIPPING_IMPORT_MANUAL_EXECUTION=true`. La variable es opcional para el arranque normal y no forma parte de `npm start`.
@@ -7,14 +15,14 @@
 - La salida se reconstruye con campos permitidos: outcome, orderId, attemptCount y count. Nunca serializa excepciones, resultado completo, PII, extOrderId, payload, body, tokens o claves.
 - Errores inesperados muestran sólo `errorType=unexpected_error` y exit 1. No se usa `console.log`, `console.error`, `JSON.stringify(error)` ni stack.
 - Durante la carga real del CLI se suprime únicamente el diagnóstico startup de presencia/longitud/hash del secreto webhook; `npm start` conserva su comportamiento histórico.
-- No existe endpoint HTTP, scheduler, cron, polling o activación al startup. Los CLI no se ejecutaron contra infraestructura real.
+- No existe endpoint HTTP, scheduler, cron, polling o activación al startup. `process-once` se ejecutó una única vez de forma controlada; `expire-once` no se encadenó.
 
 ## T-022.5 — prioridad financiera y privilegios mínimos
 
 - La RPC v2 desplegada es `SECURITY INVOKER`, usa `search_path = pg_catalog, public` y revoca `EXECUTE` a `public`, `anon` y `authenticated`; sólo `service_role` recibe ejecución.
 - No se agregan grants de tablas. La RPC retorna sólo `order_id`, estado financiero y `shipping_queued`; no expone PII ni el snapshot.
 - El lock y las condiciones de estado quedan en PostgreSQL. La ausencia o anomalía logística no impide registrar un pago válido; tampoco crea snapshots tardíos ni muta trabajos que no estén `not_requested`.
-- Migración 010 aplicada y validada a nivel infraestructura. Worker y `/shipping/import` permanecen inactivos.
+- Migración 010 y paid+queue validados en producción. Worker sin activación automática; `/shipping/import` validado mediante one-shot controlado.
 
 ## T-022.4 — worker desplegado no activado
 
@@ -33,7 +41,7 @@
 - No se loguean payload/response, PII, domicilio, customerId o JWT. La capa nueva no agrega logs.
 - Validaciones permanentes y bloqueo de Express ocurren antes de red. El único retry interno es la renovación ante 401, reutilizando payload/extOrderId.
 - Timeout/red/5xx posteriores al POST y 2xx inválido se marcan ambiguos; no se reintentan automáticamente.
-- No hay endpoint, worker o integración webhook. Todos los tests sustituyen el transporte; no hubo tráfico real.
+- No hay endpoint ni integración automática del worker. El transporte tuvo una única validación real HOME Classic mediante CLI controlado.
 - Corrección posterior a auditoría: se eliminaron coerciones de tipos, se valida calendario real, los errores internos no se etiquetan como red y el timeout específico requiere opt-in del import. Token/rates/agencies conservan su error histórico.
 - Auditoría independiente: **APROBADO CON OBSERVACIONES**, sin bloqueantes. T-022.4 debe tratar conservadoramente el historial de un POST que respondió 401 si luego falla la renovación, y normalizar `numeric` exclusivamente en el borde de persistencia con una regla explícita.
 
@@ -43,10 +51,10 @@
 - Todas las RPC nuevas son `SECURITY INVOKER`, fijan `search_path = pg_catalog, public`, revocan ejecución amplia y conceden EXECUTE solo a `service_role`.
 - El claim usa bloqueo de fila y lease. Toda finalización exige order, estado `processing`, token coincidente y lease vigente; un worker obsoleto no puede escribir. Lease expirado pasa a `unknown` para evitar un retry ciego potencialmente duplicado.
 - El snapshot copia PII de entrega solo al devolver un claim backend; la tabla logística persiste exclusivamente correlación, perfil, valor declarado y estado operativo. No expone endpoint público ni datos al navegador.
-- La RPC paid+queue evita separar la confirmación financiera de la creación del trabajo. Aún no está conectada al webhook: no se alteró la autoridad de Mercado Pago ni se activó logística.
+- La RPC paid+queue evita separar la confirmación financiera de la creación del trabajo. Está conectada al webhook y fue validada con un pago real; Mercado Pago conserva la autoridad financiera.
 - La verificación productiva confirmó 009 aplicada, cero policies públicas, denegación a `anon`/`authenticated`, grants columna por columna, EXECUTE exclusivo de `service_role`, claim/lease y rollback transaccional real. No hubo backfill.
-- Riesgo pendiente: una order legacy `pending` no tiene fila logística porque no hubo backfill. T-022.5 debe permitir confirmar financieramente esos pagos sin inventar un snapshot; hasta entonces paid+queue no debe conectarse al webhook.
-- `/shipping/import` permanece INACTIVO y no existe worker/provider productivo. Classic/Express, retries externos y reconciliación de `unknown` quedan bloqueados hasta sus tareas posteriores.
+- Las orders legacy sin fila logística pueden confirmarse financieramente sin inventar snapshots; requieren tratamiento logístico operativo separado.
+- `/shipping/import` fue validado manualmente para Classic. No existe worker automático; Express y reconciliación de `unknown` quedan bloqueados hasta tareas posteriores.
 
 ## Post-pago UX — cleanup frontend no autoritativo
 

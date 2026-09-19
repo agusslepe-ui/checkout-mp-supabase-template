@@ -1,32 +1,42 @@
 # Contexto actual del proyecto
 
-## T-022.6-A local — 2026-09-18
+## Cierre QA real T-022.6 — 2026-09-18
 
-**T-022.6-A está IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** Dos CLI internos y separados consumen las funciones existentes: `shipping:process-once` llama como máximo una vez a `processNextShippingImport`; `shipping:expire-once` llama como máximo una vez a `expireStaleShippingImportLeases`. Ambos exigen simultáneamente `--execute` y `SHIPPING_IMPORT_MANUAL_EXECUTION=true`; sin cualquier guarda no cargan el worker ni inicializan Supabase.
+**QA REAL MICORREO VALIDADO END-TO-END EN PRODUCCIÓN.** Una compra real HOME Classic recorrió checkout, pago aprobado, webhook, `orders.status=paid` y `order_shipping_imports.state=queued` por la RPC legacy-safe. La fila logística estaba en attempt 0 y sin lease antes de la operación manual.
+
+Se ejecutó `shipping:process-once` exactamente una vez con doble guarda. El worker reclamó una sola fila, creó el lease, realizó un único POST real a `/shipping/import`, recibió `createdAt` válido y terminó `outcome=created`, `attemptCount=1`. La DB quedó en order `paid`, import `created`, attempt 1, lease limpio, timestamps de provider/import registrados y sin next attempt ni error.
+
+El envío se verificó visualmente en el portal real de MiCorreo con estado **Validado**. Las medidas visibles coincidieron con el snapshot QA: 0,3 kg y 35 × 25 × 5 cm. Este documento omite deliberadamente PII, IDs de pago, referencias externas, direcciones, contactos, JWT, customerId y secretos.
+
+El worker sigue sin activación automática. No hay cron, polling, scheduler o endpoint HTTP. Express, perfiles definitivos, reconciliación automática de `unknown`, tracking API y label API siguen fuera de alcance.
+
+## T-022.6-A — antecedente de implementación local
+
+> **HISTÓRICO / SUPERADO:** en este corte T-022.6-A estaba IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA. Dos CLI internos y separados consumen las funciones existentes: `shipping:process-once` llama como máximo una vez a `processNextShippingImport`; `shipping:expire-once` llama como máximo una vez a `expireStaleShippingImportLeases`. Ambos exigen simultáneamente `--execute` y `SHIPPING_IMPORT_MANUAL_EXECUTION=true`; sin cualquier guarda no cargan el worker ni inicializan Supabase.
 
 La salida allowlisted contiene sólo outcome, orderId, attemptCount o count. Un error inesperado devuelve código 1 y `errorType=unexpected_error`, sin message, stack, PII, payload o secretos. Outcomes controlados devuelven 0; ejecución deshabilitada y fallos devuelven 1.
 
 No se modificaron worker, webhook, app, SQL ni migraciones. No hay scheduler, cron, polling, loop o endpoint HTTP. Los comandos no fueron ejecutados con las guardas reales y `/shipping/import` no recibió llamadas. T-022.5 está DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA; migración 010 aplicada y runtime paid+queue desplegado.
 
-## T-022.5 desplegada y validada — 2026-09-18
+## T-022.5 desplegada y validada en producción — 2026-09-18
 
-**T-022.5 está DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA.** La migración aditiva 010 aplicada agrega `mark_order_paid_and_queue_shipping_import_v2` sin alterar la RPC de 009. La función bloquea la order, valida `pending`, moneda e importe y marca `paid`; sólo entonces intenta `not_requested → queued`. Retorna únicamente `order_id`, `status` y `shipping_queued`.
+**T-022.5 está DESPLEGADA / VALIDADA EN PRODUCCIÓN.** La migración aditiva 010 aplicada agrega `mark_order_paid_and_queue_shipping_import_v2` sin alterar la RPC de 009. La función bloquea la order, valida `pending`, moneda e importe y marca `paid`; sólo entonces intenta `not_requested → queued`. Retorna únicamente `order_id`, `status` y `shipping_queued`.
 
 El caso legacy sin `order_shipping_imports` y los snapshots `queued`/`processing` no bloquean el pago ni son mutados. Un error en el subbloque logístico conserva la transición financiera y retorna `shipping_queued=false`. Los webhooks repetidos son no-op bajo el lock de PostgreSQL. `markOrderAsPaid` conserva sus validaciones Node y llama la RPC v2.
 
-La migración 010 fue aplicada y el flujo se validó en PostgreSQL. T-022.4 está desplegada como worker inactivo/no activado; no hay scheduler ni polling. `/shipping/import` permanece inactivo.
+La migración 010 fue aplicada y el flujo se validó con un pago real en PostgreSQL. T-022.4 está desplegada sin scheduler ni polling. `/shipping/import` fue validado mediante una única ejecución manual.
 
 ## T-022.4 desplegada e inactiva — 2026-09-18
 
-**T-022.4 está DESPLEGADA COMO WORKER INACTIVO / NO ACTIVADO.** `shippingImportWorker.js` expone una iteración única y expiración manual de leases; no contiene loop, polling ni scheduling. Usa exclusivamente `shippingImports` para claim/transiciones y `ShippingImportService` para dominio/provider. T-022.3 está IMPLEMENTADA / AUDITADA / DESPLEGADA COMO CAPA INACTIVA.
+**T-022.4 está IMPLEMENTADA / DESPLEGADA / SIN ACTIVACIÓN AUTOMÁTICA.** `shippingImportWorker.js` expone una iteración única y expiración manual de leases; no contiene loop, polling ni scheduling. Usa exclusivamente `shippingImports` para claim/transiciones y `ShippingImportService` para dominio/provider. T-022.3 está DESPLEGADA / VALIDADA.
 
 La política local usa lease de 60 s, backoff 1/5/15 min y máximo cuatro attempts. `RATE_LIMIT`, AUTH previo al POST y fallos de red/timeout con evidencia explícita de ocurrir antes del POST son retryable; permanentes terminan failed; todo resultado posiblemente enviado pero incierto termina unknown. Tanto POST 401 + fallo de renovación como segundo POST 401 terminan unknown. `numeric` string se normaliza con regex canónica en el borde del worker. La expiración acepta `null`/array vacío como cero filas y rechaza otros tipos inesperados.
 
-`/shipping/import` continúa INACTIVO PRODUCTIVAMENTE. `index.js`, `app.js` y webhook no importan el worker. Paid+queue está desplegado y la migración 010 está aplicada, pero eso no activa el procesamiento logístico.
+`/shipping/import` fue validado realmente mediante one-shot controlado. `index.js`, `app.js` y webhook no importan el worker; no existe procesamiento automático.
 
-## T-022.3 local — 2026-09-18
+## T-022.3 desplegada y validada — 2026-09-18
 
-**T-022.3 está IMPLEMENTADA / AUDITADA / DESPLEGADA COMO CAPA INACTIVA.** La auditoría independiente de Grok cerró sin bloqueantes. `ShippingImportService` construye el contrato mínimo desde `order_shipping_imports` y `MiCorreoProvider.importShipment` contiene el POST aún sin caller productivo. Sólo Classic se admite; Express queda bloqueado y no se asume CP/EP.
+**T-022.3 está DESPLEGADA / VALIDADA.** La auditoría independiente de Grok cerró sin bloqueantes. `ShippingImportService` construye el contrato mínimo desde `order_shipping_imports` y `MiCorreoProvider.importShipment` ejecutó correctamente el POST manual validado. Sólo Classic se admite; Express queda bloqueado y no se asume CP/EP.
 
 Las observaciones bloqueantes de la primera revisión fueron corregidas localmente y la auditoría final las aprobó. Persisten observaciones no bloqueantes para T-022.4 sobre el antecedente de un POST 401 si falla la renovación, normalización explícita de `numeric` en el borde repository/worker, cobertura adicional de tipos/whitespace y la nueva exportación interna de `normalizeProvince`.
 

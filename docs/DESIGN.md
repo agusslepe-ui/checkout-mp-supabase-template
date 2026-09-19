@@ -1,5 +1,23 @@
 # Diseño técnico
 
+## T-022.6 — flujo validado en producción
+
+```text
+checkout HOME Classic
+  → pago aprobado + webhook
+  → orders: paid
+  → shipping import: queued (attempt 0, sin lease)
+  → CLI manual one-shot
+  → processing + lease (attempt 1)
+  → POST /shipping/import
+  → createdAt válido
+  → shipping import: created (lease limpio)
+```
+
+La validación real confirmó una sola operación de provider y una sola transición final. El estado persistido terminó sin lease, retry ni error. La observación visual en MiCorreo confirmó estado **Validado** y correspondencia con el snapshot QA 0,3 kg / 35 × 25 × 5 cm.
+
+Este flujo manual validado no cambia la arquitectura de activación: `npm start`, `index.js`, `app.js` y webhook no ejecutan el worker. Automatización, reconciliación de `unknown`, Express, tracking y labels requieren decisiones posteriores.
+
 ## T-022.6-A — composición manual one-shot
 
 Los entrypoints `scripts/shipping-process-once.js` y `scripts/shipping-expire-once.js` delegan en `shippingImportCli`. La capa valida `--execute` y `SHIPPING_IMPORT_MANUAL_EXECUTION=true` antes del `require` diferido del worker; por eso una invocación deshabilitada no carga configuración, no crea cliente Supabase y no puede reclamar filas.
@@ -14,7 +32,7 @@ El formatter reconstruye la salida desde una allowlist, sin serializar resultado
 
 La cola es subordinada al pago. Su actualización vive en un subbloque PL/pgSQL: snapshot ausente, snapshot `queued`/`processing` u otra anomalía logística producen `shipping_queued=false` sin inventar filas y sin revertir la confirmación financiera. La respuesta mínima no contiene PII: `order_id`, `status`, `shipping_queued`.
 
-Dos webhooks simultáneos se serializan en PostgreSQL; sólo el primero puede observar `pending`. La RPC anterior queda preservada para un cutover reversible. La migración 010 está aplicada y la infraestructura fue validada en PostgreSQL. El worker sigue inactivo y no llama `/shipping/import`.
+Dos webhooks simultáneos se serializan en PostgreSQL; sólo el primero puede observar `pending`. La RPC anterior queda preservada para un cutover reversible. La migración 010 y `paid + queued` fueron validados con un pago real. El worker no tiene activación automática; `/shipping/import` se validó mediante one-shot manual.
 
 ## T-022.4 — worker durable desplegado y no activado
 
@@ -31,9 +49,9 @@ El worker no construye payloads, recalcula paquetes, toca orders ni ejecuta SQL 
 
 Backoff determinista: 1, 5 y 15 minutos para attempts 1–3; el cuarto termina failed. No hay jitter en esta etapa para mantener operación y tests reproducibles. Red/timeout sólo son retryable con evidencia explícita de que ocurrieron antes del POST; errores ambiguos nunca entran en retry automático. El caso 401 + fallo de renovación y el segundo POST 401 terminan unknown conservadoramente.
 
-El módulo no es alcanzable desde entrypoints o webhook. Su activación, frecuencia y observabilidad operativa pertenecen a etapas posteriores.
+El módulo no es alcanzable desde el startup ni el webhook. Sólo es alcanzable desde el CLI interno con doble guarda; automatización y frecuencia pertenecen a etapas posteriores.
 
-## T-022.3 — importación local no activada
+## T-022.3 — importación desplegada y validada manualmente
 
 `claim/snapshot → ShippingImportService → ShippingProvider.importShipment → MiCorreoProvider → POST /shipping/import`.
 
@@ -43,7 +61,7 @@ HOME usa `deliveryType: D`, domicilio y `AR-J → J`; no incluye agency. AGENCY 
 
 Sólo Classic atraviesa el mapping y el payload omite `productType`; Express retorna `UNSUPPORTED_SERVICE` antes de red. Un éxito exige 2xx y `createdAt` válido. Red, timeout o 5xx luego del POST y 2xx inválido son potencialmente ambiguos y no disparan retry logístico.
 
-El servicio no está enlazado a Express, webhook, repositorio ni entrypoint. No existe worker o polling y `/shipping/import` sigue INACTIVO.
+El servicio no está enlazado a Express ni webhook. El CLI one-shot validó Classic en producción; no existe polling ni scheduler.
 
 Corrección posterior a auditoría: `declared_value` acepta sólo `number` finito no negativo y el perfil físico sólo enteros positivos; `createdAt` valida componentes de calendario y offset sin depender de la normalización de `Date.parse`. El transporte compartido conserva por defecto `micorreo_network_error`; únicamente import opta por distinguir timeout. HTTP 408 se clasifica `TIMEOUT` ambiguo sin retry. Los errores no tipados se propagan como internos y no se inventa que el POST fue intentado.
 

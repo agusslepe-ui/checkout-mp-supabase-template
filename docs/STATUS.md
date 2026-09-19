@@ -7,14 +7,15 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 ## T-022 — estado productivo vigente
 
 - **T-022: EN PROGRESO.**
-- **T-022.6-A: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18). Existen comandos internos separados `shipping:process-once` y `shipping:expire-once`, ambos one-shot y protegidos por `--execute` más `SHIPPING_IMPORT_MANUAL_EXECUTION=true`. No fueron ejecutados contra MiCorreo real.
-- **T-022.5: DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA** (2026-09-18). La migración 010 está aplicada, el runtime paid+queue legacy-safe está desplegado y la transición fue validada en PostgreSQL.
-- **T-022.4: DESPLEGADA COMO WORKER INACTIVO / NO ACTIVADO** (2026-09-18). Existe un worker invocable de una sola iteración, con lease de 60 s, normalización explícita de `numeric`, transiciones holder-only, backoff determinista 1/5/15 min, máximo cuatro attempts y expiración separada de leases. No está importado por `index.js`, `app.js` ni webhook; no hay timer, polling o scheduler.
-- **T-022.3: IMPLEMENTADA / AUDITADA / DESPLEGADA COMO CAPA INACTIVA** (2026-09-18). La auditoría independiente de Grok cerró sin bloqueantes. Existe mapping validado desde el snapshot durable y `MiCorreoProvider.importShipment`. Classic es el único servicio admitido; Express se bloquea antes de red y no se envía `productType` hasta confirmar el contrato. La capa desplegada no tiene caller productivo.
+- **T-022.6-A: DESPLEGADA / VALIDADA EN PRODUCCIÓN MEDIANTE EJECUCIÓN MANUAL ONE-SHOT** (2026-09-18). Una única invocación autorizada realizó un claim, un lease, un POST real y una transición final `created`. No existe activación automática.
+- **T-022.5: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-18). La migración 010 y el runtime paid+queue legacy-safe confirmaron un pago real y llevaron el snapshot de `not_requested` a `queued`.
+- **T-022.4: WORKER IMPLEMENTADO / DESPLEGADO / SIN ACTIVACIÓN AUTOMÁTICA** (2026-09-18). La ejecución real confirmó lease, attempt y cierre holder-only; no hay timer, polling, cron ni scheduler.
+- **T-022.3: DESPLEGADA / VALIDADA** (2026-09-18). El mapping HOME Classic y `MiCorreoProvider.importShipment` fueron validados con un envío real. Express continúa bloqueado y no se asume CP/EP.
 - **T-022.2: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-17). La migración 009 y el runtime v3 fueron desplegados en ese orden. Un checkout productivo real sin pago creó order `pending`, `order_items`, `checkout_attempt` y `order_shipping_imports/not_requested`, y llegó correctamente a Mercado Pago.
 - **Migración 009: APLICADA EN PRODUCCIÓN.** Existen RPC 26, v2, v3, paid+queue, claim y transiciones/recovery. RPC 26 y v2 permanecen disponibles. El QA PostgreSQL real validó atomicidad y rollback sin residuos, snapshot 300/5/25/35, `declared_value = products_subtotal`, `ext_order_id = orders.external_reference` y la secuencia `pending+not_requested → paid+queued → processing+lease`, sin llamar MiCorreo.
 - RLS, ausencia de policies públicas, denegación a `anon`/`authenticated`, EXECUTE exclusivo de `service_role` y UPDATE limitado a las nueve columnas operativas fueron verificados en producción. No hubo backfill: la tabla quedó inicialmente con cero filas.
-- **`POST /shipping/import` continúa INACTIVO PRODUCTIVAMENTE.** No existe scheduler, cron, polling ni endpoint HTTP de operación. `index.js`, `app.js` y webhook no llaman el worker; los nuevos CLI manuales no fueron ejecutados contra MiCorreo real.
+- **QA REAL MICORREO: VALIDADO END-TO-END.** Checkout HOME Classic, pago aprobado, webhook, `paid + queued`, claim/lease, import real y cierre `created` fueron comprobados en producción. El portal real mostró el envío como **Validado** y las medidas QA 0,3 kg / 35 × 25 × 5 cm.
+- **`POST /shipping/import`: VALIDADO REALMENTE mediante ejecución manual controlada.** Esto no declara worker automático: no existe scheduler, cron, polling ni endpoint HTTP de operación.
 
 ## Producción
 
@@ -46,7 +47,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 - Sustituir los perfiles TEMPORAL/QA de `300 g / 5 × 25 × 35 cm` por medidas reales y repetir QA.
 - T-022.1: cerrar el contrato restante, incluido Classic/Express y la reconciliación práctica por `extOrderId`.
-- Completar T-022: confirmar Classic/Express y perfiles físicos reales; implementar worker T-022.4; resolver paid+queue legacy-safe T-022.5; ejecutar cutover/QA T-022.6; definir reconciliación real de `unknown`; y realizar una prueba real controlada de MiCorreo.
+- Completar T-022: confirmar Classic/Express y perfiles físicos reales; diseñar automatización controlada del worker; definir reconciliación real de `unknown`; y cerrar el hardening comercial.
 - Implementar catálogo y stock reales desde Supabase, con imágenes y descripciones dinámicas.
 - Completar el hardening comercial: restaurar el precio definitivo, rotar credenciales privadas previamente expuestas, ejecutar la auditoría npm y abordar dominio definitivo, frontend final y SEO.
 
