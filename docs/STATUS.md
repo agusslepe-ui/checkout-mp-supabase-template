@@ -1,12 +1,13 @@
 # Estado vigente del proyecto
 
-**Última actualización:** 2026-09-18
+**Última actualización:** 2026-09-19
 
 Este archivo resume el estado real vigente. Los bloques históricos de otros documentos que describan T-017 sin desplegar, las migraciones 007/008 sin aplicar, producción en runtime T-021, T-020 sin paid QA o T-021 pendiente deben leerse como antecedentes superados por este corte.
 
 ## T-022 — estado productivo vigente
 
 - **T-022: EN PROGRESO.**
+- **T-022.6-C: PREPARADA LOCALMENTE / NO PRODUCTIVA** (2026-09-19). `Dockerfile` conserva el proceso web con `npm start`; el nuevo `Dockerfile.worker` reutiliza la misma construcción y ejecuta exclusivamente `npm run shipping:worker`, sin exponer un puerto. No fue construido, ejecutado ni desplegado.
 - **T-022.6-B: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18). Existe un entrypoint Node aislado para polling cada 60 s, protegido por `SHIPPING_IMPORT_WORKER_ENABLED=true`, con primera iteración inmediata, ciclos no superpuestos, umbral fatal de cinco errores consecutivos y shutdown por señales. No fue ejecutado ni desplegado.
 - **T-022.6-A: DESPLEGADA / VALIDADA EN PRODUCCIÓN MEDIANTE EJECUCIÓN MANUAL ONE-SHOT** (2026-09-18). Una única invocación autorizada realizó un claim, un lease, un POST real y una transición final `created`. No existe activación automática.
 - **T-022.5: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-18). La migración 010 y el runtime paid+queue legacy-safe confirmaron un pago real y llevaron el snapshot de `not_requested` a `queued`.

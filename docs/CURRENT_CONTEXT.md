@@ -1,5 +1,11 @@
 # Contexto actual del proyecto
 
+## T-022.6-C local — 2026-09-19
+
+**T-022.6-C está PREPARADA LOCALMENTE / NO PRODUCTIVA.** El mismo repositorio contiene dos Dockerfiles con construcción equivalente y procesos separados: `Dockerfile` mantiene la web mediante `npm start` y `Dockerfile.worker` ejecuta exclusivamente `npm run shipping:worker`. El artefacto del worker omite `EXPOSE 3003` porque no escucha HTTP.
+
+No se hardcodearon variables ni secretos: EasyPanel deberá inyectarlos al futuro servicio. La imagen no fue construida ni ejecutada y el worker no fue desplegado ni activado. No hubo cambios en `Dockerfile`, `npm start`, código del worker, webhook, SQL o migraciones.
+
 ## T-022.6-B local — 2026-09-18
 
 **T-022.6-B está IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** `scripts/shipping-worker.js` inicia un proceso independiente sólo con `SHIPPING_IMPORT_WORKER_ENABLED=true`. `package.json` agrega `shipping:worker`; `npm start` sigue siendo exclusivamente el servidor web y no carga polling.

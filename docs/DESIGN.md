@@ -1,5 +1,23 @@
 # Diseño técnico
 
+## T-022.6-C — imagen dedicada del shipping worker
+
+El repositorio define dos artefactos de contenedor independientes con la misma imagen `node:22-alpine`, `WORKDIR /app`, instalación reproducible mediante `npm ci` y copia del mismo código:
+
+```text
+Dockerfile
+  → proceso web
+  → npm start
+  → expone 3003
+
+Dockerfile.worker
+  → proceso shipping aislado
+  → npm run shipping:worker
+  → no expone puertos
+```
+
+Las variables y secretos se inyectan externamente en cada servicio; ningún valor se incorpora a las imágenes. `Dockerfile.worker` prepara un futuro servicio separado, pero no lo activa ni acredita build, ejecución o despliegue. El worker continúa **NO PRODUCTIVO**.
+
 ## T-022.6-B — proceso automático aislado
 
 ```text
