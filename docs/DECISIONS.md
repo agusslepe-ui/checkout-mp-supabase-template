@@ -1,15 +1,25 @@
 # Decisiones técnicas
 
-## T-022.5 — pago autoritativo y cola logística opcional
+## T-022.6-A — activación manual con doble consentimiento
 
 **Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA (2026-09-18).
 
-- Se adopta una RPC v2 aditiva en migración 010; la función de 009 se preserva durante el cutover.
+- Se separan process-once y expire-once; nunca se encadenan y cada invocación llama como máximo una vez la operación elegida.
+- Se exige doble consentimiento exacto (`--execute` + `SHIPPING_IMPORT_MANUAL_EXECUTION=true`) antes de cargar dependencias con capacidad de mutación.
+- Una guarda ausente se trata como error operativo (exit 1). Todos los outcomes controlados del worker, incluso `unknown`, `failed` y `lease_lost`, usan exit 0 porque representan decisiones de dominio persistidas.
+- Se prefiere texto key/value allowlisted sobre JSON del resultado para impedir filtraciones accidentales al crecer los objetos internos.
+- No se modifica la política Classic-only: Express continúa en `UNSUPPORTED_SERVICE → failed`; no se agregan CP/EP.
+
+## T-022.5 — pago autoritativo y cola logística opcional
+
+**Estado:** DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA (2026-09-18).
+
+- Se adopta una RPC v2 aditiva en migración 010 aplicada; la función de 009 se preserva durante el cutover.
 - La confirmación financiera es autoritativa: una order válida pasa de `pending` a `paid` aunque falte el snapshot o éste no esté en `not_requested`.
 - Cuando el snapshot elegible existe, `paid + queued` comparte transacción. La cola se intenta después del pago en un subbloque para que una excepción logística no revierta la confirmación.
 - No hay backfill ni reconstrucción. `shipping_queued=false` representa legacy, estado logístico no elegible o anomalía; no convierte el pago en fallo.
 - PostgreSQL serializa webhooks concurrentes con `FOR UPDATE`; Node conserva las comparaciones previas y consume el resultado mínimo de la RPC.
-- La migración 010 no está aplicada. Quedan pendientes QA PostgreSQL real, T-022.6/activación, Classic/Express, perfiles reales, reconciliación de `unknown` y prueba real MiCorreo.
+- La migración 010 está aplicada y validada a nivel infraestructura. Quedan pendientes T-022.6/activación controlada, Classic/Express, perfiles reales, reconciliación de `unknown` y prueba real MiCorreo.
 
 ## T-022.4 — política del worker durable local
 

@@ -1,11 +1,20 @@
 # Seguridad
 
+## T-022.6-A — guardas y salida CLI
+
+- La ejecución manual requiere simultáneamente `--execute` y `SHIPPING_IMPORT_MANUAL_EXECUTION=true`. La variable es opcional para el arranque normal y no forma parte de `npm start`.
+- El worker se carga de forma diferida después de ambas guardas; una invocación bloqueada no inicializa configuración, Supabase ni provider.
+- La salida se reconstruye con campos permitidos: outcome, orderId, attemptCount y count. Nunca serializa excepciones, resultado completo, PII, extOrderId, payload, body, tokens o claves.
+- Errores inesperados muestran sólo `errorType=unexpected_error` y exit 1. No se usa `console.log`, `console.error`, `JSON.stringify(error)` ni stack.
+- Durante la carga real del CLI se suprime únicamente el diagnóstico startup de presencia/longitud/hash del secreto webhook; `npm start` conserva su comportamiento histórico.
+- No existe endpoint HTTP, scheduler, cron, polling o activación al startup. Los CLI no se ejecutaron contra infraestructura real.
+
 ## T-022.5 — prioridad financiera y privilegios mínimos
 
-- La RPC v2 propuesta es `SECURITY INVOKER`, usa `search_path = pg_catalog, public` y revoca `EXECUTE` a `public`, `anon` y `authenticated`; sólo `service_role` recibe ejecución.
+- La RPC v2 desplegada es `SECURITY INVOKER`, usa `search_path = pg_catalog, public` y revoca `EXECUTE` a `public`, `anon` y `authenticated`; sólo `service_role` recibe ejecución.
 - No se agregan grants de tablas. La RPC retorna sólo `order_id`, estado financiero y `shipping_queued`; no expone PII ni el snapshot.
 - El lock y las condiciones de estado quedan en PostgreSQL. La ausencia o anomalía logística no impide registrar un pago válido; tampoco crea snapshots tardíos ni muta trabajos que no estén `not_requested`.
-- Migración 010 pendiente de aplicación y QA PostgreSQL real. Worker y `/shipping/import` permanecen inactivos.
+- Migración 010 aplicada y validada a nivel infraestructura. Worker y `/shipping/import` permanecen inactivos.
 
 ## T-022.4 — worker desplegado no activado
 

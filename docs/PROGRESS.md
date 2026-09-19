@@ -1,12 +1,21 @@
 # Progreso
 
-## 2026-09-18 — T-022.5 paid + queue legacy-safe local
+## 2026-09-18 — T-022.6-A CLI manual one-shot local
 
-- **T-022.5: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** Se agregó la propuesta de migración 010 con una RPC v2 aditiva y se conectó `markOrderAsPaid` localmente.
+- Implementados comandos separados `shipping:process-once` y `shipping:expire-once`, sin ejecución automática.
+- Doble guarda exacta: argumento `--execute` y `SHIPPING_IMPORT_MANUAL_EXECUTION=true`. Una invocación bloqueada no carga el worker ni toca DB/provider.
+- Process ejecuta como máximo un claim/provider/transición; expire ejecuta sólo recovery y nunca se encadena con process.
+- Output allowlisted y errores sanitizados. Exit 0 para outcomes controlados; exit 1 para guarda ausente, configuración/resultado inválido o error inesperado.
+- Tests totalmente inyectados/mock; ningún CLI real ejecutado, sin requests a MiCorreo, SQL, migraciones, webhook, endpoint, scheduler, commit, push o deploy.
+- T-022.5 ya está desplegada y validada a nivel infraestructura; migración 010 aplicada.
+
+## 2026-09-18 — T-022.5 paid + queue legacy-safe desplegada
+
+- **T-022.5: DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA.** La migración 010 con RPC v2 aditiva está aplicada y `markOrderAsPaid` está desplegado.
 - El pago válido ya no depende de que exista un snapshot logístico. Con snapshot `not_requested`, `paid + queued` ocurre en la misma transacción; sin snapshot o con otro estado, queda `paid` y `shipping_queued=false`.
 - La order se bloquea con `FOR UPDATE`; importe, moneda y estado se vuelven a validar en PostgreSQL. Los duplicados no repiten la transición ni la cola.
 - La RPC anterior permanece disponible. La nueva es `SECURITY INVOKER`, fija `search_path` y limita `EXECUTE` a `service_role`.
-- Migración 010 no aplicada; concurrencia/atomicidad aún requieren QA PostgreSQL real. Worker y `/shipping/import` continúan inactivos. Sin requests reales, commit, push o deploy.
+- Atomicidad y concurrencia fueron validadas en PostgreSQL. Worker y `/shipping/import` continúan inactivos.
 
 ## 2026-09-18 — T-022.4 worker durable desplegado e inactivo
 

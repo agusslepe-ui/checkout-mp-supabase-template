@@ -33,14 +33,16 @@ const webhookSecretHashPrefix = crypto
   .digest("hex")
   .slice(0, 8);
 
-log("info", "diagnostico webhook secret", {
-  request_id: "startup",
-  route: "startup",
-  method: "STARTUP",
-  webhook_secret_present: Boolean(mercadoPagoWebhookSecret),
-  webhook_secret_length: mercadoPagoWebhookSecret.length,
-  webhook_secret_sha256_prefix: webhookSecretHashPrefix,
-});
+if (process.env.SHIPPING_IMPORT_CLI_MODE !== "true") {
+  log("info", "diagnostico webhook secret", {
+    request_id: "startup",
+    route: "startup",
+    method: "STARTUP",
+    webhook_secret_present: Boolean(mercadoPagoWebhookSecret),
+    webhook_secret_length: mercadoPagoWebhookSecret.length,
+    webhook_secret_sha256_prefix: webhookSecretHashPrefix,
+  });
+}
 
 module.exports = {
   PORT,

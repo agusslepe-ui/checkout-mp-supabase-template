@@ -7,13 +7,14 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 ## T-022 — estado productivo vigente
 
 - **T-022: EN PROGRESO.**
-- **T-022.5: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18). `markOrderAsPaid` usa localmente la RPC v2 legacy-safe propuesta en la migración 010: el pago válido tiene prioridad y sólo un snapshot existente en `not_requested` pasa a `queued`. La migración 010 no fue aplicada y falta QA PostgreSQL real.
+- **T-022.6-A: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18). Existen comandos internos separados `shipping:process-once` y `shipping:expire-once`, ambos one-shot y protegidos por `--execute` más `SHIPPING_IMPORT_MANUAL_EXECUTION=true`. No fueron ejecutados contra MiCorreo real.
+- **T-022.5: DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA** (2026-09-18). La migración 010 está aplicada, el runtime paid+queue legacy-safe está desplegado y la transición fue validada en PostgreSQL.
 - **T-022.4: DESPLEGADA COMO WORKER INACTIVO / NO ACTIVADO** (2026-09-18). Existe un worker invocable de una sola iteración, con lease de 60 s, normalización explícita de `numeric`, transiciones holder-only, backoff determinista 1/5/15 min, máximo cuatro attempts y expiración separada de leases. No está importado por `index.js`, `app.js` ni webhook; no hay timer, polling o scheduler.
 - **T-022.3: IMPLEMENTADA / AUDITADA / DESPLEGADA COMO CAPA INACTIVA** (2026-09-18). La auditoría independiente de Grok cerró sin bloqueantes. Existe mapping validado desde el snapshot durable y `MiCorreoProvider.importShipment`. Classic es el único servicio admitido; Express se bloquea antes de red y no se envía `productType` hasta confirmar el contrato. La capa desplegada no tiene caller productivo.
 - **T-022.2: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-17). La migración 009 y el runtime v3 fueron desplegados en ese orden. Un checkout productivo real sin pago creó order `pending`, `order_items`, `checkout_attempt` y `order_shipping_imports/not_requested`, y llegó correctamente a Mercado Pago.
 - **Migración 009: APLICADA EN PRODUCCIÓN.** Existen RPC 26, v2, v3, paid+queue, claim y transiciones/recovery. RPC 26 y v2 permanecen disponibles. El QA PostgreSQL real validó atomicidad y rollback sin residuos, snapshot 300/5/25/35, `declared_value = products_subtotal`, `ext_order_id = orders.external_reference` y la secuencia `pending+not_requested → paid+queued → processing+lease`, sin llamar MiCorreo.
 - RLS, ausencia de policies públicas, denegación a `anon`/`authenticated`, EXECUTE exclusivo de `service_role` y UPDATE limitado a las nueve columnas operativas fueron verificados en producción. No hubo backfill: la tabla quedó inicialmente con cero filas.
-- **`POST /shipping/import` continúa INACTIVO PRODUCTIVAMENTE.** Provider y worker existen como capas sin activación. Ninguna ruta, webhook, timer o entrypoint los invoca y no se crean envíos reales. El webhook tampoco usa paid+queue todavía.
+- **`POST /shipping/import` continúa INACTIVO PRODUCTIVAMENTE.** No existe scheduler, cron, polling ni endpoint HTTP de operación. `index.js`, `app.js` y webhook no llaman el worker; los nuevos CLI manuales no fueron ejecutados contra MiCorreo real.
 
 ## Producción
 

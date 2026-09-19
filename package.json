@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "shipping:process-once": "node scripts/shipping-process-once.js",
+    "shipping:expire-once": "node scripts/shipping-expire-once.js"
   },
   "keywords": [],
   "author": "",

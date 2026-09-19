@@ -1,12 +1,20 @@
 # Diseño técnico
 
-## T-022.5 — paid + queue legacy-safe local
+## T-022.6-A — composición manual one-shot
 
-`mark_order_paid_and_queue_shipping_import_v2` es una RPC aditiva propuesta por la migración 010. Bajo un lock `FOR UPDATE` de la order, revalida que siga `pending` y que moneda/importe coincidan. Después persiste `paid` y, si existe el snapshot elegible, ejecuta `not_requested → queued` en la misma transacción.
+Los entrypoints `scripts/shipping-process-once.js` y `scripts/shipping-expire-once.js` delegan en `shippingImportCli`. La capa valida `--execute` y `SHIPPING_IMPORT_MANUAL_EXECUTION=true` antes del `require` diferido del worker; por eso una invocación deshabilitada no carga configuración, no crea cliente Supabase y no puede reclamar filas.
+
+Process y expire permanecen operaciones distintas. Cada entrypoint hace una llamada y termina; no hay loop, sleep, timer, polling o retry de proceso. El worker conserva toda la lógica T-022.4 y la composición existente repository/service/provider. `npm start` sigue siendo exclusivamente `node index.js`.
+
+El formatter reconstruye la salida desde una allowlist, sin serializar resultados o errores completos. Process admite `idle|created|retryable|unknown|failed|lease_lost`; expire admite `expired` y count no negativo.
+
+## T-022.5 — paid + queue legacy-safe desplegada
+
+`mark_order_paid_and_queue_shipping_import_v2` es una RPC aditiva aplicada por la migración 010. Bajo un lock `FOR UPDATE` de la order, revalida que siga `pending` y que moneda/importe coincidan. Después persiste `paid` y, si existe el snapshot elegible, ejecuta `not_requested → queued` en la misma transacción.
 
 La cola es subordinada al pago. Su actualización vive en un subbloque PL/pgSQL: snapshot ausente, snapshot `queued`/`processing` u otra anomalía logística producen `shipping_queued=false` sin inventar filas y sin revertir la confirmación financiera. La respuesta mínima no contiene PII: `order_id`, `status`, `shipping_queued`.
 
-Dos webhooks simultáneos se serializan en PostgreSQL; sólo el primero puede observar `pending`. La RPC anterior queda preservada para un cutover reversible. Esta garantía todavía es de diseño y tests estáticos: migración 010 no aplicada y QA PostgreSQL real pendiente. El worker sigue inactivo y no llama `/shipping/import`.
+Dos webhooks simultáneos se serializan en PostgreSQL; sólo el primero puede observar `pending`. La RPC anterior queda preservada para un cutover reversible. La migración 010 está aplicada y la infraestructura fue validada en PostgreSQL. El worker sigue inactivo y no llama `/shipping/import`.
 
 ## T-022.4 — worker durable desplegado y no activado
 

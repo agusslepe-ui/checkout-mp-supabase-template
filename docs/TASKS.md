@@ -1,16 +1,29 @@
 # Tareas
 
-## T-022.5 — Paid + queue legacy-safe (estado vigente)
+## T-022.6-A — Activación manual one-shot y observabilidad segura
 
 **Estado: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18).
 
-- Migración aditiva 010 propuesta, no aplicada: conserva la RPC anterior y agrega `mark_order_paid_and_queue_shipping_import_v2`.
+- `npm run shipping:process-once -- --execute` procesa como máximo un claim; `npm run shipping:expire-once -- --execute` expira leases una sola vez y permanece separado.
+- Ambos comandos requieren además `SHIPPING_IMPORT_MANUAL_EXECUTION=true`. Si falta cualquier guarda, terminan con código 1, muestran `manual execution disabled` y no cargan worker/configuración/cliente.
+- Outcomes controlados retornan código 0. Configuración inválida, resultado inválido o error inesperado retornan 1 con salida sanitizada, sin message, stack, payload, PII ni secretos.
+- No hay loop, timer, scheduler, polling, endpoint HTTP ni activación desde startup/webhook. Los CLI no fueron ejecutados contra MiCorreo real.
+
+**QA futuro, no ejecutar aún:** crear una única order real; confirmar pago y `queued`; comprobar Classic; invocar `process-once` una vez; verificar una transición, DB y MiCorreo; no repetir si queda `unknown`; sólo después decidir automatización.
+
+**Pendiente:** auditoría de T-022.6-A, prueba real controlada, Classic/Express, perfiles físicos reales y reconciliación de `unknown`.
+
+## T-022.5 — Paid + queue legacy-safe (estado vigente)
+
+**Estado: DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA** (2026-09-18).
+
+- Migración aditiva 010 aplicada: conserva la RPC anterior y agrega `mark_order_paid_and_queue_shipping_import_v2`.
 - La RPC bloquea la order, valida estado/importe/moneda y ejecuta una sola transición `pending → paid`. Si existe snapshot `not_requested`, lo mueve a `queued` en la misma transacción.
 - Una order legacy sin snapshot, o con snapshot en otro estado, queda `paid` y retorna `shipping_queued=false`; no se crea ni reconstruye trabajo logístico.
-- El webhook usa localmente la RPC nueva mediante `markOrderAsPaid`; duplicados siguen siendo no-op y los errores RPC continúan como indisponibilidad controlada.
+- El runtime desplegado usa la RPC nueva mediante `markOrderAsPaid`; duplicados siguen siendo no-op y los errores RPC continúan como indisponibilidad controlada.
 - T-022.4 está desplegada como worker inactivo/no activado. `/shipping/import` continúa inactivo.
 
-**Pendiente:** revisión/aplicación autorizada de 010; QA PostgreSQL real de atomicidad y concurrencia; T-022.6/activación controlada; Classic/Express; perfiles físicos reales; reconciliación de `unknown`; prueba real MiCorreo.
+**Pendiente:** T-022.6/activación controlada; Classic/Express; perfiles físicos reales; reconciliación de `unknown`; prueba real MiCorreo.
 
 ## T-022 — MiCorreo shipping import post-pago
 

@@ -1,12 +1,20 @@
 # Contexto actual del proyecto
 
-## T-022.5 local — 2026-09-18
+## T-022.6-A local — 2026-09-18
 
-**T-022.5 está IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** La migración aditiva 010 propone `mark_order_paid_and_queue_shipping_import_v2` sin alterar la RPC de 009. La función bloquea la order, valida `pending`, moneda e importe y marca `paid`; sólo entonces intenta `not_requested → queued`. Retorna únicamente `order_id`, `status` y `shipping_queued`.
+**T-022.6-A está IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** Dos CLI internos y separados consumen las funciones existentes: `shipping:process-once` llama como máximo una vez a `processNextShippingImport`; `shipping:expire-once` llama como máximo una vez a `expireStaleShippingImportLeases`. Ambos exigen simultáneamente `--execute` y `SHIPPING_IMPORT_MANUAL_EXECUTION=true`; sin cualquier guarda no cargan el worker ni inicializan Supabase.
+
+La salida allowlisted contiene sólo outcome, orderId, attemptCount o count. Un error inesperado devuelve código 1 y `errorType=unexpected_error`, sin message, stack, PII, payload o secretos. Outcomes controlados devuelven 0; ejecución deshabilitada y fallos devuelven 1.
+
+No se modificaron worker, webhook, app, SQL ni migraciones. No hay scheduler, cron, polling, loop o endpoint HTTP. Los comandos no fueron ejecutados con las guardas reales y `/shipping/import` no recibió llamadas. T-022.5 está DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA; migración 010 aplicada y runtime paid+queue desplegado.
+
+## T-022.5 desplegada y validada — 2026-09-18
+
+**T-022.5 está DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA.** La migración aditiva 010 aplicada agrega `mark_order_paid_and_queue_shipping_import_v2` sin alterar la RPC de 009. La función bloquea la order, valida `pending`, moneda e importe y marca `paid`; sólo entonces intenta `not_requested → queued`. Retorna únicamente `order_id`, `status` y `shipping_queued`.
 
 El caso legacy sin `order_shipping_imports` y los snapshots `queued`/`processing` no bloquean el pago ni son mutados. Un error en el subbloque logístico conserva la transición financiera y retorna `shipping_queued=false`. Los webhooks repetidos son no-op bajo el lock de PostgreSQL. `markOrderAsPaid` conserva sus validaciones Node y llama la RPC v2.
 
-La migración 010 no fue aplicada y no se ejecutó QA PostgreSQL real. T-022.4 está desplegada como worker inactivo/no activado; no hay scheduler, polling ni caller de `processNextShippingImport`. `/shipping/import` permanece inactivo y no hubo requests reales, commit, push o deploy.
+La migración 010 fue aplicada y el flujo se validó en PostgreSQL. T-022.4 está desplegada como worker inactivo/no activado; no hay scheduler ni polling. `/shipping/import` permanece inactivo.
 
 ## T-022.4 desplegada e inactiva — 2026-09-18
 
@@ -14,7 +22,7 @@ La migración 010 no fue aplicada y no se ejecutó QA PostgreSQL real. T-022.4 e
 
 La política local usa lease de 60 s, backoff 1/5/15 min y máximo cuatro attempts. `RATE_LIMIT`, AUTH previo al POST y fallos de red/timeout con evidencia explícita de ocurrir antes del POST son retryable; permanentes terminan failed; todo resultado posiblemente enviado pero incierto termina unknown. Tanto POST 401 + fallo de renovación como segundo POST 401 terminan unknown. `numeric` string se normaliza con regex canónica en el borde del worker. La expiración acepta `null`/array vacío como cero filas y rechaza otros tipos inesperados.
 
-`/shipping/import` continúa INACTIVO PRODUCTIVAMENTE. `index.js`, `app.js` y webhook no importan el worker. Paid+queue está conectado sólo en el código local de T-022.5; la migración 010 propuesta no fue aplicada.
+`/shipping/import` continúa INACTIVO PRODUCTIVAMENTE. `index.js`, `app.js` y webhook no importan el worker. Paid+queue está desplegado y la migración 010 está aplicada, pero eso no activa el procesamiento logístico.
 
 ## T-022.3 local — 2026-09-18
 
