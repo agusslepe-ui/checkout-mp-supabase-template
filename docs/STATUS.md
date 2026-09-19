@@ -7,18 +7,20 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 ## T-022 — estado productivo vigente
 
 - **T-022: EN PROGRESO.**
-- **T-022.6-C: PREPARADA LOCALMENTE / NO PRODUCTIVA** (2026-09-19). `Dockerfile` conserva el proceso web con `npm start`; el nuevo `Dockerfile.worker` reutiliza la misma construcción y ejecuta exclusivamente `npm run shipping:worker`, sin exponer un puerto. No fue construido, ejecutado ni desplegado.
-- **T-022.6-B: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18). Existe un entrypoint Node aislado para polling cada 60 s, protegido por `SHIPPING_IMPORT_WORKER_ENABLED=true`, con primera iteración inmediata, ciclos no superpuestos, umbral fatal de cinco errores consecutivos y shutdown por señales. No fue ejecutado ni desplegado.
-- **T-022.6-A: DESPLEGADA / VALIDADA EN PRODUCCIÓN MEDIANTE EJECUCIÓN MANUAL ONE-SHOT** (2026-09-18). Una única invocación autorizada realizó un claim, un lease, un POST real y una transición final `created`. No existe activación automática.
+- **Checkout público Classic-only: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO** (2026-09-19). La UI filtra antes del render y ofrece sólo `micorreo:home:classic` y `micorreo:agency:classic`; si MiCorreo devuelve exclusivamente Express, muestra la ausencia controlada de opciones. Express conserva soporte interno en rates, snapshots, backend y worker, pero queda oculto temporalmente hasta confirmar el contrato exacto de `/shipping/import`.
+- **T-022.6-C: DESPLEGADA / VALIDADA EN PRODUCCIÓN - PROCESO AISLADO / `Dockerfile.worker`** (2026-09-19). EasyPanel ejecuta el worker como servicio separado, sin puerto HTTP; `Dockerfile` y `npm start` continúan dedicados a la web.
+- **T-022.6-B: DESPLEGADA / VALIDADA EN PRODUCCIÓN - WORKER AUTOMÁTICO** (2026-09-19). El polling de 60 s permaneció activo durante horas, registró múltiples `outcome=idle` y procesó automáticamente una nueva order HOME Classic sin CLI ni intervención manual.
+- **T-022.6-A: DESPLEGADA / VALIDADA EN PRODUCCIÓN - MANUAL ONE-SHOT** (2026-09-18). Una única invocación autorizada realizó un claim, un lease, un POST real y una transición final `created`; permanece como antecedente de validación manual.
 - **T-022.5: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-18). La migración 010 y el runtime paid+queue legacy-safe confirmaron un pago real y llevaron el snapshot de `not_requested` a `queued`.
-- **T-022.4: WORKER IMPLEMENTADO / DESPLEGADO / SIN ACTIVACIÓN AUTOMÁTICA** (2026-09-18). La ejecución real confirmó lease, attempt y cierre holder-only; no hay timer, polling, cron ni scheduler.
+- **T-022.4: WORKER DURABLE IMPLEMENTADO / DESPLEGADO / CONSUMIDO POR T-022.6-B.** La ejecución real confirmó lease, attempt y cierre holder-only; el scheduling vive exclusivamente en el proceso aislado.
 - **T-022.3: DESPLEGADA / VALIDADA** (2026-09-18). El mapping HOME Classic y `MiCorreoProvider.importShipment` fueron validados con un envío real. Express continúa bloqueado y no se asume CP/EP.
 - **T-022.2: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-17). La migración 009 y el runtime v3 fueron desplegados en ese orden. Un checkout productivo real sin pago creó order `pending`, `order_items`, `checkout_attempt` y `order_shipping_imports/not_requested`, y llegó correctamente a Mercado Pago.
 - **Migración 009: APLICADA EN PRODUCCIÓN.** Existen RPC 26, v2, v3, paid+queue, claim y transiciones/recovery. RPC 26 y v2 permanecen disponibles. El QA PostgreSQL real validó atomicidad y rollback sin residuos, snapshot 300/5/25/35, `declared_value = products_subtotal`, `ext_order_id = orders.external_reference` y la secuencia `pending+not_requested → paid+queued → processing+lease`, sin llamar MiCorreo.
 - RLS, ausencia de policies públicas, denegación a `anon`/`authenticated`, EXECUTE exclusivo de `service_role` y UPDATE limitado a las nueve columnas operativas fueron verificados en producción. No hubo backfill: la tabla quedó inicialmente con cero filas.
-- **QA REAL MICORREO: VALIDADO END-TO-END.** Checkout HOME Classic, pago aprobado, webhook, `paid + queued`, claim/lease, import real y cierre `created` fueron comprobados en producción. El portal real mostró el envío como **Validado** y las medidas QA 0,3 kg / 35 × 25 × 5 cm.
-- **`POST /shipping/import`: VALIDADO REALMENTE mediante ejecución manual controlada.** Esto no declara worker automático: no existe scheduler, cron, polling ni endpoint HTTP de operación.
-- El polling automático pertenece sólo a T-022.6-B local. `npm start` continúa sin worker y producción no ejecuta `npm run shipping:worker`.
+- **QA AUTOMÁTICO REAL: VALIDADO END-TO-END.** Una nueva compra HOME Classic recorrió `Mercado Pago → webhook → paid → queued → shipping-worker → MiCorreo → created` sin ejecutar `shipping:process-once` ni intervenir manualmente sobre el envío.
+- Estado final de esa nueva order: order `paid`, import `created`, attempt 1, timestamps de provider/import presentes y `last_error_type` nulo; no hubo retry, `unknown`, `failed` ni `lease_lost`.
+- **`POST /shipping/import`: VALIDADO REALMENTE mediante ejecución manual previa y posteriormente mediante worker automático.** `npm start` continúa sin worker; producción ejecuta `npm run shipping:worker` sólo en el servicio EasyPanel separado, con `SHIPPING_IMPORT_WORKER_ENABLED=true` exclusivamente allí.
+- Continúan pendientes los perfiles físicos definitivos para 1–4 remeras, la reconciliación operativa/automática de `unknown`, Express, tracking API y label API.
 
 ## Producción
 
@@ -49,8 +51,8 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 ## Pendientes reales
 
 - Sustituir los perfiles TEMPORAL/QA de `300 g / 5 × 25 × 35 cm` por medidas reales y repetir QA.
-- T-022.1: cerrar el contrato restante, incluido Classic/Express y la reconciliación práctica por `extOrderId`.
-- Completar T-022: confirmar Classic/Express y perfiles físicos reales; diseñar automatización controlada del worker; definir reconciliación real de `unknown`; y cerrar el hardening comercial.
+- T-022.1: cerrar el contrato restante de Express y la reconciliación práctica por `extOrderId`.
+- Completar T-022: confirmar Express y perfiles físicos reales; definir reconciliación real de `unknown`; y cerrar el hardening comercial.
 - Implementar catálogo y stock reales desde Supabase, con imágenes y descripciones dinámicas.
 - Completar el hardening comercial: restaurar el precio definitivo, rotar credenciales privadas previamente expuestas, ejecutar la auditoría npm y abordar dominio definitivo, frontend final y SEO.
 

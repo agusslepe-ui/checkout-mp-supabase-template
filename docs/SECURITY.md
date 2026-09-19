@@ -1,5 +1,12 @@
 # Seguridad
 
+## T-022.6-C — aislamiento productivo del proceso
+
+- EasyPanel ejecuta web y shipping worker como servicios separados desde el mismo repositorio.
+- `Dockerfile` conserva `npm start`; `Dockerfile.worker` no expone puerto y ejecuta sólo `npm run shipping:worker`.
+- `SHIPPING_IMPORT_WORKER_ENABLED=true` está configurada únicamente en el servicio worker. Variables y secretos se inyectan externamente y no forman parte de la imagen ni de esta evidencia.
+- El despliegue aislado fue validado en producción sin registrar PII, IDs de pago, referencias externas, direcciones, contactos, tokens, customerId o secretos.
+
 ## T-022.6-B — aislamiento y límites operativos
 
 - El proceso automático requiere el valor exacto `SHIPPING_IMPORT_WORKER_ENABLED=true`; esta variable y el intervalo no son obligatorios para el servidor web.
@@ -9,6 +16,7 @@
 - La exclusión local evita overlap; la exclusión entre procesos permanece en DB mediante lock/lease. No se agregan privilegios, tablas, RPC o migraciones.
 - Fatal no llama `process.exit` desde core ni durante provider/DB activos: el entrypoint termina sólo tras limpiar el ciclo, y el callback se emite una vez.
 - Shutdown bloquea nuevos ciclos y espera como máximo 30 s. Un timeout registra `shutdown_timeout`, no `stopped`, conserva exit 1 y no cancela artificialmente el POST; el transporte mantiene su timeout propio.
+- La operación productiva sostenida validó polling de 60 s, múltiples `outcome=idle` y una importación automática HOME Classic que terminó `created` en attempt 1, sin retry ni estados ambiguos.
 
 ## T-022.6 — evidencia productiva minimizada
 
@@ -32,9 +40,9 @@
 - La RPC v2 desplegada es `SECURITY INVOKER`, usa `search_path = pg_catalog, public` y revoca `EXECUTE` a `public`, `anon` y `authenticated`; sólo `service_role` recibe ejecución.
 - No se agregan grants de tablas. La RPC retorna sólo `order_id`, estado financiero y `shipping_queued`; no expone PII ni el snapshot.
 - El lock y las condiciones de estado quedan en PostgreSQL. La ausencia o anomalía logística no impide registrar un pago válido; tampoco crea snapshots tardíos ni muta trabajos que no estén `not_requested`.
-- Migración 010 y paid+queue validados en producción. Worker sin activación automática; `/shipping/import` validado mediante one-shot controlado.
+- Migración 010 y paid+queue validados en producción. `/shipping/import` fue validado mediante one-shot controlado y posteriormente mediante worker automático aislado.
 
-## T-022.4 — worker desplegado no activado
+## T-022.4 — worker durable consumido por el proceso aislado
 
 - Sólo retorna outcome, order ID y attempt count; nunca snapshot, PII, extOrderId, payload, body o secretos.
 - No agrega logs. Los códigos persistidos son allowlisted/cortos (`auth`, `timeout`, `internal_error`, etc.), sin stack ni mensaje externo.
@@ -64,7 +72,7 @@
 - La RPC paid+queue evita separar la confirmación financiera de la creación del trabajo. Está conectada al webhook y fue validada con un pago real; Mercado Pago conserva la autoridad financiera.
 - La verificación productiva confirmó 009 aplicada, cero policies públicas, denegación a `anon`/`authenticated`, grants columna por columna, EXECUTE exclusivo de `service_role`, claim/lease y rollback transaccional real. No hubo backfill.
 - Las orders legacy sin fila logística pueden confirmarse financieramente sin inventar snapshots; requieren tratamiento logístico operativo separado.
-- `/shipping/import` fue validado manualmente para Classic. No existe worker automático; Express y reconciliación de `unknown` quedan bloqueados hasta tareas posteriores.
+- `/shipping/import` fue validado manualmente y después mediante worker automático para Classic. Express y reconciliación de `unknown` quedan bloqueados hasta tareas posteriores; tampoco se declaran tracking, labels o perfiles físicos definitivos.
 
 ## Post-pago UX — cleanup frontend no autoritativo
 

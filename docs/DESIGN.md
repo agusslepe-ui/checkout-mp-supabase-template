@@ -1,5 +1,17 @@
 # Diseño técnico
 
+## T-022 — restricción temporal de Express en la UI pública
+
+`POST /cotizar-envio` conserva su contrato y puede devolver Classic/Express para HOME/AGENCY. La UI aplica una allowlist antes de renderizar:
+
+```text
+micorreo:home:classic   → visible y seleccionable
+micorreo:agency:classic → visible y seleccionable; carga sucursales
+micorreo:*:express       → no se renderiza
+```
+
+Si luego del filtro no queda ninguna opción, se reutiliza el estado controlado de ausencia de envío. No se dibujan tarjetas deshabilitadas ni precios Express. Esta frontera no elimina soporte interno: CP/EP, rates, snapshots, checkout backend y worker permanecen disponibles para completar la integración futura. El import de Express continúa bloqueado mediante `UNSUPPORTED_SERVICE`.
+
 ## T-022.6-C — imagen dedicada del shipping worker
 
 El repositorio define dos artefactos de contenedor independientes con la misma imagen `node:22-alpine`, `WORKDIR /app`, instalación reproducible mediante `npm ci` y copia del mismo código:
@@ -16,7 +28,7 @@ Dockerfile.worker
   → no expone puertos
 ```
 
-Las variables y secretos se inyectan externamente en cada servicio; ningún valor se incorpora a las imágenes. `Dockerfile.worker` prepara un futuro servicio separado, pero no lo activa ni acredita build, ejecución o despliegue. El worker continúa **NO PRODUCTIVO**.
+Las variables y secretos se inyectan externamente en cada servicio; ningún valor se incorpora a las imágenes. EasyPanel despliega ambos artefactos como procesos separados y configura `SHIPPING_IMPORT_WORKER_ENABLED=true` sólo en el servicio worker. T-022.6-C está **DESPLEGADA / VALIDADA EN PRODUCCIÓN**.
 
 ## T-022.6-B — proceso automático aislado
 
@@ -38,9 +50,24 @@ El scheduler es recursivo y post-completion: nunca hay dos invocaciones activas 
 
 El quinto error inesperado consecutivo marca fatal y detiene scheduling. El controlador primero deja finalizar el ciclo y limpia `activeCycle`; después notifica una sola vez. Sólo `scripts/shipping-worker.js` decide ejecutar `process.exit(1)`, cuando ya no existe operación provider/DB activa.
 
-SIGTERM/SIGINT cancelan el timer, no inician otro claim y esperan la operación activa hasta 30 s. Si termina, registran `stopped` y exit 0. Si vence, registran `shutdown_timeout`, mantienen exit 1 y no imprimen `stopped`; no abortan el provider y una finalización tardía no reactiva scheduling ni convierte el shutdown en success. El proceso está preparado para un futuro servicio EasyPanel separado, pero no está desplegado.
+SIGTERM/SIGINT cancelan el timer, no inician otro claim y esperan la operación activa hasta 30 s. Si termina, registran `stopped` y exit 0. Si vence, registran `shutdown_timeout`, mantienen exit 1 y no imprimen `stopped`; no abortan el provider y una finalización tardía no reactiva scheduling ni convierte el shutdown en success. El proceso está desplegado como servicio EasyPanel separado y fue validado con polling sostenido y una importación automática real.
 
-## T-022.6 — flujo validado en producción
+## T-022.6-B/C — flujo automático validado en producción
+
+```text
+checkout HOME Classic
+  → Mercado Pago aprobado + webhook
+  → orders: paid
+  → shipping import: queued
+  → shipping-worker: claim + lease
+  → POST /shipping/import
+  → MiCorreo acepta
+  → shipping import: created (attempt 1)
+```
+
+La nueva order fue procesada sin `shipping:process-once` ni intervención manual. El proceso permaneció activo durante horas, con polling cada 60 s y múltiples `outcome=idle`. La separación operativa se mantiene: web mediante `Dockerfile`/`npm start`; worker mediante `Dockerfile.worker`/`npm run shipping:worker`.
+
+## T-022.6-A — flujo manual previamente validado en producción
 
 ```text
 checkout HOME Classic
@@ -56,7 +83,7 @@ checkout HOME Classic
 
 La validación real confirmó una sola operación de provider y una sola transición final. El estado persistido terminó sin lease, retry ni error. La observación visual en MiCorreo confirmó estado **Validado** y correspondencia con el snapshot QA 0,3 kg / 35 × 25 × 5 cm.
 
-Este flujo manual validado no cambia la arquitectura de activación: `npm start`, `index.js`, `app.js` y webhook no ejecutan el worker. Automatización, reconciliación de `unknown`, Express, tracking y labels requieren decisiones posteriores.
+Este flujo manual conserva valor como antecedente. `npm start`, `index.js`, `app.js` y webhook no ejecutan el worker; la automatización posterior vive sólo en el proceso aislado. Reconciliación de `unknown`, Express, tracking, labels y perfiles definitivos requieren decisiones posteriores.
 
 ## T-022.6-A — composición manual one-shot
 

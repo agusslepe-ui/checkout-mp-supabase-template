@@ -1,6 +1,16 @@
 # Progreso
 
-## 2026-09-18 — T-022.6-B worker automático aislado local
+## 2026-09-19 — cierre QA automático real T-022.6-B/C
+
+- **QA AUTOMÁTICO REAL: VALIDADO END-TO-END EN PRODUCCIÓN.** Una nueva compra HOME Classic completó `Mercado Pago → webhook → paid → queued → shipping-worker → MiCorreo → created` sin ejecutar `shipping:process-once` ni intervenir manualmente sobre el envío.
+- Estado final: order `paid`, shipping `created`, attempt 1, timestamps de provider/import presentes y `last_error_type` nulo; no hubo retry, `unknown`, `failed` ni `lease_lost`.
+- El servicio EasyPanel `shipping-worker` permaneció activo durante horas. Se verificaron polling de 60 s y múltiples `outcome=idle`.
+- T-022.6-B queda DESPLEGADA / VALIDADA EN PRODUCCIÓN - WORKER AUTOMÁTICO. T-022.6-C queda DESPLEGADA / VALIDADA EN PRODUCCIÓN - PROCESO AISLADO / `Dockerfile.worker`.
+- `SHIPPING_IMPORT_WORKER_ENABLED=true` está sólo en el servicio worker; `Dockerfile`, `npm start` y el servidor web permanecen separados.
+- Cierre exclusivamente documental: sin leer `.env`, ejecutar workers, hacer requests ni modificar código, tests, SQL o migraciones.
+- Pendientes: perfiles físicos definitivos 1–4, reconciliación operativa/automática de `unknown`, Express, tracking API y label API.
+
+## 2026-09-18 — HISTÓRICO: T-022.6-B worker automático aislado local
 
 - Agregado entrypoint `shipping:worker`, separado de Express y sin cambios en `npm start`.
 - Guarda exacta `SHIPPING_IMPORT_WORKER_ENABLED=true`; intervalo default 60 s y mínimo 10 s.
@@ -17,7 +27,7 @@
 - DB final: order `paid`; import `created`; attempt 1; lease nulo; timestamps de provider/import presentes; sin next attempt ni error.
 - Portal MiCorreo: envío visible como **Validado**; 0,3 kg y 35 × 25 × 5 cm coinciden con el snapshot QA.
 - T-022.3 queda DESPLEGADA / VALIDADA; T-022.5, DESPLEGADA / VALIDADA EN PRODUCCIÓN; T-022.6-A, DESPLEGADA / VALIDADA EN PRODUCCIÓN mediante one-shot manual.
-- Sin PII ni identificadores sensibles en la evidencia. La automatización del worker continúa pendiente.
+- Sin PII ni identificadores sensibles en la evidencia. En ese corte la automatización seguía pendiente; fue desplegada y validada el 2026-09-19.
 
 ## 2026-09-18 — HISTÓRICO: T-022.6-A CLI manual one-shot local
 
@@ -28,7 +38,7 @@
 - Tests totalmente inyectados/mock; ningún CLI real ejecutado, sin requests a MiCorreo, SQL, migraciones, webhook, endpoint, scheduler, commit, push o deploy.
 - T-022.5 ya está desplegada y validada a nivel infraestructura; migración 010 aplicada.
 
-## 2026-09-18 — T-022.5 paid + queue legacy-safe desplegada
+## 2026-09-18 — HISTÓRICO: T-022.5 paid + queue antes del worker automático
 
 - **T-022.5: DESPLEGADA / VALIDADA A NIVEL INFRAESTRUCTURA.** La migración 010 con RPC v2 aditiva está aplicada y `markOrderAsPaid` está desplegado.
 - El pago válido ya no depende de que exista un snapshot logístico. Con snapshot `not_requested`, `paid + queued` ocurre en la misma transacción; sin snapshot o con otro estado, queda `paid` y `shipping_queued=false`.
@@ -36,7 +46,7 @@
 - La RPC anterior permanece disponible. La nueva es `SECURITY INVOKER`, fija `search_path` y limita `EXECUTE` a `service_role`.
 - Atomicidad y concurrencia fueron validadas en PostgreSQL. Worker y `/shipping/import` continúan inactivos.
 
-## 2026-09-18 — T-022.4 worker durable desplegado e inactivo
+## 2026-09-18 — HISTÓRICO: T-022.4 worker durable desplegado e inactivo
 
 - Implementado módulo invocable de una iteración; idle, created, retryable, unknown, failed y lease_lost, sin activación automática.
 - Lease 60 s; backoff determinista 1/5/15 min; cuarto attempt falla. Normalización decimal canónica en el borde y `attempt_count` del claim sin incrementarlo en Node.

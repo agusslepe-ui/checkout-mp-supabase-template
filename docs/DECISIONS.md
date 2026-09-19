@@ -1,8 +1,17 @@
 # Decisiones técnicas
 
+## T-022.6-C — despliegue aislado mediante Dockerfile dedicado
+
+**Estado:** DESPLEGADA / VALIDADA EN PRODUCCIÓN - PROCESO AISLADO / `Dockerfile.worker` (2026-09-19).
+
+- Web y worker usan el mismo repositorio y construcción base, pero se ejecutan como servicios EasyPanel separados.
+- `Dockerfile` mantiene `npm start` y el puerto HTTP; `Dockerfile.worker` no expone puerto y ejecuta exclusivamente `npm run shipping:worker`.
+- La guarda de activación se configura sólo en el servicio worker. No se incorporan variables ni secretos a las imágenes.
+- La separación quedó validada mediante operación sostenida e importación automática real.
+
 ## T-022.6-B — polling aislado y fail-stop acotado
 
-**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA (2026-09-18).
+**Estado:** DESPLEGADA / VALIDADA EN PRODUCCIÓN - WORKER AUTOMÁTICO (2026-09-19).
 
 - El worker automático se despliega como proceso Node separado; nunca se mezcla con `npm start`, Express o webhook.
 - Se elige primera iteración inmediata y scheduling recursivo 60 s después de completar; intervalo configurable con mínimo 10 s.
@@ -11,14 +20,15 @@
 - Cinco errores inesperados consecutivos producen fail-stop: core marca fatal y detiene scheduling; tras limpiar el ciclo, el entrypoint recibe un único callback y termina con exit 1. Cualquier outcome controlado resetea el contador.
 - SIGTERM/SIGINT esperan la operación activa hasta 30 s. Timeout significa `shutdown_timeout` + exit 1, no `stopped`, no cancelación artificial y no success tardío. Expire permanece manual y no se ejecuta en cada tick.
 - La guarda deshabilitada y la configuración inválida usan exit 1 para hacer visible una mala configuración de servicio.
+- La validación real confirmó polling de 60 s durante horas, múltiples `outcome=idle` y procesamiento automático HOME Classic hasta `created`, sin CLI manual, retry ni resultado ambiguo.
 
 ## T-022.6 — cierre de QA real y límite de activación
 
-**Estado:** QA REAL MICORREO VALIDADO END-TO-END (2026-09-18).
+**Estado:** QA REAL MANUAL Y AUTOMÁTICO MICORREO VALIDADO END-TO-END (2026-09-19).
 
 - Se acepta como evidencia suficiente una única ejecución productiva controlada: HOME Classic, pago/webhook, `paid + queued`, claim/lease, un POST, `createdAt` válido y cierre `created` con attempt 1.
 - La verificación visual del portal confirma el envío como **Validado** y la correspondencia del snapshot QA 0,3 kg / 35 × 25 × 5 cm.
-- Esta validación cierra el QA manual de T-022.6-A, pero no autoriza automatización. El worker permanece sin caller automático, cron, polling, scheduler o endpoint.
+- La validación manual cerró T-022.6-A. Una compra posterior validó el flujo automático completo mediante el servicio aislado T-022.6-B/C, sin `shipping:process-once` ni intervención manual.
 - Express sigue bloqueado. Perfiles definitivos, reconciliación de `unknown`, tracking API, label API y hardening comercial requieren decisiones posteriores.
 - La evidencia documental se mantiene deliberadamente libre de PII, IDs de pago, referencias, credenciales y payloads.
 
@@ -41,11 +51,11 @@
 - Cuando el snapshot elegible existe, `paid + queued` comparte transacción. La cola se intenta después del pago en un subbloque para que una excepción logística no revierta la confirmación.
 - No hay backfill ni reconstrucción. `shipping_queued=false` representa legacy, estado logístico no elegible o anomalía; no convierte el pago en fallo.
 - PostgreSQL serializa webhooks concurrentes con `FOR UPDATE`; Node conserva las comparaciones previas y consume el resultado mínimo de la RPC.
-- La migración 010 y el flujo paid+queue están validados en producción. Quedan pendientes automatización controlada, Classic/Express, perfiles reales y reconciliación de `unknown`.
+- La migración 010 y el flujo paid+queue están validados en producción; la automatización posterior quedó validada en T-022.6-B/C. Quedan pendientes Express, perfiles reales y reconciliación de `unknown`.
 
 ## T-022.4 — política del worker durable local
 
-**Fecha:** 2026-09-18. **Estado:** IMPLEMENTADO / DESPLEGADO / SIN ACTIVACIÓN AUTOMÁTICA.
+**Fecha:** 2026-09-18. **Estado vigente:** IMPLEMENTADO / DESPLEGADO / CONSUMIDO POR T-022.6-B.
 
 - Una invocación procesa como máximo un claim. La DB/RPC mantiene la exclusión concurrente; Node no agrega locks.
 - Lease 60 s; backoff determinista 1/5/15 min; máximo cuatro attempts. Sin jitter por ahora.
@@ -53,7 +63,7 @@
 - El primer fallo AUTH antes del POST puede reintentarse; POST 401 seguido por fallo de renovación y segundo POST 401 son unknown. No existe retry logístico ni tercer POST en esa iteración.
 - `numeric` string se normaliza exclusivamente en el borde worker mediante formato decimal canónico. El servicio conserva contrato number estricto.
 - Cierre holder-only nulo produce `lease_lost` sin otra escritura. Recovery de leases vencidos usa sólo la RPC existente y no se agenda.
-- La única activación fue el one-shot manual validado. No se habilitan startup, webhook, scheduler, cron o polling.
+- El one-shot manual fue la primera activación validada. Posteriormente, T-022.6-B/C desplegó el caller automático como proceso separado; no se integra polling en startup web ni webhook.
 
 ## T-022.3 — política contractual local (sin número DEC asignado)
 

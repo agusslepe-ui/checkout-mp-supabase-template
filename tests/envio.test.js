@@ -49,6 +49,77 @@ test.each([
   expect(JSON.parse(ui.fetch.mock.calls[0][1].body)).toEqual({ ...selection, postalCodeDestination: "5400" });
 });
 
+test("oculta HOME Express y renderiza sólo HOME Classic", async () => {
+  const ui = setup({ sku: "LEM-REM-001-S", quantity: 1 }, async () => ({
+    ok: true,
+    json: async () => ({ options: [
+      {
+        id: "micorreo:home:classic", type: "home", deliveryType: "home",
+        label: "Envío a domicilio — Clásico", price: 500,
+      },
+      {
+        id: "micorreo:home:express", type: "home", deliveryType: "home",
+        label: "Envío a domicilio — Express", price: 900,
+      },
+    ] }),
+  }));
+
+  await ui.button.emit("click");
+  expect(ui.options.children).toHaveLength(1);
+  expect(ui.options.children[0].children[0].children[0].value)
+    .toBe("micorreo:home:classic");
+  expect(ui.options.children[0].children[0].children[1].textContent)
+    .toBe("Envío a domicilio — Clásico");
+  expect(ui.options.children[0].children[1].textContent).not.toContain("900");
+});
+
+test("oculta AGENCY Express y renderiza sólo AGENCY Classic", async () => {
+  const ui = setup({ sku: "LEM-REM-001-S", quantity: 1 }, async () => ({
+    ok: true,
+    json: async () => ({ options: [
+      {
+        id: "micorreo:agency:classic", type: "agency", deliveryType: "agency",
+        label: "Retiro en sucursal — Clásico", price: 400,
+      },
+      {
+        id: "micorreo:agency:express", type: "agency", deliveryType: "agency",
+        label: "Retiro en sucursal — Express", price: 700,
+      },
+    ] }),
+  }));
+
+  await ui.button.emit("click");
+  expect(ui.options.children).toHaveLength(1);
+  expect(ui.options.children[0].children[0].children[0].value)
+    .toBe("micorreo:agency:classic");
+  expect(ui.options.children[0].children[0].children[1].textContent)
+    .toBe("Retiro en sucursal — Clásico");
+  expect(ui.options.children[0].children[1].textContent).not.toContain("700");
+});
+
+test("si sólo llegan opciones Express no las renderiza y muestra ausencia pública", async () => {
+  const ui = setup({ sku: "LEM-REM-001-S", quantity: 1 }, async () => ({
+    ok: true,
+    json: async () => ({ options: [
+      {
+        id: "micorreo:home:express", type: "home", deliveryType: "home",
+        label: "Envío a domicilio — Express", price: 900,
+      },
+      {
+        id: "micorreo:agency:express", type: "agency", deliveryType: "agency",
+        label: "Retiro en sucursal — Express", price: 700,
+      },
+    ] }),
+  }));
+
+  await ui.button.emit("click");
+  expect(ui.options.children).toHaveLength(0);
+  expect(ui.status.textContent)
+    .toBe("No encontramos opciones de envío para ese código postal.");
+  expect(ui.fetch).toHaveBeenCalledTimes(1);
+  expect(ui.onSelectionChange).toHaveBeenLastCalledWith(null);
+});
+
 test("envio no cotiza carrito vacio", async () => {
   const ui = setup({ items: [] });
   await ui.button.emit("click");
@@ -143,8 +214,8 @@ test("agency es seleccionable, lista segura, filtra localmente y entrega solo co
 test("lista vacía muestra mensaje seguro y no habilita agency", async () => {
   const ui = setup({ sku: "LEM-REM-001-S", quantity: 1 }, async (url) => url === "/cotizar-envio"
     ? { ok: true, json: async () => ({ options: [{
-      id: "micorreo:agency:express", type: "agency", deliveryType: "agency",
-      label: "Retiro en sucursal — Express", price: 700,
+      id: "micorreo:agency:classic", type: "agency", deliveryType: "agency",
+      label: "Retiro en sucursal — Clásico", price: 700,
     }] }) }
     : { ok: true, json: async () => ({ agencies: [] }) });
   await ui.button.emit("click");
@@ -152,7 +223,7 @@ test("lista vacía muestra mensaje seguro y no habilita agency", async () => {
   expect(ui.options.children[0].children[2].children[1].textContent)
     .toBe("No hay sucursales disponibles para esa provincia.");
   expect(ui.onSelectionChange).toHaveBeenLastCalledWith({
-    id: "micorreo:agency:express", price: 700, agencyCode: null,
+    id: "micorreo:agency:classic", price: 700, agencyCode: null,
   });
 });
 
@@ -180,7 +251,7 @@ test("cambiar de agency a HOME limpia el code y habilita la selección home", as
   const ui = setup({ sku: "LEM-REM-001-S", quantity: 1 }, async (url) => {
     if (url === "/cotizar-envio") return { ok: true, json: async () => ({ options: [
       { id: "micorreo:agency:classic", type: "agency", deliveryType: "agency", label: "Agency", price: 500 },
-      { id: "micorreo:home:express", type: "home", deliveryType: "home", label: "Home", price: 700 },
+      { id: "micorreo:home:classic", type: "home", deliveryType: "home", label: "Home", price: 700 },
     ] }) };
     return { ok: true, json: async () => ({ agencies: [{
       code: "J0001", name: "Centro", streetName: "Mitre", streetNumber: "123",
@@ -193,7 +264,7 @@ test("cambiar de agency a HOME limpia el code y habilita la selección home", as
   expect(ui.onSelectionChange).toHaveBeenLastCalledWith(expect.objectContaining({ agencyCode: "J0001" }));
   await ui.options.children[1].children[0].children[0].emit("change");
   expect(ui.onSelectionChange).toHaveBeenLastCalledWith({
-    id: "micorreo:home:express", price: 700, agencyCode: null,
+    id: "micorreo:home:classic", price: 700, agencyCode: null,
   });
 });
 

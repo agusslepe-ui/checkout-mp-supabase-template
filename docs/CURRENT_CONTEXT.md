@@ -1,14 +1,20 @@
 # Contexto actual del proyecto
 
-## T-022.6-C local — 2026-09-19
+## T-022 — Express oculto temporalmente en checkout público — 2026-09-19
 
-**T-022.6-C está PREPARADA LOCALMENTE / NO PRODUCTIVA.** El mismo repositorio contiene dos Dockerfiles con construcción equivalente y procesos separados: `Dockerfile` mantiene la web mediante `npm start` y `Dockerfile.worker` ejecuta exclusivamente `npm run shipping:worker`. El artefacto del worker omite `EXPOSE 3003` porque no escucha HTTP.
+**IMPLEMENTADO LOCALMENTE / NO DESPLEGADO.** `public/js/envio.js` filtra las cotizaciones antes de renderizarlas y expone sólo HOME Classic y AGENCY Classic. Las tarjetas y precios Express no aparecen ni pueden seleccionarse; una respuesta compuesta únicamente por Express usa el mensaje controlado existente de ausencia de opciones.
 
-No se hardcodearon variables ni secretos: EasyPanel deberá inyectarlos al futuro servicio. La imagen no fue construida ni ejecutada y el worker no fue desplegado ni activado. No hubo cambios en `Dockerfile`, `npm start`, código del worker, webhook, SQL o migraciones.
+La restricción es exclusivamente de exposición pública. El request a `/cotizar-envio`, la carga de sucursales y `shippingAgencyCode` no cambian. El backend conserva normalización CP/EP, rates, snapshots y soporte Express; el import continúa rechazando Express con `UNSUPPORTED_SERVICE` hasta confirmar el contrato de MiCorreo. Worker, webhook, Mercado Pago, SQL y migraciones permanecen intactos.
 
-## T-022.6-B local — 2026-09-18
+## T-022.6-C productiva — 2026-09-19
 
-**T-022.6-B está IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** `scripts/shipping-worker.js` inicia un proceso independiente sólo con `SHIPPING_IMPORT_WORKER_ENABLED=true`. `package.json` agrega `shipping:worker`; `npm start` sigue siendo exclusivamente el servidor web y no carga polling.
+**T-022.6-C está DESPLEGADA / VALIDADA EN PRODUCCIÓN - PROCESO AISLADO / `Dockerfile.worker`.** El mismo repositorio contiene dos Dockerfiles con construcción equivalente y procesos separados: `Dockerfile` mantiene la web mediante `npm start` y `Dockerfile.worker` ejecuta exclusivamente `npm run shipping:worker`. El artefacto del worker omite `EXPOSE 3003` porque no escucha HTTP.
+
+EasyPanel inyecta la configuración en cada servicio; `SHIPPING_IMPORT_WORKER_ENABLED=true` existe únicamente en el worker. El proceso web continúa separado y no carga polling mediante `npm start`.
+
+## T-022.6-B productiva — 2026-09-19
+
+**T-022.6-B está DESPLEGADA / VALIDADA EN PRODUCCIÓN - WORKER AUTOMÁTICO.** `scripts/shipping-worker.js` inicia un proceso independiente sólo con `SHIPPING_IMPORT_WORKER_ENABLED=true`. `npm start` sigue siendo exclusivamente el servidor web y no carga polling.
 
 El worker ejecuta un ciclo inmediato y luego usa `setTimeout` recursivo al finalizar cada operación. El intervalo es 60000 ms por defecto, configurable con entero mínimo de 10000 ms. Cada ciclo invoca una vez `processNextShippingImport`; no drena cola, no superpone ciclos y no ejecuta expiración de leases.
 
@@ -16,9 +22,11 @@ Outcomes controlados esperan el próximo ciclo. Errores inesperados se sanitizan
 
 `SIGTERM` y `SIGINT` impiden nuevos claims y esperan hasta 30 s la operación activa. Cierre normal registra `stopped` y exit 0. Si vence el plazo, registra `shutdown_timeout`, conserva `stopping=true` y exit 1, sin `stopped`, sin abortar artificialmente el provider y sin modificar ese resultado cuando el ciclo termine tarde. Entre instancias, PostgreSQL conserva autoridad mediante `FOR UPDATE SKIP LOCKED` y lease; no se agregaron locks distribuidos Node ni se afirma QA multi-instancia nuevo.
 
-La implementación no fue ejecutada ni desplegada. Tests usan worker/timers/proceso inyectados, sin RPC, fetch o `/shipping/import` real. T-022.6-A y el QA real manual permanecen validados.
+El servicio permaneció activo durante horas y validó el polling de 60 s con múltiples `outcome=idle`. Una nueva compra HOME Classic fue procesada automáticamente sin CLI ni intervención manual: `Mercado Pago → webhook → paid → queued → shipping-worker → MiCorreo → created`.
 
-## Cierre QA real T-022.6 — 2026-09-18
+La DB final mostró order `paid`, shipping `created`, attempt 1, timestamps de provider/import presentes y `last_error_type` nulo. No hubo retry, `unknown`, `failed` ni `lease_lost`.
+
+## Cierre QA manual previo T-022.6 — 2026-09-18
 
 **QA REAL MICORREO VALIDADO END-TO-END EN PRODUCCIÓN.** Una compra real HOME Classic recorrió checkout, pago aprobado, webhook, `orders.status=paid` y `order_shipping_imports.state=queued` por la RPC legacy-safe. La fila logística estaba en attempt 0 y sin lease antes de la operación manual.
 
@@ -26,7 +34,7 @@ Se ejecutó `shipping:process-once` exactamente una vez con doble guarda. El wor
 
 El envío se verificó visualmente en el portal real de MiCorreo con estado **Validado**. Las medidas visibles coincidieron con el snapshot QA: 0,3 kg y 35 × 25 × 5 cm. Este documento omite deliberadamente PII, IDs de pago, referencias externas, direcciones, contactos, JWT, customerId y secretos.
 
-El worker sigue sin activación automática. No hay cron, polling, scheduler o endpoint HTTP. Express, perfiles definitivos, reconciliación automática de `unknown`, tracking API y label API siguen fuera de alcance.
+Este flujo manual permanece como antecedente independiente del QA automático posterior. Express, perfiles definitivos, reconciliación automática de `unknown`, tracking API y label API siguen fuera de alcance.
 
 ## T-022.6-A — antecedente de implementación local
 
@@ -42,15 +50,15 @@ No se modificaron worker, webhook, app, SQL ni migraciones. No hay scheduler, cr
 
 El caso legacy sin `order_shipping_imports` y los snapshots `queued`/`processing` no bloquean el pago ni son mutados. Un error en el subbloque logístico conserva la transición financiera y retorna `shipping_queued=false`. Los webhooks repetidos son no-op bajo el lock de PostgreSQL. `markOrderAsPaid` conserva sus validaciones Node y llama la RPC v2.
 
-La migración 010 fue aplicada y el flujo se validó con un pago real en PostgreSQL. T-022.4 está desplegada sin scheduler ni polling. `/shipping/import` fue validado mediante una única ejecución manual.
+La migración 010 fue aplicada y el flujo se validó con pagos reales. T-022.4 es consumida por el proceso aislado T-022.6-B/C. `/shipping/import` fue validado primero mediante una ejecución manual y después mediante una ejecución automática real.
 
-## T-022.4 desplegada e inactiva — 2026-09-18
+## T-022.4 desplegada y consumida por el proceso aislado — 2026-09-19
 
-**T-022.4 está IMPLEMENTADA / DESPLEGADA / SIN ACTIVACIÓN AUTOMÁTICA.** `shippingImportWorker.js` expone una iteración única y expiración manual de leases; no contiene loop, polling ni scheduling. Usa exclusivamente `shippingImports` para claim/transiciones y `ShippingImportService` para dominio/provider. T-022.3 está DESPLEGADA / VALIDADA.
+**T-022.4 está IMPLEMENTADA / DESPLEGADA y es consumida por T-022.6-B.** `shippingImportWorker.js` expone una iteración única y expiración manual de leases; su scheduling permanece fuera del módulo y vive en el proceso aislado. Usa exclusivamente `shippingImports` para claim/transiciones y `ShippingImportService` para dominio/provider. T-022.3 está DESPLEGADA / VALIDADA.
 
 La política local usa lease de 60 s, backoff 1/5/15 min y máximo cuatro attempts. `RATE_LIMIT`, AUTH previo al POST y fallos de red/timeout con evidencia explícita de ocurrir antes del POST son retryable; permanentes terminan failed; todo resultado posiblemente enviado pero incierto termina unknown. Tanto POST 401 + fallo de renovación como segundo POST 401 terminan unknown. `numeric` string se normaliza con regex canónica en el borde del worker. La expiración acepta `null`/array vacío como cero filas y rechaza otros tipos inesperados.
 
-`/shipping/import` fue validado realmente mediante one-shot controlado. `index.js`, `app.js` y webhook no importan el worker; no existe procesamiento automático.
+`/shipping/import` fue validado mediante one-shot controlado y posteriormente mediante procesamiento automático real. `index.js`, `app.js` y webhook no importan el worker; el polling pertenece exclusivamente al servicio separado.
 
 ## T-022.3 desplegada y validada — 2026-09-18
 
@@ -92,7 +100,7 @@ Cotización dual items o legacy, resolver común, tope 4 unidades totales, perfi
 
 En ese cierre histórico, la suite fue **211/211**, 4 suites. `POST /rates` PROD: `micorreo_rates_ok options=4` (destino QA 5400). Sin `/shipping/import`, sin envío creado, sin cobro. Las medidas actuales **no** están aprobadas para producción. En ese momento el próximo paso era **Etapa C — cobrar el envío** y T-021 todavía estaba solo local; ambos estados fueron superados por los cierres productivos posteriores.
 
-> **HISTÓRICO / SUPERADO para el provider local.** Resumen al 2026-09-17, anterior a T-022.3. Migraciones 007/008/009 aplicadas; runtime v3 desplegado; T-017/T-020/T-021 cerradas y DEC-022/DEC-025/DEC-026 aceptadas. En ese corte todavía no existía provider local de importación. Hoy siguen sin existir worker/provider productivo ni integración webhook y `/shipping/import` permanece inactivo. El estado vigente está en `docs/STATUS.md`.
+> **HISTÓRICO / SUPERADO para el provider local.** Resumen al 2026-09-17, anterior a T-022.3. Migraciones 007/008/009 aplicadas; runtime v3 desplegado; T-017/T-020/T-021 cerradas y DEC-022/DEC-025/DEC-026 aceptadas. En ese corte todavía no existían provider ni worker productivos y `/shipping/import` permanecía inactivo. El estado vigente está en `docs/STATUS.md`.
 > Si el chat fue compactado, este archivo es el punto de entrada.
 > Metodología: Grok audita y documenta — Codex programa — Usuario aprueba — GitHub guarda.
 

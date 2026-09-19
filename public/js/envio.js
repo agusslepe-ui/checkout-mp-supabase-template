@@ -1,8 +1,6 @@
 const PAYABLE_OPTIONS = new Set([
   "micorreo:home:classic",
-  "micorreo:home:express",
   "micorreo:agency:classic",
-  "micorreo:agency:express",
 ]);
 
 export function inicializarCotizacionEnvio({
@@ -68,12 +66,13 @@ export function inicializarCotizacionEnvio({
   }
 
   function renderQuotes(options) {
-    if (options.length === 0) {
+    const publicOptions = options.filter((option) => PAYABLE_OPTIONS.has(option.id));
+    if (publicOptions.length === 0) {
       statusElement.textContent = "No encontramos opciones de envío para ese código postal.";
       return;
     }
 
-    for (const option of options) {
+    for (const option of publicOptions) {
       const article = document.createElement("article");
       article.className = "shipping-option";
       const choice = document.createElement("label");
