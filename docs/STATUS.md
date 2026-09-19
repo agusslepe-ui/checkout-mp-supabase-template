@@ -7,6 +7,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 ## T-022 — estado productivo vigente
 
 - **T-022: EN PROGRESO.**
+- **T-022.6-B: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18). Existe un entrypoint Node aislado para polling cada 60 s, protegido por `SHIPPING_IMPORT_WORKER_ENABLED=true`, con primera iteración inmediata, ciclos no superpuestos, umbral fatal de cinco errores consecutivos y shutdown por señales. No fue ejecutado ni desplegado.
 - **T-022.6-A: DESPLEGADA / VALIDADA EN PRODUCCIÓN MEDIANTE EJECUCIÓN MANUAL ONE-SHOT** (2026-09-18). Una única invocación autorizada realizó un claim, un lease, un POST real y una transición final `created`. No existe activación automática.
 - **T-022.5: DESPLEGADA / VALIDADA EN PRODUCCIÓN** (2026-09-18). La migración 010 y el runtime paid+queue legacy-safe confirmaron un pago real y llevaron el snapshot de `not_requested` a `queued`.
 - **T-022.4: WORKER IMPLEMENTADO / DESPLEGADO / SIN ACTIVACIÓN AUTOMÁTICA** (2026-09-18). La ejecución real confirmó lease, attempt y cierre holder-only; no hay timer, polling, cron ni scheduler.
@@ -16,6 +17,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 - RLS, ausencia de policies públicas, denegación a `anon`/`authenticated`, EXECUTE exclusivo de `service_role` y UPDATE limitado a las nueve columnas operativas fueron verificados en producción. No hubo backfill: la tabla quedó inicialmente con cero filas.
 - **QA REAL MICORREO: VALIDADO END-TO-END.** Checkout HOME Classic, pago aprobado, webhook, `paid + queued`, claim/lease, import real y cierre `created` fueron comprobados en producción. El portal real mostró el envío como **Validado** y las medidas QA 0,3 kg / 35 × 25 × 5 cm.
 - **`POST /shipping/import`: VALIDADO REALMENTE mediante ejecución manual controlada.** Esto no declara worker automático: no existe scheduler, cron, polling ni endpoint HTTP de operación.
+- El polling automático pertenece sólo a T-022.6-B local. `npm start` continúa sin worker y producción no ejecuta `npm run shipping:worker`.
 
 ## Producción
 

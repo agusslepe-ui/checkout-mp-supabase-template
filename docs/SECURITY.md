@@ -1,5 +1,15 @@
 # Seguridad
 
+## T-022.6-B — aislamiento y límites operativos
+
+- El proceso automático requiere el valor exacto `SHIPPING_IMPORT_WORKER_ENABLED=true`; esta variable y el intervalo no son obligatorios para el servidor web.
+- La composición real se carga sólo después de validar guarda e intervalo. No se duplica cliente Supabase, repositorio, servicio o provider.
+- Logs allowlisted: estado de proceso, intervalo, outcome, orderId, attemptCount y contador de errores. Nunca error crudo, stack, PII, extOrderId, payload, body, customerId, JWT o claves.
+- No hay endpoint HTTP, cron dentro de Express, `setInterval`, loop de drenaje ni expire automático.
+- La exclusión local evita overlap; la exclusión entre procesos permanece en DB mediante lock/lease. No se agregan privilegios, tablas, RPC o migraciones.
+- Fatal no llama `process.exit` desde core ni durante provider/DB activos: el entrypoint termina sólo tras limpiar el ciclo, y el callback se emite una vez.
+- Shutdown bloquea nuevos ciclos y espera como máximo 30 s. Un timeout registra `shutdown_timeout`, no `stopped`, conserva exit 1 y no cancela artificialmente el POST; el transporte mantiene su timeout propio.
+
 ## T-022.6 — evidencia productiva minimizada
 
 - El cierre registra sólo estados, attempt, limpieza de lease, presencia de timestamps, resultado del provider y dimensiones QA.

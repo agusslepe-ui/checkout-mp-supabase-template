@@ -1,5 +1,27 @@
 # Diseño técnico
 
+## T-022.6-B — proceso automático aislado
+
+```text
+npm start
+  → node index.js
+  → Express solamente
+
+npm run shipping:worker
+  → node scripts/shipping-worker.js
+  → guard SHIPPING_IMPORT_WORKER_ENABLED=true
+  → ciclo inmediato: processNextShippingImport() × 1
+  → al terminar: setTimeout(siguiente ciclo, intervalMs)
+```
+
+El scheduler es recursivo y post-completion: nunca hay dos invocaciones activas dentro del mismo proceso. Cada tick conserva el límite T-022.4 de un claim, una operación provider y una transición. Veinte trabajos se consumen gradualmente, no mediante `while`.
+
+`unknown` queda fuera de futuros claims; `retryable` depende de `next_attempt_at` en DB; `created`, `failed`, `lease_lost` e `idle` esperan el próximo ciclo. El proceso no ejecuta recovery de leases. Dos instancias accidentales pueden trabajar en paralelo, pero `FOR UPDATE SKIP LOCKED` y lease siguen siendo la autoridad para impedir la misma fila; esto aún no agrega QA PostgreSQL multi-instancia.
+
+El quinto error inesperado consecutivo marca fatal y detiene scheduling. El controlador primero deja finalizar el ciclo y limpia `activeCycle`; después notifica una sola vez. Sólo `scripts/shipping-worker.js` decide ejecutar `process.exit(1)`, cuando ya no existe operación provider/DB activa.
+
+SIGTERM/SIGINT cancelan el timer, no inician otro claim y esperan la operación activa hasta 30 s. Si termina, registran `stopped` y exit 0. Si vence, registran `shutdown_timeout`, mantienen exit 1 y no imprimen `stopped`; no abortan el provider y una finalización tardía no reactiva scheduling ni convierte el shutdown en success. El proceso está preparado para un futuro servicio EasyPanel separado, pero no está desplegado.
+
 ## T-022.6 — flujo validado en producción
 
 ```text

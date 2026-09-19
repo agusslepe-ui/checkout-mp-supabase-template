@@ -7,6 +7,7 @@
     "start": "node index.js",
     "dev": "node index.js",
     "test": "jest --runInBand",
+    "shipping:worker": "node scripts/shipping-worker.js",
     "shipping:process-once": "node scripts/shipping-process-once.js",
     "shipping:expire-once": "node scripts/shipping-expire-once.js"
   },

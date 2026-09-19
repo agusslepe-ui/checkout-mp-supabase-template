@@ -1,5 +1,20 @@
 # Tareas
 
+## T-022.6-B — Worker automático aislado
+
+**Estado: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-18).
+
+- Nuevo proceso separado: `npm run shipping:worker`; `npm start` permanece `node index.js` y no importa worker/polling.
+- Guarda exacta `SHIPPING_IMPORT_WORKER_ENABLED=true`. Ausente, `false`, `TRUE`, `1` o `yes` terminan con exit 1 sin cargar la composición ni iniciar polling.
+- Primer ciclo inmediato. Intervalo default 60000 ms, opcionalmente configurable mediante entero `SHIPPING_IMPORT_WORKER_INTERVAL_MS`, con mínimo 10000 ms.
+- Scheduling recursivo con `setTimeout` después de finalizar: un único `processNextShippingImport()` por ciclo, sin overlap ni drenaje de cola.
+- `idle|created|retryable|unknown|failed|lease_lost` son outcomes controlados y reinician el contador. La DB decide elegibilidad de retryable/unknown; Node no reconcilia ni reencola.
+- Un error inesperado se registra sin message/stack/PII y permite continuar. El quinto marca fatal, deja desenrollar el ciclo, limpia `activeCycle` y recién entonces el entrypoint termina el proceso con exit 1; callback/exit ocurren una sola vez.
+- `SIGTERM`/`SIGINT` cancelan futuros ciclos y esperan el activo hasta 30 s. Si vence, registran sólo `shutdown_timeout`, mantienen `stopping=true` y exit 1, sin afirmar cancelación ni `stopped`. Expiración de leases permanece exclusivamente en el comando manual separado.
+- No fue ejecutado contra Supabase/MiCorreo real ni desplegado.
+
+**Pendiente:** auditoría; deploy como proceso separado; QA automático controlado; reconciliación de `unknown`; perfiles físicos finales; contrato Express.
+
 ## T-022.6 — cierre QA real end-to-end
 
 **Estado QA REAL MICORREO: VALIDADO END-TO-END** (2026-09-18).

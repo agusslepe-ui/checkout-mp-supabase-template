@@ -1,5 +1,15 @@
 # Progreso
 
+## 2026-09-18 — T-022.6-B worker automático aislado local
+
+- Agregado entrypoint `shipping:worker`, separado de Express y sin cambios en `npm start`.
+- Guarda exacta `SHIPPING_IMPORT_WORKER_ENABLED=true`; intervalo default 60 s y mínimo 10 s.
+- Primera iteración inmediata; una order por ciclo; siguiente `setTimeout` sólo después de terminar, sin overlap.
+- Outcomes controlados continúan; el quinto error inesperado detiene scheduling y notifica fatal una vez después de limpiar el ciclo activo; el entrypoint termina con exit 1. Un resultado controlado resetea contador.
+- Shutdown cooperativo para SIGTERM/SIGINT con límite de 30 s y sin nuevo claim. Timeout registra `shutdown_timeout`, no `stopped`, y no fuerza `process.exit` sobre una operación activa.
+- Logs allowlisted; no se serializan errores, payloads ni PII. Expire continúa manual y separado.
+- Tests mock/inyección únicamente. Sin worker real, requests, SQL, migraciones, webhook, commit, push o deploy.
+
 ## 2026-09-18 — cierre QA real T-022.6
 
 - **QA REAL MICORREO: VALIDADO END-TO-END EN PRODUCCIÓN.** Compra HOME Classic, pago real aprobado, webhook, `paid + queued`, claim/lease, POST real y cierre `created` confirmados.

@@ -1,5 +1,17 @@
 # Contexto actual del proyecto
 
+## T-022.6-B local — 2026-09-18
+
+**T-022.6-B está IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.** `scripts/shipping-worker.js` inicia un proceso independiente sólo con `SHIPPING_IMPORT_WORKER_ENABLED=true`. `package.json` agrega `shipping:worker`; `npm start` sigue siendo exclusivamente el servidor web y no carga polling.
+
+El worker ejecuta un ciclo inmediato y luego usa `setTimeout` recursivo al finalizar cada operación. El intervalo es 60000 ms por defecto, configurable con entero mínimo de 10000 ms. Cada ciclo invoca una vez `processNextShippingImport`; no drena cola, no superpone ciclos y no ejecuta expiración de leases.
+
+Outcomes controlados esperan el próximo ciclo. Errores inesperados se sanitizan y se cuentan; el quinto marca fatal y, una vez que `processNextShippingImport` terminó y `activeCycle` quedó limpia, el entrypoint termina explícitamente con exit 1. Un outcome controlado resetea el contador.
+
+`SIGTERM` y `SIGINT` impiden nuevos claims y esperan hasta 30 s la operación activa. Cierre normal registra `stopped` y exit 0. Si vence el plazo, registra `shutdown_timeout`, conserva `stopping=true` y exit 1, sin `stopped`, sin abortar artificialmente el provider y sin modificar ese resultado cuando el ciclo termine tarde. Entre instancias, PostgreSQL conserva autoridad mediante `FOR UPDATE SKIP LOCKED` y lease; no se agregaron locks distribuidos Node ni se afirma QA multi-instancia nuevo.
+
+La implementación no fue ejecutada ni desplegada. Tests usan worker/timers/proceso inyectados, sin RPC, fetch o `/shipping/import` real. T-022.6-A y el QA real manual permanecen validados.
+
 ## Cierre QA real T-022.6 — 2026-09-18
 
 **QA REAL MICORREO VALIDADO END-TO-END EN PRODUCCIÓN.** Una compra real HOME Classic recorrió checkout, pago aprobado, webhook, `orders.status=paid` y `order_shipping_imports.state=queued` por la RPC legacy-safe. La fila logística estaba en attempt 0 y sin lease antes de la operación manual.

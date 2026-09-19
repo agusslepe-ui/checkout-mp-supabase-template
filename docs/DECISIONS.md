@@ -1,5 +1,17 @@
 # Decisiones técnicas
 
+## T-022.6-B — polling aislado y fail-stop acotado
+
+**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA (2026-09-18).
+
+- El worker automático se despliega como proceso Node separado; nunca se mezcla con `npm start`, Express o webhook.
+- Se elige primera iteración inmediata y scheduling recursivo 60 s después de completar; intervalo configurable con mínimo 10 s.
+- Se procesa una sola fila por ciclo. No existe drain loop, overlap, retry inmediato de `unknown`/`lease_lost` ni espera Node de `next_attempt_at`.
+- PostgreSQL conserva autoridad multi-instancia con `FOR UPDATE SKIP LOCKED` y lease; no se implementan locks distribuidos en Node.
+- Cinco errores inesperados consecutivos producen fail-stop: core marca fatal y detiene scheduling; tras limpiar el ciclo, el entrypoint recibe un único callback y termina con exit 1. Cualquier outcome controlado resetea el contador.
+- SIGTERM/SIGINT esperan la operación activa hasta 30 s. Timeout significa `shutdown_timeout` + exit 1, no `stopped`, no cancelación artificial y no success tardío. Expire permanece manual y no se ejecuta en cada tick.
+- La guarda deshabilitada y la configuración inválida usan exit 1 para hacer visible una mala configuración de servicio.
+
 ## T-022.6 — cierre de QA real y límite de activación
 
 **Estado:** QA REAL MICORREO VALIDADO END-TO-END (2026-09-18).
