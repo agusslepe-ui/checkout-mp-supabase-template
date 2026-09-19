@@ -8,21 +8,26 @@
 - AGENCY Classic automático: IMPLEMENTADO; E2E real pendiente. No declararlo validado hasta ejecutar una compra/sucursal real controlada.
 - Express: soporte interno conservado, oculto temporalmente del checkout público e import bloqueado con `UNSUPPORTED_SERVICE`; contrato exacto pendiente.
 - Perfiles 1–4: TEMPORAL/QA; sustitución y repetición de QA pendientes.
-- `unknown`: protegido contra retry automático; DEC-027 aceptada como política, herramienta administrativa pendiente.
+- `unknown`: protegido contra retry automático; DEC-027 implementada localmente mediante RPC administrativas y CLI manual, todavía no productiva.
 - MiCorreo `orderNumber`: PENDIENTE / NO IMPLEMENTADO. `extOrderId` debe conservarse como correlación técnica estable; `/shipping/import` actualmente no envía `orderNumber`, de modo que “Número de orden” puede aparecer vacío. Evaluar un identificador operativo legible como `LEMONT-<order_id>` sin sustituir `extOrderId`.
 
 ## T-022 / DEC-027 — Implementar reconciliación administrativa de `unknown`
 
-**Estado: DISEÑADA / NO IMPLEMENTADA.**
+**Estado: IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA** (2026-09-19).
 
-- Estado vigente confirmado en código/SQL: claim sólo `queued|retryable` vencido; `unknown` sin `next_attempt_at`; lease vencido `processing → unknown`; sin salida administrativa desde `unknown`.
-- Caso encontrado en MiCorreo: no importar otra vez; futura acción condicional `unknown → created`, sin inventar fecha de provider.
-- Caso no encontrado inicialmente: mantener `unknown` y repetir verificación humana.
-- Ausencia confirmada por una persona: futura requeue explícita a `queued` inmediata o `retryable` con fecha futura.
-- Ambigüedad persistente: mantener `unknown` indefinidamente; nunca retry o `failed` automáticos.
-- Implementar en una tarea futura RPC/admin backend-only, idempotencia, privilegios mínimos, logs allowlisted y evidencia durable.
-- Evaluar columnas `reconciled_at`, `reconciliation_action`, `reconciliation_reason` versus tabla de auditoría append-only; no crear esquema todavía.
-- Criterio de aceptación futuro: ninguna acción puede modificar `created`, `processing`, `queued`, `retryable`, `failed` o `not_requested`, ni resetear attempt/correlación/snapshot.
+**Auditoría Grok:** APROBADO CON OBSERVACIONES / SIN BLOQUEANTES. Hardening final incorporado localmente.
+
+- La migración aditiva 011 crea `order_shipping_import_reconciliations`, evidencia operacional sin PII, con RLS, cero policies públicas y grants append-only `SELECT, INSERT` sólo para `service_role`.
+- `reconcile_order_shipping_import_created`: lock + condición `unknown → created`; preserva correlación, snapshot y attempts, no inventa `provider_created_at`, y usa `imported_at` como instante local de confirmación humana.
+- `requeue_order_shipping_import_unknown`: lock + condición `unknown → queued` sólo tras ausencia humana confirmada; limpia resultado/scheduling y preserva correlación, snapshot y attempts.
+- Cada transición y su evento se escriben en la misma transacción. Una llamada perdedora o un estado distinto devuelve cero filas, no muta y no audita.
+- Política A: `SHIPPING_IMPORT_MAX_ATTEMPTS = 4` limita sólo retries automáticos. La requeue humana preserva `attempt_count` y autoriza exactamente un claim adicional: 4 permanece 4 al reencolar y el claim lo incrementa a 5. Un error retryable en attempt 5 termina por attempt limit; una ambigüedad vuelve a `unknown` y exige otra confirmación/evento para una nueva requeue. Nunca se resetean attempts.
+- `shipping:reconcile-unknown` exige exactamente `SHIPPING_IMPORT_RECONCILIATION_ENABLED=true`, `--execute`, order ID canónico, acción y confirmación específica. `no_change` retorna exit 1.
+- La migración 011 ejecuta `NOTIFY pgrst, 'reload schema'` antes de `COMMIT` para refrescar las RPC en PostgREST tras el futuro cutover.
+- Logs allowlisted: outcome y order ID, o códigos controlados `disabled`, `invalid_arguments` y `unexpected_error`; sin mensajes crudos, PII, payload, correlación externa ni secretos.
+- No se agregó endpoint, búsqueda automática en MiCorreo, retry automático ni cambios al worker. El CLI carga configuración/Supabase sólo después de validar guardas y argumentos.
+
+**Pendiente:** aplicar migración 011; QA PostgreSQL real/controlado de atomicidad, concurrencia, RLS y grants; desplegar el CLI administrativo sin habilitar permanentemente la guarda; AGENCY Classic E2E; `orderNumber`; perfiles físicos reales; Express. No ejecutar reconciliaciones hasta completar el cutover administrativo.
 
 ## T-022 — Ocultar Express temporalmente en checkout público
 

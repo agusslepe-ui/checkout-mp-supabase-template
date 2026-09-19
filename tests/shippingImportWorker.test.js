@@ -151,6 +151,39 @@ describe("T-022.4 shipping import worker", () => {
     expect(repo.retryShippingImport).not.toHaveBeenCalled();
   });
 
+  test("requeue humana tras attempt 4 permite claim 5 pero no renueva retries automáticos", async () => {
+    const repo = repository(claim({ attempt_count: 5 }));
+    const service = { importShipment: jest.fn().mockRejectedValue(providerError("RATE_LIMIT")) };
+    const setup = worker({ repo, service });
+
+    await expect(setup.instance.processNextShippingImport()).resolves.toEqual({
+      outcome: "failed", orderId: 42, attemptCount: 5,
+    });
+    expect(service.importShipment).toHaveBeenCalledTimes(1);
+    expect(repo.failShippingImport).toHaveBeenCalledWith({
+      orderId: 42, leaseToken: LEASE_TOKEN, errorType: "rate_limit_attempt_limit",
+    });
+    expect(repo.retryShippingImport).not.toHaveBeenCalled();
+  });
+
+  test("claim 5 ambiguo vuelve a unknown y requiere otra confirmación humana", async () => {
+    const repo = repository(claim({ attempt_count: 5 }));
+    const service = { importShipment: jest.fn().mockRejectedValue(providerError("TIMEOUT", {
+      requestAttempted: true,
+      ambiguous: true,
+    })) };
+    const setup = worker({ repo, service });
+
+    await expect(setup.instance.processNextShippingImport()).resolves.toEqual({
+      outcome: "unknown", orderId: 42, attemptCount: 5,
+    });
+    expect(service.importShipment).toHaveBeenCalledTimes(1);
+    expect(repo.markShippingImportUnknown).toHaveBeenCalledWith({
+      orderId: 42, leaseToken: LEASE_TOKEN, errorType: "timeout",
+    });
+    expect(repo.retryShippingImport).not.toHaveBeenCalled();
+  });
+
   test("AUTH inicial es retryable porque no hubo POST", async () => {
     const repo = repository();
     const service = { importShipment: jest.fn().mockRejectedValue(providerError("AUTH", {

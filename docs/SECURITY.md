@@ -4,12 +4,15 @@
 
 - `unknown` nunca se reintenta automáticamente. La ausencia inmediata en MiCorreo no autoriza requeue.
 - La verificación manual usa la correlación estable `ext_order_id = orders.external_reference`; su valor no se registra en documentación ni logs ordinarios.
-- Si el envío existe, no se repite `/shipping/import`; la futura acción será `unknown → created`. No se inventa `provider_created_at`.
-- Si una persona confirma que no existe, una futura acción explícita podrá reencolar. Mientras haya duda, permanece `unknown` sin pasar automáticamente a `failed`.
+- Si el envío existe, no se repite `/shipping/import`; la RPC local permite `unknown → created`. No inventa `provider_created_at`; `imported_at` representa confirmación local.
+- Si una persona confirma que no existe, la segunda RPC local permite exclusivamente `unknown → queued`. Mientras haya duda, permanece `unknown` sin pasar automáticamente a `failed`.
 - `shipping:process-once` no es herramienta de reconciliación y nunca debe usarse con ese fin.
-- La futura interfaz será backend/admin only, no pública, condicional e idempotente desde `unknown`; no podrá alterar estados distintos, resetear attempts, cambiar correlación o reconstruir snapshots.
-- La RPC futura deberá usar `SECURITY INVOKER`, `search_path` fijo, EXECUTE exclusivo de `service_role` en la arquitectura actual o de un rol backend más acotado, y ninguna policy/grant para navegador. Logs y auditoría quedarán sin PII, payloads, respuestas completas, tokens, customerId o referencias reales.
-- Campos de auditoría o una tabla append-only requieren una migración futura separada y revisión de constraints, grants y retención. No se agregan en este cierre.
+- La interfaz local es backend/admin only, no pública, condicional e idempotente desde `unknown`; no puede alterar otros estados, resetear attempts, cambiar correlación o reconstruir snapshots.
+- Ambas RPC son `SECURITY INVOKER`, fijan `search_path`, revocan EXECUTE a `PUBLIC`/`anon`/`authenticated` y lo conceden sólo a `service_role`. El CLI exige doble guarda antes de cargar configuración o Supabase.
+- La tabla append-only de 011 tiene RLS, cero policies y sólo `SELECT, INSERT` para `service_role`; no concede UPDATE ni DELETE. Registra UUID, order ID interno, códigos controlados, estados, attempt y fecha, sin PII, payload, respuesta provider, token, customerId ni correlación externa.
+- Los logs se reconstruyen por allowlist. `no_change` e invocaciones inválidas terminan con exit 1 para exigir revisión humana. La migración no fue aplicada ni validada contra PostgreSQL real.
+- Política A: el máximo de 4 limita retries automáticos, no autorizaciones humanas. Requeue preserva `attempt_count` y habilita exactamente un claim adicional; nunca renueva presupuesto ni resetea el contador. Attempt 5 retryable termina por límite; attempt 5 ambiguo vuelve a `unknown` y exige otra confirmación/evento antes de cualquier nueva requeue.
+- El reload de schema PostgREST está dentro de 011 inmediatamente antes de commit. No amplía grants ni convierte las RPC en públicas; sólo solicita actualizar el cache tras el futuro cutover.
 
 ## T-022.6-C — aislamiento productivo del proceso
 

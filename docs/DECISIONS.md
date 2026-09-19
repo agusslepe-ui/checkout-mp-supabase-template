@@ -3,7 +3,7 @@
 ## DEC-027 — Reconciliación operativa conservadora de shipping imports `unknown`
 
 **Fecha:** 2026-09-19.
-**Estado:** ACEPTADA COMO POLÍTICA OPERATIVA / IMPLEMENTACIÓN PENDIENTE.
+**Estado:** IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA.
 **Tarea:** T-022.
 
 ### Contexto
@@ -16,39 +16,48 @@ La correlación estable para buscar el envío es `order_shipping_imports.ext_ord
 
 ### Decisión
 
-1. **Si el envío existe en MiCorreo:** no volver a importar. Una futura operación administrativa podrá ejecutar condicional e idempotentemente `unknown → created`, dejando evidencia de reconciliación manual. `provider_created_at` sólo se completará si MiCorreo ofrece una fecha verificable; nunca se inventará. El `imported_at` requerido por el estado `created` podrá registrar el cierre local, pero no se presentará como fecha del proveedor; un eventual `reconciled_at` haría explícita esa diferencia.
+1. **Si el envío existe en MiCorreo:** no volver a importar. La operación administrativa local ejecuta condicional e idempotentemente `unknown → created` y deja evidencia append-only. `provider_created_at` permanece nulo; nunca se inventa. `imported_at` registra el cierre local y no se presenta como fecha del proveedor; `reconciled_at` explicita la reconciliación humana.
 2. **Si no aparece inmediatamente:** la ausencia en el portal no prueba que no exista. Se mantiene `unknown`, no se agenda retry y el operador vuelve a verificar.
-3. **Si una persona confirma explícitamente que no existe:** una futura operación administrativa podrá reencolar condicionalmente desde `unknown`. `queued` representará reintento manual inmediato; `retryable` sólo se usará si se define un `next_attempt_at` futuro. Se preservan `ext_order_id`, snapshot y `attempt_count`.
+3. **Si una persona confirma explícitamente que no existe:** la operación administrativa local reencola condicionalmente `unknown → queued`. No existe salida administrativa a `retryable`. Se preservan `ext_order_id`, snapshot y `attempt_count`.
 4. **Si sigue ambiguo:** permanece `unknown` indefinidamente. No se reintenta ni pasa automáticamente a `failed`.
-5. `shipping:process-once` no es una herramienta de reconciliación. El claim no tomará la fila `unknown`, y no se debe alterar su estado por fuera de la futura interfaz administrativa.
+5. `shipping:process-once` no es una herramienta de reconciliación. El claim no tomará la fila `unknown`, y no se debe alterar su estado por fuera de la interfaz administrativa una vez auditada y desplegada.
 
-### Requisitos de la futura herramienta
+### Política A — presupuesto de attempts
+
+- `SHIPPING_IMPORT_MAX_ATTEMPTS = 4` limita exclusivamente los retries automáticos; no limita una autorización administrativa humana explícita.
+- `requeue` nunca resetea `attempt_count`. Cada requeue humana autoriza exactamente un claim adicional, no un nuevo presupuesto de cuatro retries.
+- Si la fila está `unknown` con `attempt_count = 4`, `unknown → queued` conserva 4 y el claim siguiente la lleva a `processing` con `attempt_count = 5`; ese claim puede ejecutar un POST adicional.
+- Si ese attempt 5 produce un error retryable, la lógica vigente detecta `attempt_count >= 4` y termina en `failed` por attempt limit, sin programar otro retry automático. Si el resultado vuelve a ser ambiguo, termina nuevamente en `unknown`.
+- Una requeue posterior sólo puede partir de un nuevo `unknown`, requiere otra confirmación humana explícita y genera otro evento append-only. `attempt_count` nunca se reinicia.
+
+Esta política ya emerge de la combinación entre la migración 011, que preserva attempts, el claim de 009, que incrementa una vez, y el worker vigente. No se modifica `shippingImportWorker.js`.
+
+### Implementación local de la herramienta
 
 - Backend/admin only; nunca endpoint público ni acción desde el navegador del comprador.
-- RPC dedicada con `SECURITY INVOKER`, `search_path` fijo, `EXECUTE` revocado a `PUBLIC`, `anon` y `authenticated`, y concedido sólo a `service_role` en la arquitectura actual o a un futuro rol backend aún más acotado.
+- Dos RPC dedicadas con `SECURITY INVOKER`, `search_path` fijo, `EXECUTE` revocado a `PUBLIC`, `anon` y `authenticated`, y concedido sólo a `service_role`.
 - Transición atómica condicionada a `state = 'unknown'`, con lock de fila o UPDATE condicional equivalente.
 - Idempotencia: repetir la misma acción no duplica importación ni modifica otro estado.
 - No puede modificar filas `created`, `processing`, `queued`, `retryable`, `failed` o `not_requested`.
 - No reinicia `attempt_count`, no cambia `ext_order_id` ni reconstruye el snapshot.
 - Logs allowlisted, sin PII, payload, respuesta completa, dirección, contacto, token, customerId ni referencia real.
-- Evidencia durable de fecha, acción y motivo de la reconciliación humana.
+- Evidencia durable append-only de fecha, acción y motivo de la reconciliación humana.
+- CLI one-shot con guarda exacta `SHIPPING_IMPORT_RECONCILIATION_ENABLED=true`, `--execute`, acción y confirmación específica; sin endpoint ni carga de Supabase antes de validar.
 
-### Datos de auditoría a evaluar
+### Datos de auditoría elegidos
 
-Campos candidatos en la fila actual: `reconciled_at`, `reconciliation_action` y `reconciliation_reason`.
+Se eligió `order_shipping_import_reconciliations`: UUID propio, order ID interno, acción, reason code, estado anterior/objetivo, attempt preservado y fecha. Constraints sólo admiten `mark_created/provider_found/unknown/created` y `requeue/provider_absence_confirmed/unknown/queued`. No almacena actor, texto libre, PII, `extOrderId`, payload ni respuesta provider. RLS y grants append-only reducen exposición; retención y un eventual actor administrativo autenticado quedan para una etapa futura.
 
-**Ventajas:** consulta operativa simple; evidencia junto al estado; validación e idempotencia más directas; permite distinguir una creación confirmada por provider de una reconciliación humana.
+La migración 011, el repositorio y el CLI están versionados localmente. **No fueron aplicados, desplegados ni ejecutados contra producción.** Faltan aplicar 011, QA PostgreSQL real/controlado y desplegar el CLI antes del cutover.
 
-**Costos/riesgos:** requieren migración, constraints, grants y semántica de retención; una razón libre puede introducir PII o datos externos; una sola fila no conserva múltiples verificaciones. Si se adoptan, `reconciliation_action` y `reconciliation_reason` deben usar códigos controlados, no texto libre.
-
-Una tabla de auditoría append-only preservaría varios eventos y actor/correlación operativa, pero agrega esquema, permisos, retención y consultas. La elección entre columnas y tabla queda para el diseño de implementación. **Esta decisión no crea columnas, RPC, endpoint ni transición.**
+La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, sin bloqueantes. El hardening adopta formalmente la política A y agrega `NOTIFY pgrst, 'reload schema'` antes del commit de 011.
 
 ### Consecuencias
 
 - Evita duplicados ante resultados externos ambiguos.
 - Puede dejar filas `unknown` indefinidamente; es una propiedad de seguridad aceptada.
-- Requiere verificación humana y una herramienta administrativa futura antes de cualquier mutación.
-- T-022 conserva el núcleo HOME Classic productivo, pero no queda completamente cerrado mientras falten AGENCY Classic E2E, Express, perfiles físicos y la implementación de esta reconciliación.
+- Requiere verificación humana y, mientras 011 no esté aplicada/desplegada, no existe mutación productiva disponible.
+- T-022 conserva el núcleo HOME Classic productivo, pero no queda completamente cerrado mientras falten AGENCY Classic E2E, Express, perfiles físicos y el cutover auditado de esta reconciliación.
 
 ## T-022.6-C — despliegue aislado mediante Dockerfile dedicado
 

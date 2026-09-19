@@ -6,11 +6,13 @@
 
 AGENCY Classic conserva selección de sucursal, checkout/backend y mapping, pero su E2E automático real sigue pendiente. Express conserva soporte interno, permanece oculto temporalmente del checkout público y el import continúa bloqueado mediante `UNSUPPORTED_SERVICE` hasta confirmar el contrato. Los perfiles físicos siguen TEMPORAL/QA.
 
-El estado `unknown` está protegido: no es reclamable, no tiene `next_attempt_at` y no cambia automáticamente. DEC-027 acepta la política conservadora de verificación humana, pero la herramienta administrativa y sus datos de auditoría aún no existen. `ext_order_id = orders.external_reference` es la correlación estable para la búsqueda manual; nunca se documentan valores reales.
+El estado `unknown` está protegido: no es reclamable, no tiene `next_attempt_at` y no cambia automáticamente. DEC-027 está **IMPLEMENTADA LOCALMENTE / NO PRODUCTIVA**: la migración 011 agrega auditoría append-only y transiciones humanas condicionales `unknown → created|queued`; el CLI manual usa doble guarda y confirmaciones específicas. La migración no fue aplicada, no hubo QA PostgreSQL real ni reconciliaciones. `ext_order_id = orders.external_reference` sigue siendo la correlación estable para la búsqueda manual; nunca se documentan valores reales.
+
+La auditoría Grok quedó **APROBADA CON OBSERVACIONES**, sin bloqueantes. Se adoptó la política A: el máximo de 4 attempts limita retries automáticos, mientras cada requeue humana preserva el contador y habilita exactamente un claim adicional. Así, un `unknown` en attempt 4 vuelve a `queued` manteniendo 4 y el próximo claim opera como attempt 5; retryable termina por límite y ambigüedad vuelve a `unknown`. Otra requeue requiere nueva confirmación y evento. La migración 011 incluye reload del schema PostgREST antes de commit.
 
 MiCorreo `orderNumber` permanece **PENDIENTE**. El import actual conserva `extOrderId` como correlación técnica estable y no envía `orderNumber`; por eso “Número de orden” puede aparecer vacío en MiCorreo. Se evaluará por separado un identificador operativo legible como `LEMONT-<order_id>`, sin reemplazar ni modificar `extOrderId`. No hay implementación en este cierre.
 
-**Runbook breve:** no reintentar; buscar en MiCorreo por la referencia estable; si existe, esperar la futura acción `unknown → created`; si no aparece pero no está confirmado, mantener `unknown`; sólo con confirmación humana de ausencia podrá usarse la futura requeue administrativa. Nunca usar `shipping:process-once` para reconciliar.
+**Runbook breve:** no reintentar; buscar en MiCorreo por la referencia estable; si existe, la acción administrativa `mark-created` podrá usarse sólo después del cutover de 011; si no aparece pero no está confirmado, mantener `unknown`; sólo con confirmación humana de ausencia podrá usarse `requeue`. Nunca usar `shipping:process-once` para reconciliar.
 
 ## T-022 — Express oculto temporalmente en checkout público — 2026-09-19
 
@@ -351,7 +353,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. Implementar la herramienta administrativa de DEC-027 y su evidencia durable, sin retry automático de `unknown`.
+1. Aplicar controladamente la migración 011, validar SQL real y desplegar el CLI administrativo sin habilitación permanente.
 2. Ejecutar QA automático real de AGENCY Classic.
 3. Confirmar el contrato exacto de importación Express antes de volver a exponerlo públicamente.
 4. Reemplazar los perfiles TEMPORAL/QA por peso y dimensiones físicas reales de los paquetes y repetir QA.

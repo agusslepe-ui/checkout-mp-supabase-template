@@ -1,5 +1,17 @@
 # Progreso
 
+## 2026-09-19 — DEC-027 implementada localmente / no productiva
+
+- Auditoría Grok: **APROBADO CON OBSERVACIONES**, sin bloqueantes. Hardening final aplicado localmente sin rediseñar DEC-027.
+- Creada la migración aditiva 011 con auditoría append-only sin PII, RLS/grants explícitos y dos RPC `SECURITY INVOKER`: `unknown → created` por existencia confirmada y `unknown → queued` por ausencia humana confirmada.
+- Ambas transiciones bloquean y condicionan la fila, preservan attempt/correlación/snapshot y escriben un único evento en la misma transacción. `provider_created_at` no se inventa; en mark-created, `imported_at` es el instante local de reconciliación.
+- Adoptada política A: el límite 4 aplica sólo a retries automáticos. Requeue conserva attempt 4, autoriza un claim adicional que pasa a 5 y no reinicia presupuesto; retryable termina por límite, ambiguo vuelve a `unknown` y una requeue posterior exige otro consentimiento/evento.
+- Agregado `NOTIFY pgrst, 'reload schema'` antes del commit de 011 para el futuro reload de RPC en PostgREST.
+- Agregados repositorio administrativo separado y CLI `shipping:reconcile-unknown`, con UUID/timestamp internos, doble guarda, argumentos/confirmaciones estrictos, una sola RPC y logs allowlisted. `no_change` usa exit 1.
+- Agregadas pruebas Node/CLI y revisión estática SQL para transiciones, estados excluidos, concurrencia/idempotencia estructural, preservación de attempt 4, claim 5, límite automático, retorno a `unknown`, guards inválidos, reload de schema, auditoría append-only, RLS, grants y ausencia de red/provider.
+- No se modificaron checkout, webhook, Mercado Pago, MiCorreoProvider ni worker automático. No hubo requests, reconciliaciones, aplicación de migración, commit, push o deploy.
+- Pendientes: aplicar 011; QA PostgreSQL real/controlado; desplegar CLI administrativo; AGENCY Classic E2E; `orderNumber`; perfiles físicos reales y Express.
+
 ## 2026-09-19 — cierre documental del núcleo T-022 y DEC-027
 
 - **T-022 CORE / NÚCLEO LOGÍSTICO: FUNCIONAL Y VALIDADO EN PRODUCCIÓN.** HOME Classic completó el flujo automático real hasta `created`, attempt 1 y visibilidad en MiCorreo, sin intervención manual.

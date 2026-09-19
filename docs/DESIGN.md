@@ -6,7 +6,7 @@
 - **AGENCY Classic automático:** selección, snapshot, checkout/backend y mapping implementados; E2E real pendiente.
 - **Express:** soporte interno conservado, oculto temporalmente de la UI pública e import bloqueado mediante `UNSUPPORTED_SERVICE` hasta confirmar contrato.
 - **Perfiles físicos:** valores TEMPORAL/QA; no se consideran resueltos.
-- **`unknown`:** estado terminal para automatización; DEC-027 define reconciliación humana futura, todavía sin RPC ni herramienta.
+- **`unknown`:** estado terminal para automatización; DEC-027 agrega localmente reconciliación humana explícita, todavía sin migración aplicada ni CLI desplegado.
 
 ## Runbook — qué hacer si un envío queda `unknown`
 
@@ -18,9 +18,9 @@ NO REINTENTAR
 buscar manualmente en MiCorreo usando ext_order_id
   ↓
 ¿Existe?
- ├─ Sí → no importar; futura reconciliación UNKNOWN → CREATED
+ ├─ Sí → no importar; acción administrativa mark-created
  ├─ No confirmado → mantener UNKNOWN y volver a verificar
- └─ Confirmado que no existe → futura acción administrativa de requeue
+ └─ Confirmado que no existe → acción administrativa requeue
 ```
 
 `ext_order_id` copia `orders.external_reference` y es la correlación estable para la verificación. No se imprime su valor en documentación o logs ordinarios. La ausencia inmediata en el portal no prueba que el envío no exista.
@@ -38,13 +38,28 @@ Nunca ejecutar `shipping:process-once` intentando resolver `unknown`: el claim n
 - El worker sólo persiste `unknown` desde un claim `processing`; no contiene ruta de salida desde `unknown`.
 - `expire_order_shipping_import_leases` transforma `processing` vencido en `unknown`, limpia lease/scheduling y registra `lease_expired`.
 - `complete`, `retry`, `unknown` y `fail` actuales exigen `processing`, lease token coincidente y lease vigente.
-- No existe operación administrativa `unknown → created|queued|retryable|failed`.
+- La migración local 011 agrega exclusivamente `unknown → created` y `unknown → queued`; no está aplicada en producción. No existe salida administrativa hacia `retryable|failed`.
 
-### Diseño futuro, no implementado
+### Implementación local DEC-027 — no productiva
 
-La reconciliación será backend/admin only, condicional desde `unknown`, idempotente y con privilegios mínimos. Confirmar existencia permitirá `unknown → created` sin inventar `provider_created_at`; confirmar ausencia permitirá requeue explícita preservando attempt, correlación y snapshot. No podrá modificar ninguna fila que ya no esté `unknown`.
+`011_add_shipping_unknown_reconciliation.sql` crea una tabla append-only sin PII y dos RPC `SECURITY INVOKER`. Ambas bloquean la fila `unknown`, vuelven a condicionar el UPDATE y escriben la transición y el evento en la misma transacción. Confirmar existencia ejecuta `unknown → created`, conserva `provider_created_at` nulo y usa `p_reconciled_at` como `imported_at` local; confirmar ausencia ejecuta `unknown → queued`. Ambas preservan `attempt_count`, `ext_order_id`, perfil físico y `declared_value`.
 
-Se evaluarán `reconciled_at`, `reconciliation_action` y `reconciliation_reason` con códigos controlados. Columnas en la fila simplifican consultas e idempotencia, pero sólo conservan la última evidencia; una tabla append-only conserva historial y actor, con mayor complejidad de esquema, permisos y retención. No se elige ni crea estructura en este cierre.
+`shipping:reconcile-unknown` es un CLI administrativo excepcional. Exige `SHIPPING_IMPORT_RECONCILIATION_ENABLED=true`, `--execute`, ID positivo canónico y una pareja exacta acción/confirmación. Carga Supabase sólo después de esas validaciones, realiza una RPC y termina. Un resultado sin transición produce `outcome=no_change` y exit 1. No hay endpoint, UI, búsqueda MiCorreo, loop ni conexión al worker; la migración y el CLI siguen sin desplegar.
+
+#### Política A de `attempt_count`
+
+El límite `SHIPPING_IMPORT_MAX_ATTEMPTS = 4` controla sólo la programación automática de retries. La RPC `requeue` no toca `attempt_count`, por lo que una autorización humana concede exactamente un nuevo paso por el claim normal:
+
+```text
+unknown / attempt 4
+  → requeue humana: queued / attempt 4
+  → claim normal: processing / attempt 5
+  → created | failed por attempt limit | unknown si continúa ambiguo
+```
+
+No se crea otro presupuesto de cuatro retries. Un error retryable en attempt 5 finaliza según el límite vigente; un resultado ambiguo vuelve a `unknown`. Sólo desde ese nuevo `unknown`, otra confirmación humana y otro evento permiten una requeue adicional. El contador nunca vuelve a cero. Esta semántica usa sin cambios el claim SQL y `shippingImportWorker.js` existentes.
+
+La migración finaliza su DDL con `NOTIFY pgrst, 'reload schema'` antes de `COMMIT`, para que PostgREST refresque las RPC después de una futura aplicación controlada.
 
 ## T-022 — restricción temporal de Express en la UI pública
 
