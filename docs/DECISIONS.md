@@ -1,5 +1,55 @@
 # Decisiones técnicas
 
+## DEC-027 — Reconciliación operativa conservadora de shipping imports `unknown`
+
+**Fecha:** 2026-09-19.
+**Estado:** ACEPTADA COMO POLÍTICA OPERATIVA / IMPLEMENTACIÓN PENDIENTE.
+**Tarea:** T-022.
+
+### Contexto
+
+`unknown` significa que el resultado externo puede haber ocurrido y no existe evidencia suficiente para afirmar `created` ni para repetir `/shipping/import`. El esquema actual lo deja sin lease y sin `next_attempt_at`; `claim_order_shipping_import` sólo reclama `queued` o `retryable` vencido. El worker no reclama, transforma ni reconcilia `unknown`.
+
+`expire_order_shipping_import_leases` también lleva un `processing` vencido a `unknown`, porque el POST pudo haberse ejecutado antes de perderse el lease. Las RPC finales actuales sólo aceptan `processing` con lease vigente. No existe hoy una operación administrativa `unknown → created|queued|retryable|failed`.
+
+La correlación estable para buscar el envío es `order_shipping_imports.ext_order_id = orders.external_reference`. Su valor real no debe aparecer en documentación ni logs ordinarios.
+
+### Decisión
+
+1. **Si el envío existe en MiCorreo:** no volver a importar. Una futura operación administrativa podrá ejecutar condicional e idempotentemente `unknown → created`, dejando evidencia de reconciliación manual. `provider_created_at` sólo se completará si MiCorreo ofrece una fecha verificable; nunca se inventará. El `imported_at` requerido por el estado `created` podrá registrar el cierre local, pero no se presentará como fecha del proveedor; un eventual `reconciled_at` haría explícita esa diferencia.
+2. **Si no aparece inmediatamente:** la ausencia en el portal no prueba que no exista. Se mantiene `unknown`, no se agenda retry y el operador vuelve a verificar.
+3. **Si una persona confirma explícitamente que no existe:** una futura operación administrativa podrá reencolar condicionalmente desde `unknown`. `queued` representará reintento manual inmediato; `retryable` sólo se usará si se define un `next_attempt_at` futuro. Se preservan `ext_order_id`, snapshot y `attempt_count`.
+4. **Si sigue ambiguo:** permanece `unknown` indefinidamente. No se reintenta ni pasa automáticamente a `failed`.
+5. `shipping:process-once` no es una herramienta de reconciliación. El claim no tomará la fila `unknown`, y no se debe alterar su estado por fuera de la futura interfaz administrativa.
+
+### Requisitos de la futura herramienta
+
+- Backend/admin only; nunca endpoint público ni acción desde el navegador del comprador.
+- RPC dedicada con `SECURITY INVOKER`, `search_path` fijo, `EXECUTE` revocado a `PUBLIC`, `anon` y `authenticated`, y concedido sólo a `service_role` en la arquitectura actual o a un futuro rol backend aún más acotado.
+- Transición atómica condicionada a `state = 'unknown'`, con lock de fila o UPDATE condicional equivalente.
+- Idempotencia: repetir la misma acción no duplica importación ni modifica otro estado.
+- No puede modificar filas `created`, `processing`, `queued`, `retryable`, `failed` o `not_requested`.
+- No reinicia `attempt_count`, no cambia `ext_order_id` ni reconstruye el snapshot.
+- Logs allowlisted, sin PII, payload, respuesta completa, dirección, contacto, token, customerId ni referencia real.
+- Evidencia durable de fecha, acción y motivo de la reconciliación humana.
+
+### Datos de auditoría a evaluar
+
+Campos candidatos en la fila actual: `reconciled_at`, `reconciliation_action` y `reconciliation_reason`.
+
+**Ventajas:** consulta operativa simple; evidencia junto al estado; validación e idempotencia más directas; permite distinguir una creación confirmada por provider de una reconciliación humana.
+
+**Costos/riesgos:** requieren migración, constraints, grants y semántica de retención; una razón libre puede introducir PII o datos externos; una sola fila no conserva múltiples verificaciones. Si se adoptan, `reconciliation_action` y `reconciliation_reason` deben usar códigos controlados, no texto libre.
+
+Una tabla de auditoría append-only preservaría varios eventos y actor/correlación operativa, pero agrega esquema, permisos, retención y consultas. La elección entre columnas y tabla queda para el diseño de implementación. **Esta decisión no crea columnas, RPC, endpoint ni transición.**
+
+### Consecuencias
+
+- Evita duplicados ante resultados externos ambiguos.
+- Puede dejar filas `unknown` indefinidamente; es una propiedad de seguridad aceptada.
+- Requiere verificación humana y una herramienta administrativa futura antes de cualquier mutación.
+- T-022 conserva el núcleo HOME Classic productivo, pero no queda completamente cerrado mientras falten AGENCY Classic E2E, Express, perfiles físicos y la implementación de esta reconciliación.
+
 ## T-022.6-C — despliegue aislado mediante Dockerfile dedicado
 
 **Estado:** DESPLEGADA / VALIDADA EN PRODUCCIÓN - PROCESO AISLADO / `Dockerfile.worker` (2026-09-19).
@@ -69,12 +119,12 @@
 
 **Fecha:** 2026-09-18. **Estado:** DESPLEGADA / VALIDADA.
 
-- Se conserva `ShippingImportService → ShippingProvider → MiCorreoProvider`; worker y transiciones son posteriores.
+- Se conserva `ShippingImportService → ShippingProvider → MiCorreoProvider`; las transiciones durables y el worker aislado fueron agregados posteriormente sin cambiar estas capas.
 - Sólo Classic puede construirse localmente. Express falla con `UNSUPPORTED_SERVICE` y no se asume `classic → CP` ni `express → EP`; se omite `productType` hasta confirmar contrato.
 - `shipping_apartment` no se trunca ni divide: floor/apartment se omiten temporalmente.
 - HOME usa el domicilio de la order; AGENCY usa `shipping_agency_code`. Ambos consumen medidas y declared value congelados.
 - Sólo 2xx + `createdAt` válido confirma creación; resultados inciertos quedan ambiguos para el worker futuro.
-- Classic fue validado mediante llamada manual real. No se activa worker automático; quedan pendientes contrato completo, perfiles reales y reconciliación.
+- HOME Classic fue validado primero mediante llamada manual y después mediante worker automático real. Quedan pendientes AGENCY Classic E2E, contrato Express, perfiles reales e implementación de DEC-027.
 - La auditoría independiente de Grok aprobó con observaciones y sin bloqueantes las validaciones sin coerción, calendario estricto, HTTP 408 ambiguo y timeout separado sólo mediante opt-in de import; los contratos históricos de timeout de token/rates/agencies permanecen intactos.
 - Observaciones para T-022.4: interpretar conservadoramente el fallo de renovación posterior a un POST 401; normalizar de forma explícita un posible `numeric` string en el borde repository/worker; ampliar cobertura de tipos/whitespace; y considerar la exportación de `normalizeProvince` como API interna de riesgo bajo.
 

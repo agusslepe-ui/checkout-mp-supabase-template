@@ -1,5 +1,51 @@
 # Diseño técnico
 
+## T-022 — núcleo productivo y estado real de variantes
+
+- **HOME Classic automático:** validado E2E en producción hasta `created`, con attempt 1 y sin intervención manual.
+- **AGENCY Classic automático:** selección, snapshot, checkout/backend y mapping implementados; E2E real pendiente.
+- **Express:** soporte interno conservado, oculto temporalmente de la UI pública e import bloqueado mediante `UNSUPPORTED_SERVICE` hasta confirmar contrato.
+- **Perfiles físicos:** valores TEMPORAL/QA; no se consideran resueltos.
+- **`unknown`:** estado terminal para automatización; DEC-027 define reconciliación humana futura, todavía sin RPC ni herramienta.
+
+## Runbook — qué hacer si un envío queda `unknown`
+
+```text
+UNKNOWN
+  ↓
+NO REINTENTAR
+  ↓
+buscar manualmente en MiCorreo usando ext_order_id
+  ↓
+¿Existe?
+ ├─ Sí → no importar; futura reconciliación UNKNOWN → CREATED
+ ├─ No confirmado → mantener UNKNOWN y volver a verificar
+ └─ Confirmado que no existe → futura acción administrativa de requeue
+```
+
+`ext_order_id` copia `orders.external_reference` y es la correlación estable para la verificación. No se imprime su valor en documentación o logs ordinarios. La ausencia inmediata en el portal no prueba que el envío no exista.
+
+### MiCorreo `orderNumber` — pendiente
+
+El payload vigente de `/shipping/import` usa `extOrderId` como correlación técnica estable y no envía `orderNumber`; `extOrderId` no debe cambiarse ni reutilizarse para otro propósito. En consecuencia, “Número de orden” puede aparecer vacío en MiCorreo. Se evaluará agregar un identificador operativo legible como `LEMONT-<order_id>` en `orderNumber`, manteniéndolo separado de la correlación técnica. Esta posibilidad no está implementada y no modifica el contrato vigente.
+
+Nunca ejecutar `shipping:process-once` intentando resolver `unknown`: el claim no lo selecciona y el CLI no es una interfaz de reconciliación. Si el resultado sigue ambiguo, la fila permanece `unknown` indefinidamente, sin retry ni conversión automática a `failed`.
+
+### Máquina de estados vigente
+
+- `claim_order_shipping_import` admite exclusivamente `queued` y `retryable` con `next_attempt_at <= now()` para orders `paid`.
+- La coherencia SQL exige `next_attempt_at = null` para `unknown`.
+- El worker sólo persiste `unknown` desde un claim `processing`; no contiene ruta de salida desde `unknown`.
+- `expire_order_shipping_import_leases` transforma `processing` vencido en `unknown`, limpia lease/scheduling y registra `lease_expired`.
+- `complete`, `retry`, `unknown` y `fail` actuales exigen `processing`, lease token coincidente y lease vigente.
+- No existe operación administrativa `unknown → created|queued|retryable|failed`.
+
+### Diseño futuro, no implementado
+
+La reconciliación será backend/admin only, condicional desde `unknown`, idempotente y con privilegios mínimos. Confirmar existencia permitirá `unknown → created` sin inventar `provider_created_at`; confirmar ausencia permitirá requeue explícita preservando attempt, correlación y snapshot. No podrá modificar ninguna fila que ya no esté `unknown`.
+
+Se evaluarán `reconciled_at`, `reconciliation_action` y `reconciliation_reason` con códigos controlados. Columnas en la fila simplifican consultas e idempotencia, pero sólo conservan la última evidencia; una tabla append-only conserva historial y actor, con mayor complejidad de esquema, permisos y retención. No se elige ni crea estructura en este cierre.
+
 ## T-022 — restricción temporal de Express en la UI pública
 
 `POST /cotizar-envio` conserva su contrato y puede devolver Classic/Express para HOME/AGENCY. La UI aplica una allowlist antes de renderizar:
@@ -437,7 +483,7 @@ Antes de procesar, el webhook valida HMAC-SHA256. No recalcula precios del catá
 
 ## Persistencia
 
-La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el único cambio financiero implementado es a `paid`. Las migraciones 001–004 definen pedidos, variantes, cliente/entrega, `order_items` y la RPC atómica; la 005 aplicada agrega subtotal, envío y snapshot HOME. La 006 está aplicada en producción: las columnas nullable `shipping_agency_*` existen y T-021 persiste el snapshot autoritativo para AGENCY sin completar pedidos históricos. Las migraciones 007 y 008 agregan `checkout_attempts`, RPC v2, claim y hardening reproducible de privilegios. La 009 también está aplicada: agrega el outbox logístico y RPC v3, que es la usada por el checkout productivo y envuelve v2; RPC 26 y v2 permanecen disponibles. Los pedidos nuevos guardan cliente, destino, uno o más items y el snapshot logístico `not_requested`; durante la transición, el primer item también completa las columnas legacy de producto en `orders`. El webhook conserva por ahora la transición `pending → paid` existente; paid+queue no está conectado hasta resolver el caso legacy-safe de T-022.5.
+La tabla `orders` usa `external_reference` como clave de correlación única. El estado inicial es `pending` y el cambio financiero implementado es a `paid`. Las migraciones 001–004 definen pedidos, variantes, cliente/entrega, `order_items` y la RPC atómica; la 005 aplicada agrega subtotal, envío y snapshot HOME. La 006 está aplicada en producción: las columnas nullable `shipping_agency_*` existen y T-021 persiste el snapshot autoritativo para AGENCY sin completar pedidos históricos. Las migraciones 007 y 008 agregan `checkout_attempts`, RPC v2, claim y hardening reproducible de privilegios. La 009 también está aplicada: agrega el outbox logístico y RPC v3, que usa el checkout productivo y envuelve v2; RPC 26 y v2 permanecen disponibles. La 010 agrega paid+queue legacy-safe y el webhook productivo la consume sin bloquear orders históricas sin snapshot. Los pedidos nuevos guardan cliente, destino, items y snapshot `not_requested`; tras pago pueden pasar atómicamente a `paid + queued` para el worker aislado.
 
 ## Flujo de compra con entrega
 

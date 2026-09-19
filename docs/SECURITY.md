@@ -1,5 +1,16 @@
 # Seguridad
 
+## DEC-027 — controles para reconciliación de `unknown`
+
+- `unknown` nunca se reintenta automáticamente. La ausencia inmediata en MiCorreo no autoriza requeue.
+- La verificación manual usa la correlación estable `ext_order_id = orders.external_reference`; su valor no se registra en documentación ni logs ordinarios.
+- Si el envío existe, no se repite `/shipping/import`; la futura acción será `unknown → created`. No se inventa `provider_created_at`.
+- Si una persona confirma que no existe, una futura acción explícita podrá reencolar. Mientras haya duda, permanece `unknown` sin pasar automáticamente a `failed`.
+- `shipping:process-once` no es herramienta de reconciliación y nunca debe usarse con ese fin.
+- La futura interfaz será backend/admin only, no pública, condicional e idempotente desde `unknown`; no podrá alterar estados distintos, resetear attempts, cambiar correlación o reconstruir snapshots.
+- La RPC futura deberá usar `SECURITY INVOKER`, `search_path` fijo, EXECUTE exclusivo de `service_role` en la arquitectura actual o de un rol backend más acotado, y ninguna policy/grant para navegador. Logs y auditoría quedarán sin PII, payloads, respuestas completas, tokens, customerId o referencias reales.
+- Campos de auditoría o una tabla append-only requieren una migración futura separada y revisión de constraints, grants y retención. No se agregan en este cierre.
+
 ## T-022.6-C — aislamiento productivo del proceso
 
 - EasyPanel ejecuta web y shipping worker como servicios separados desde el mismo repositorio.

@@ -7,6 +7,9 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 ## T-022 — estado productivo vigente
 
 - **T-022: EN PROGRESO.**
+- **T-022 CORE / NÚCLEO LOGÍSTICO: FUNCIONAL Y VALIDADO EN PRODUCCIÓN.** HOME Classic completó automáticamente checkout real, pago, webhook, `paid → queued`, claim, `/shipping/import` y `created` con attempt 1, sin intervención manual; el envío fue visible en MiCorreo.
+- **AGENCY Classic automático: IMPLEMENTADO / E2E REAL PENDIENTE.** Existen selección de sucursal, checkout/backend y mapping, pero no se declara validación automática real.
+- **`unknown`: PROTEGIDO / RECONCILIACIÓN OPERATIVA PENDIENTE.** No participa del claim, no tiene `next_attempt_at` y no se transforma automáticamente. DEC-027 define verificación humana conservadora; todavía no existe herramienta administrativa de transición.
 - **Checkout público Classic-only: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO** (2026-09-19). La UI filtra antes del render y ofrece sólo `micorreo:home:classic` y `micorreo:agency:classic`; si MiCorreo devuelve exclusivamente Express, muestra la ausencia controlada de opciones. Express conserva soporte interno en rates, snapshots, backend y worker, pero queda oculto temporalmente hasta confirmar el contrato exacto de `/shipping/import`.
 - **T-022.6-C: DESPLEGADA / VALIDADA EN PRODUCCIÓN - PROCESO AISLADO / `Dockerfile.worker`** (2026-09-19). EasyPanel ejecuta el worker como servicio separado, sin puerto HTTP; `Dockerfile` y `npm start` continúan dedicados a la web.
 - **T-022.6-B: DESPLEGADA / VALIDADA EN PRODUCCIÓN - WORKER AUTOMÁTICO** (2026-09-19). El polling de 60 s permaneció activo durante horas, registró múltiples `outcome=idle` y procesó automáticamente una nueva order HOME Classic sin CLI ni intervención manual.
@@ -50,9 +53,10 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 ## Pendientes reales
 
+- **MiCorreo `orderNumber`: PENDIENTE.** `extOrderId` sigue siendo la correlación técnica estable y no debe cambiarse. El payload actual de `/shipping/import` no envía `orderNumber`, por lo que “Número de orden” puede aparecer vacío en MiCorreo. Se evaluará un identificador operativo legible como `LEMONT-<order_id>`; no está implementado.
 - Sustituir los perfiles TEMPORAL/QA de `300 g / 5 × 25 × 35 cm` por medidas reales y repetir QA.
-- T-022.1: cerrar el contrato restante de Express y la reconciliación práctica por `extOrderId`.
-- Completar T-022: confirmar Express y perfiles físicos reales; definir reconciliación real de `unknown`; y cerrar el hardening comercial.
+- Implementar la herramienta administrativa de DEC-027 para reconciliar `unknown`, con auditoría y privilegios mínimos; la política ya está decidida, pero no existe ninguna transición manual.
+- Completar T-022: validar AGENCY Classic E2E real, confirmar el contrato de importación Express, sustituir perfiles TEMPORAL/QA y cerrar el hardening comercial.
 - Implementar catálogo y stock reales desde Supabase, con imágenes y descripciones dinámicas.
 - Completar el hardening comercial: restaurar el precio definitivo, rotar credenciales privadas previamente expuestas, ejecutar la auditoría npm y abordar dominio definitivo, frontend final y SEO.
 

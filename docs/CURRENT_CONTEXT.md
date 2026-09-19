@@ -1,5 +1,17 @@
 # Contexto actual del proyecto
 
+## T-022 — cierre del núcleo productivo y DEC-027 — 2026-09-19
+
+**T-022 CORE / NÚCLEO LOGÍSTICO está FUNCIONAL Y VALIDADO EN PRODUCCIÓN; T-022 continúa EN PROGRESO.** HOME Classic completó automáticamente checkout, pago real, webhook, `paid`, `queued`, claim/lease, `/shipping/import` y `created` con attempt 1, sin CLI ni intervención manual. El envío fue visible en MiCorreo.
+
+AGENCY Classic conserva selección de sucursal, checkout/backend y mapping, pero su E2E automático real sigue pendiente. Express conserva soporte interno, permanece oculto temporalmente del checkout público y el import continúa bloqueado mediante `UNSUPPORTED_SERVICE` hasta confirmar el contrato. Los perfiles físicos siguen TEMPORAL/QA.
+
+El estado `unknown` está protegido: no es reclamable, no tiene `next_attempt_at` y no cambia automáticamente. DEC-027 acepta la política conservadora de verificación humana, pero la herramienta administrativa y sus datos de auditoría aún no existen. `ext_order_id = orders.external_reference` es la correlación estable para la búsqueda manual; nunca se documentan valores reales.
+
+MiCorreo `orderNumber` permanece **PENDIENTE**. El import actual conserva `extOrderId` como correlación técnica estable y no envía `orderNumber`; por eso “Número de orden” puede aparecer vacío en MiCorreo. Se evaluará por separado un identificador operativo legible como `LEMONT-<order_id>`, sin reemplazar ni modificar `extOrderId`. No hay implementación en este cierre.
+
+**Runbook breve:** no reintentar; buscar en MiCorreo por la referencia estable; si existe, esperar la futura acción `unknown → created`; si no aparece pero no está confirmado, mantener `unknown`; sólo con confirmación humana de ausencia podrá usarse la futura requeue administrativa. Nunca usar `shipping:process-once` para reconciliar.
+
 ## T-022 — Express oculto temporalmente en checkout público — 2026-09-19
 
 **IMPLEMENTADO LOCALMENTE / NO DESPLEGADO.** `public/js/envio.js` filtra las cotizaciones antes de renderizarlas y expone sólo HOME Classic y AGENCY Classic. Las tarjetas y precios Express no aparecen ni pueden seleccionarse; una respuesta compuesta únicamente por Express usa el mensaje controlado existente de ausencia de opciones.
@@ -82,13 +94,13 @@ T-020 cerró su paid QA con un pago real y shipping incluido. Tras corregir DNS 
 
 Incidencia resuelta: `checkout.lemont01.com` apuntaba a la IP anterior del VPS. Se corrigió al EasyPanel actual, se comprobó el puerto 80 y Traefik regeneró un certificado válido de Let's Encrypt después de un estado inicial no confiable. HTTPS quedó operativo; un `POST /webhook` sin firma llegó a Express y respondió `401 {"error":"Webhook inválido"}`, y la notificación válida posterior fue procesada.
 
-T-021/DEC-026 permanecen cerradas. Continúan pendientes fuera de T-017: MiCorreo `POST /shipping/import`; stock por SKU; catálogo, imágenes y descripciones dinámicos; perfiles reales; precio comercial; rotación de credenciales expuestas; auditoría npm; y etapas posteriores de dominio/frontend/SEO.
+T-021/DEC-026 permanecen cerradas. Continúan pendientes fuera de T-017: AGENCY Classic E2E, contrato/import Express, herramienta de reconciliación DEC-027, stock por SKU, catálogo dinámico, perfiles reales, precio comercial, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
 
 La UX post-pago y el cleanup están COMPLETADOS / DESPLEGADOS / VALIDADOS EN PRODUCCIÓN. La implementación fue auditada por Grok, enviada al repositorio y desplegada en EasyPanel. El QA manual en navegador real confirmó que `/success` carga correctamente, presenta el diseño esperado, muestra “¡Gracias por tu compra!” y “Estamos preparando tu pedido”, y que “Volver al inicio” funciona. También confirmó que elimina solo `localStorage["lemont.cart"]` y `sessionStorage["lemont.checkoutAttempt.v1"]`, dejando el carrito vacío y sin attempt reutilizable. No lee query params como autoridad, no llama backend, Mercado Pago o Supabase y no modifica `orders`; el webhook continúa siendo la autoridad del pago. Visitar `/success` manualmente también limpia ambos records: este riesgo UX está aceptado en esta etapa y una protección futura mediante flag de `sessionStorage` queda como mejora no bloqueante.
 
-**T-022 está EN PROGRESO. T-022.2 está DESPLEGADA / VALIDADA EN PRODUCCIÓN.** La migración 009 está aplicada y el runtime v3 desplegado. Se verificaron RPC 26/v2/v3, paid+queue, claim y recovery; RLS, policies, grants de tabla/columnas y EXECUTE; ausencia de backfill; atomicidad/rollback reales; state machine hasta `processing`; y un checkout productivo sin pago que creó el snapshot `not_requested` y llegó a Mercado Pago. `POST /shipping/import` sigue INACTIVO: no hay provider ni worker productivos, retries externos, reconciliación de `unknown` o integración webhook paid+queue.
+> **HISTÓRICO / SUPERADO:** T-022.2 quedó DESPLEGADA / VALIDADA EN PRODUCCIÓN con migración 009, runtime v3, atomicidad, grants/RLS y state machine hasta `processing`. En ese corte `/shipping/import`, provider, worker y paid+queue todavía no estaban activos; el estado productivo vigente se resume al inicio de este documento.
 
-Riesgo vigente de T-022.5: paid+queue requiere una fila logística. No debe conectarse al webhook hasta disponer de manejo legacy-safe, porque una order anterior a v3 sin snapshot podría quedar impedida de pasar financieramente a `paid`.
+> **HISTÓRICO / RESUELTO POR T-022.5:** el riesgo de bloquear una order legacy sin snapshot se resolvió con la RPC legacy-safe. El webhook productivo ya usa paid+queue sin impedir la confirmación financiera.
 
 La tienda todavía **NO está lista para lanzamiento comercial**.
 
@@ -339,10 +351,10 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 
 ## Próximo paso detallado
 
-1. Cerrar T-022.1: contrato restante, Classic/Express y estrategia operativa de reconciliación por `extOrderId`/`unknown`.
-2. Reemplazar los perfiles TEMPORAL/QA por peso y dimensiones físicas reales de los paquetes y repetir QA.
-3. Resolver en T-022.5 el camino legacy-safe de paid+queue antes de conectarlo al webhook.
-4. Implementar provider/worker, retries y reconciliación; recién entonces activar y probar `POST /shipping/import` de forma controlada.
+1. Implementar la herramienta administrativa de DEC-027 y su evidencia durable, sin retry automático de `unknown`.
+2. Ejecutar QA automático real de AGENCY Classic.
+3. Confirmar el contrato exacto de importación Express antes de volver a exponerlo públicamente.
+4. Reemplazar los perfiles TEMPORAL/QA por peso y dimensiones físicas reales de los paquetes y repetir QA.
 5. Avanzar con catálogo y stock reales desde Supabase, incluidas imágenes y descripciones dinámicas.
 6. Completar el hardening comercial: precio definitivo, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
 

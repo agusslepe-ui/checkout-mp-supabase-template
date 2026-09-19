@@ -1,5 +1,14 @@
 # Progreso
 
+## 2026-09-19 — cierre documental del núcleo T-022 y DEC-027
+
+- **T-022 CORE / NÚCLEO LOGÍSTICO: FUNCIONAL Y VALIDADO EN PRODUCCIÓN.** HOME Classic completó el flujo automático real hasta `created`, attempt 1 y visibilidad en MiCorreo, sin intervención manual.
+- T-022 permanece EN PROGRESO: AGENCY Classic automático está implementado pero sin E2E real; Express conserva soporte interno y sigue oculto/bloqueado para import; perfiles físicos siguen TEMPORAL/QA.
+- Revisión local de 009, repository y worker: claim sólo `queued|retryable` vencido; `unknown` no tiene scheduling ni salida automática; expiración lleva `processing → unknown`; no existe operación administrativa de reconciliación.
+- **DEC-027 aceptada como política / implementación pendiente:** verificar manualmente en MiCorreo mediante correlación estable; nunca retry ciego; confirmar existencia → futura marca `created`; ausencia humana confirmada → futura requeue; ambigüedad → conservar `unknown`.
+- Documentado runbook y requisitos de futura herramienta backend/admin con privilegios mínimos, idempotencia y auditoría sin PII. No se crearon columnas, RPC, endpoints ni transiciones.
+- Cierre exclusivamente documental; sin workers, requests externos, SQL, migraciones, tests, commit, push o deploy.
+
 ## 2026-09-19 — cierre QA automático real T-022.6-B/C
 
 - **QA AUTOMÁTICO REAL: VALIDADO END-TO-END EN PRODUCCIÓN.** Una nueva compra HOME Classic completó `Mercado Pago → webhook → paid → queued → shipping-worker → MiCorreo → created` sin ejecutar `shipping:process-once` ni intervenir manualmente sobre el envío.
