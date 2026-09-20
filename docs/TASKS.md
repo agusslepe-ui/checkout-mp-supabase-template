@@ -9,7 +9,18 @@
 - Express: soporte interno conservado, oculto temporalmente del checkout público e import bloqueado con `UNSUPPORTED_SERVICE`; contrato exacto pendiente.
 - Perfiles 1–4: TEMPORAL/QA; sustitución y repetición de QA pendientes.
 - `unknown`: protegido contra retry automático; DEC-027 productiva, desplegada y con guarda operativa validada. La reconciliación permanece humana, excepcional y deshabilitada por defecto.
-- MiCorreo `orderNumber`: PENDIENTE / NO IMPLEMENTADO. `extOrderId` debe conservarse como correlación técnica estable; `/shipping/import` actualmente no envía `orderNumber`, de modo que “Número de orden” puede aparecer vacío. Evaluar un identificador operativo legible como `LEMONT-<order_id>` sin sustituir `extOrderId`.
+- MiCorreo `orderNumber`: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO. El mapping usa `String(snapshot.order_id)` sólo después de exigir un entero positivo seguro. `extOrderId` se conserva exactamente como correlación técnica/idempotente; no se deriva uno del otro.
+
+## T-022 — MiCorreo `orderNumber`
+
+**Estado: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO** (2026-09-19).
+
+- Contrato adoptado: `extOrderId` continúa obligatorio y estable; `orderNumber` es el identificador visible en MiCorreo.
+- Decisión local: `orderNumber = String(snapshot.order_id)`, sin prefijo. Un `order_id` string, nulo, no entero, no positivo, no finito o fuera del rango seguro produce `ShippingImportError/VALIDATION` antes del provider.
+- HOME y AGENCY Classic comparten la misma regla. No cambian recipient, shipping, perfil físico, snapshots, worker, webhook, Mercado Pago, DEC-027 ni Express.
+- Tests sin red cubren payloads HOME/AGENCY, preservación de `extOrderId`, matriz inválida, estabilidad entre reintentos y body completo del provider.
+
+**Pendiente:** desplegar el runtime actualizado y validar visualmente el campo en una importación futura controlada. Esta implementación local no acredita producción.
 
 ## T-022 / DEC-027 — Implementar reconciliación administrativa de `unknown`
 
@@ -33,7 +44,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 
 **CLI administrativo productivo:** el runtime actualizado está desplegado en el servicio aislado `shipping-worker` y `npm run shipping:reconcile-unknown` está disponible. `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no está configurada permanentemente. El smoke test sin variable, `--execute`, order ID ni acción devolvió `[shipping-reconciliation] disabled`; no cargó una operación habilitada, no ejecutó RPC, no modificó DB, no llamó MiCorreo y no reconcilió filas reales.
 
-**Pendiente:** AGENCY Classic E2E; `orderNumber`; perfiles físicos reales; Express; tracking/labels. T-022 permanece EN PROGRESO.
+**Pendiente:** AGENCY Classic E2E; perfiles físicos reales; Express; tracking/labels. `orderNumber` está implementado localmente pero aún no desplegado. T-022 permanece EN PROGRESO.
 
 ## T-022 — Ocultar Express temporalmente en checkout público
 
@@ -137,6 +148,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 **Cierre de auditoría independiente:** Grok emitió **APROBADO CON OBSERVACIONES**, sin bloqueantes. `declared_value` exige `number` finito no negativo sin coerción; peso/dimensiones exigen enteros positivos; `createdAt` valida formato y calendario real; HTTP 408 es ambiguo; errores inesperados se preservan; y la distinción `TIMEOUT` es opt-in exclusivo del import, manteniendo `micorreo_network_error` para token/rates/agencies.
 
 - `ShippingImportService` valida y mapea el snapshot persistido; no recalcula perfil ni declared value y conserva exactamente `ext_order_id`.
+- El mapping local agrega `orderNumber = String(order_id)` tras validar `order_id` como entero positivo seguro; no sustituye ni deriva `extOrderId`.
 - HOME genera `deliveryType: D`, domicilio con `city = shipping_locality` y provincia sin prefijo `AR-`; omite agency, piso y departamento. AGENCY genera `deliveryType: S` con sólo el código de agencia y omite el domicilio.
 - `customerId` proviene sólo de configuración backend. Recipient usa nombre completo, email y teléfono. Peso, dimensiones y `declared_value` provienen del snapshot.
 - Política temporal: sólo Classic; Express produce `UNSUPPORTED_SERVICE` antes de red. No se envía `productType` hasta confirmar Classic/Express.

@@ -18,6 +18,7 @@ function payload() {
   return {
     customerId: "backend-customer",
     extOrderId: "ORDER-42",
+    orderNumber: "42",
     recipient: { name: "Ana Pérez", email: "ana@example.test", phone: "111" },
     shipping: { deliveryType: "S", agency: "J0001", weight: 300,
       declaredValue: 2000, height: 5, length: 35, width: 25 },

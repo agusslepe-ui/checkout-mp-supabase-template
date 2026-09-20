@@ -25,9 +25,9 @@ buscar manualmente en MiCorreo usando ext_order_id
 
 `ext_order_id` copia `orders.external_reference` y es la correlación estable para la verificación. No se imprime su valor en documentación o logs ordinarios. La ausencia inmediata en el portal no prueba que el envío no exista.
 
-### MiCorreo `orderNumber` — pendiente
+### MiCorreo `orderNumber` — implementado localmente / no desplegado
 
-El payload vigente de `/shipping/import` usa `extOrderId` como correlación técnica estable y no envía `orderNumber`; `extOrderId` no debe cambiarse ni reutilizarse para otro propósito. En consecuencia, “Número de orden” puede aparecer vacío en MiCorreo. Se evaluará agregar un identificador operativo legible como `LEMONT-<order_id>` en `orderNumber`, manteniéndolo separado de la correlación técnica. Esta posibilidad no está implementada y no modifica el contrato vigente.
+El payload local de `/shipping/import` conserva `extOrderId` exactamente como correlación técnica/idempotente estable y agrega `orderNumber = String(snapshot.order_id)` como identificador visible en MiCorreo. No usa prefijo ni deriva un campo del otro. Antes de construir el string, `order_id` debe ser un `number` entero positivo seguro; no existe coerción desde strings. La regla es idéntica para HOME y AGENCY Classic y no modifica recipient, shipping ni el snapshot persistido. El cambio todavía no está desplegado.
 
 Nunca ejecutar `shipping:process-once` intentando resolver `unknown`: el claim no lo selecciona y el CLI no es una interfaz de reconciliación. Si el resultado sigue ambiguo, la fila permanece `unknown` indefinidamente, sin retry ni conversión automática a `failed`.
 
@@ -187,7 +187,7 @@ El módulo no es alcanzable desde el startup ni el webhook. Sólo es alcanzable 
 
 `claim/snapshot → ShippingImportService → ShippingProvider.importShipment → MiCorreoProvider → POST /shipping/import`.
 
-El servicio valida y arma el payload; el provider conoce autenticación, Bearer, timeout, retry único de 401 y clasificación HTTP/transporte. Ninguna pieza modifica SQL. El worker T-022.4 traducirá resultados a `created|retryable|unknown|failed`.
+El servicio valida y arma el payload; el provider conoce autenticación, Bearer, timeout, retry único de 401 y clasificación HTTP/transporte. Ninguna pieza modifica SQL. El worker T-022.4 traduce resultados a `created|retryable|unknown|failed`. El mapping local agrega `orderNumber` desde `order_id` validado y conserva `extOrderId` sin cambios; este agregado aún no fue desplegado.
 
 HOME usa `deliveryType: D`, domicilio y `AR-J → J`; no incluye agency. AGENCY usa `deliveryType: S` y `agency = shipping_agency_code`; no incluye domicilio. Ambos usan recipient mínimo y snapshot físico/económico. `shipping_apartment` se omite porque combina piso/departamento y no se separa heurísticamente.
 

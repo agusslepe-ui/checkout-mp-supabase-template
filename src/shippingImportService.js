@@ -43,6 +43,7 @@ function buildImportPayload(snapshot, customerId) {
   if (!isPlainObject(snapshot)) throw validationError();
   const configuredCustomerId = requireString(customerId);
   requireString(snapshot.ext_order_id, { preserve: true });
+  const orderNumber = String(requirePositiveInteger(snapshot.order_id));
 
   if (snapshot.shipping_service !== "classic") {
     if (snapshot.shipping_service === "express") {
@@ -60,6 +61,7 @@ function buildImportPayload(snapshot, customerId) {
   return {
     customerId: configuredCustomerId,
     extOrderId: snapshot.ext_order_id,
+    orderNumber,
     recipient: {
       name: `${firstName} ${lastName}`,
       email,

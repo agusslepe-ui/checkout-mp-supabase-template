@@ -1,12 +1,19 @@
 # Progreso
 
+## 2026-09-19 — MiCorreo `orderNumber` implementado localmente
+
+- **Estado: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO.** `buildImportPayload` valida `snapshot.order_id` como entero positivo seguro y genera `orderNumber = String(order_id)` para HOME y AGENCY Classic.
+- `extOrderId` permanece byte por byte como llega desde `ext_order_id`; no se sustituye, no se deriva `orderNumber` desde él y no cambia la idempotencia.
+- Cobertura sin red: payload completo HOME, mapping AGENCY, IDs inválidos antes del provider, estabilidad entre reintentos y body completo de MiCorreo.
+- Sin cambios en snapshots SQL, migraciones, worker, webhook, Mercado Pago, DEC-027 o Express. Sin requests reales, commit, push ni deploy.
+
 ## 2026-09-19 — cierre productivo final DEC-027
 
 - **Estado: PRODUCTIVA / DESPLEGADA / GUARDA OPERATIVA VALIDADA.** Migración 011, tabla de auditoría y ambas RPC productivas; QA PostgreSQL real completado con `BEGIN/ROLLBACK` y conteos sin cambios (`created = 2`, `not_requested = 1`, `unknown = 0`).
 - El runtime actualizado fue desplegado en el servicio aislado `shipping-worker`; `npm run shipping:reconcile-unknown` está disponible en producción.
 - `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no permanece configurada. El smoke test sin variable, `--execute`, order ID ni acción produjo `[shipping-reconciliation] disabled`.
 - La prueba confirmó guarda activa y default seguro: cero RPC, cambios de DB, requests a MiCorreo o reconciliaciones reales. No existen actualmente filas `unknown`.
-- Permanece vigente el runbook humano conservador y la política A de attempts. T-022 sigue EN PROGRESO por AGENCY Classic E2E, Express, perfiles físicos, `orderNumber` y tracking/labels.
+- Permanece vigente el runbook humano conservador y la política A de attempts. T-022 sigue EN PROGRESO por AGENCY Classic E2E, Express, perfiles físicos y tracking/labels; `orderNumber` fue implementado localmente después de este cierre y aún no está desplegado.
 
 ## HISTÓRICO — 2026-09-19 — cutover PostgreSQL real DEC-027 previo al despliegue del CLI
 

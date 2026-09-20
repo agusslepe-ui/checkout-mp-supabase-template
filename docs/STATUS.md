@@ -9,6 +9,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 - **T-022: EN PROGRESO.**
 - **T-022 CORE / NÚCLEO LOGÍSTICO: FUNCIONAL Y VALIDADO EN PRODUCCIÓN.** HOME Classic completó automáticamente checkout real, pago, webhook, `paid → queued`, claim, `/shipping/import` y `created` con attempt 1, sin intervención manual; el envío fue visible en MiCorreo.
 - **AGENCY Classic automático: IMPLEMENTADO / E2E REAL PENDIENTE.** Existen selección de sucursal, checkout/backend y mapping, pero no se declara validación automática real.
+- **MiCorreo `orderNumber`: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO** (2026-09-19). `ShippingImportService` valida `snapshot.order_id` como entero positivo seguro y envía `orderNumber = String(order_id)` para HOME y AGENCY Classic. `extOrderId` conserva exactamente su valor y función de correlación técnica/idempotente.
 - **DEC-027: PRODUCTIVA / DESPLEGADA / GUARDA OPERATIVA VALIDADA** (2026-09-19). La migración 011, la tabla de auditoría y las RPC condicionales `unknown → created|queued` están productivas. El runtime con `npm run shipping:reconcile-unknown` está desplegado en `shipping-worker`; `unknown` continúa fuera del claim automático.
 - **QA PostgreSQL real DEC-027: COMPLETADO.** Se verificaron tabla, RLS activa, cero policies, grants append-only de `service_role`, ausencia de acceso para `anon`/`authenticated`, RPC `SECURITY INVOKER`, `search_path = pg_catalog, public` y EXECUTE restringido. Pruebas sintéticas transaccionales validaron ambas transiciones y fueron revertidas con `ROLLBACK`.
 - **Smoke test seguro del CLI: VALIDADO.** `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no está configurada permanentemente. Una invocación sin variable, `--execute`, order ID ni acción terminó con `[shipping-reconciliation] disabled`: cero RPC, cambios de DB, requests a MiCorreo o reconciliaciones reales.
@@ -26,7 +27,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 - **QA AUTOMÁTICO REAL: VALIDADO END-TO-END.** Una nueva compra HOME Classic recorrió `Mercado Pago → webhook → paid → queued → shipping-worker → MiCorreo → created` sin ejecutar `shipping:process-once` ni intervenir manualmente sobre el envío.
 - Estado final de esa nueva order: order `paid`, import `created`, attempt 1, timestamps de provider/import presentes y `last_error_type` nulo; no hubo retry, `unknown`, `failed` ni `lease_lost`.
 - **`POST /shipping/import`: VALIDADO REALMENTE mediante ejecución manual previa y posteriormente mediante worker automático.** `npm start` continúa sin worker; producción ejecuta `npm run shipping:worker` sólo en el servicio EasyPanel separado, con `SHIPPING_IMPORT_WORKER_ENABLED=true` exclusivamente allí.
-- Continúan pendientes los perfiles físicos definitivos para 1–4 remeras, AGENCY Classic E2E, Express, `orderNumber`, tracking API y label API.
+- Continúan pendientes los perfiles físicos definitivos para 1–4 remeras, AGENCY Classic E2E, Express, tracking API y label API. `orderNumber` requiere despliegue y validación posterior; no forma parte todavía del runtime productivo.
 
 ## Producción
 
@@ -56,7 +57,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 ## Pendientes reales
 
-- **MiCorreo `orderNumber`: PENDIENTE.** `extOrderId` sigue siendo la correlación técnica estable y no debe cambiarse. El payload actual de `/shipping/import` no envía `orderNumber`, por lo que “Número de orden” puede aparecer vacío en MiCorreo. Se evaluará un identificador operativo legible como `LEMONT-<order_id>`; no está implementado.
+- **MiCorreo `orderNumber`: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO.** El payload local agrega el string decimal de `order_id`, sin prefijo y sin coercionar valores de entrada. `extOrderId` permanece intacto. Pendiente desplegar y validar en una importación futura controlada.
 - Sustituir los perfiles TEMPORAL/QA de `300 g / 5 × 25 × 35 cm` por medidas reales y repetir QA.
 - Completar T-022: validar AGENCY Classic E2E real, confirmar el contrato de importación Express, sustituir perfiles TEMPORAL/QA y cerrar el hardening comercial.
 - Implementar catálogo y stock reales desde Supabase, con imágenes y descripciones dinámicas.

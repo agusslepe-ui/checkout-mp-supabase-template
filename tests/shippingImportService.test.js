@@ -61,6 +61,7 @@ describe("T-022.3 mapping de importación", () => {
     expect(provider.importShipment).toHaveBeenCalledWith({
       customerId: "backend-customer",
       extOrderId: "LEMONT-ORDER-42",
+      orderNumber: "42",
       recipient: {
         name: "Ana Pérez",
         email: "ana@example.test",
@@ -106,7 +107,50 @@ describe("T-022.3 mapping de importación", () => {
       length: 35,
       width: 25,
     });
+    expect(payload.orderNumber).toBe("42");
+    expect(payload.extOrderId).toBe("LEMONT-ORDER-42");
+    expect(payload.orderNumber).not.toBe(payload.extOrderId);
     expect(payload.shipping).not.toHaveProperty("address");
+  });
+
+  test.each([
+    null,
+    undefined,
+    "72",
+    0,
+    -1,
+    1.5,
+    NaN,
+    Infinity,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])("order_id inválido %# falla antes del provider", async (orderId) => {
+    const provider = { importShipment: jest.fn() };
+    const service = createShippingImportService(provider, { customerId: "backend-customer" });
+    await expect(service.importShipment(snapshot({ order_id: orderId })))
+      .rejects.toMatchObject({
+        type: SHIPPING_IMPORT_ERROR_TYPES.VALIDATION,
+        retryable: false,
+        ambiguous: false,
+      });
+    expect(provider.importShipment).not.toHaveBeenCalled();
+  });
+
+  test("el mismo snapshot conserva orderNumber entre reintentos", async () => {
+    const provider = { importShipment: jest.fn().mockResolvedValue({
+      createdAt: "2026-09-18T12:00:00.000-03:00",
+    }) };
+    const service = createShippingImportService(provider, { customerId: "backend-customer" });
+    const input = snapshot();
+
+    await service.importShipment(input);
+    await service.importShipment(input);
+
+    expect(provider.importShipment).toHaveBeenCalledTimes(2);
+    expect(provider.importShipment.mock.calls.map(([payload]) => payload.orderNumber))
+      .toEqual(["42", "42"]);
+    expect(provider.importShipment.mock.calls[0][0]).toEqual(
+      provider.importShipment.mock.calls[1][0]
+    );
   });
 
   test.each([

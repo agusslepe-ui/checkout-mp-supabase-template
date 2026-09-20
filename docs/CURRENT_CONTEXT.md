@@ -14,7 +14,7 @@ El QA PostgreSQL real confirmó tabla de auditoría, RLS activa, cero policies, 
 
 La auditoría Grok quedó **APROBADA CON OBSERVACIONES**, sin bloqueantes. Se adoptó la política A: el máximo de 4 attempts limita retries automáticos, mientras cada requeue humana preserva el contador y habilita exactamente un claim adicional. Así, un `unknown` en attempt 4 vuelve a `queued` manteniendo 4 y el próximo claim opera como attempt 5; retryable termina por límite y ambigüedad vuelve a `unknown`. Otra requeue requiere nueva confirmación y evento. La migración 011 incluye reload del schema PostgREST antes de commit.
 
-MiCorreo `orderNumber` permanece **PENDIENTE**. El import actual conserva `extOrderId` como correlación técnica estable y no envía `orderNumber`; por eso “Número de orden” puede aparecer vacío en MiCorreo. Se evaluará por separado un identificador operativo legible como `LEMONT-<order_id>`, sin reemplazar ni modificar `extOrderId`. No hay implementación en este cierre.
+MiCorreo `orderNumber` está **IMPLEMENTADO LOCALMENTE / NO DESPLEGADO**. `ShippingImportService` exige que `snapshot.order_id` sea un entero positivo seguro y agrega `orderNumber = String(snapshot.order_id)` tanto para HOME como AGENCY Classic. No se aceptan strings ni coerciones y no se usa prefijo. `extOrderId` permanece exactamente igual como correlación técnica/idempotente estable.
 
 **Runbook breve:** no reintentar; buscar en MiCorreo por la referencia estable; si existe, corresponde `mark-created`; si no aparece pero no está confirmado, mantener `unknown`; sólo con confirmación humana suficiente de ausencia corresponde `requeue`. Cada requeue autoriza exactamente un claim adicional y nunca resetea `attempt_count`. Habilitar la guarda sólo para la operación excepcional y retirarla después. Nunca usar `shipping:process-once` para reconciliar.
 
@@ -80,7 +80,7 @@ La política local usa lease de 60 s, backoff 1/5/15 min y máximo cuatro attemp
 
 ## T-022.3 desplegada y validada — 2026-09-18
 
-**T-022.3 está DESPLEGADA / VALIDADA.** La auditoría independiente de Grok cerró sin bloqueantes. `ShippingImportService` construye el contrato mínimo desde `order_shipping_imports` y `MiCorreoProvider.importShipment` ejecutó correctamente el POST manual validado. Sólo Classic se admite; Express queda bloqueado y no se asume CP/EP.
+**T-022.3 está DESPLEGADA / VALIDADA para el contrato previo; el agregado `orderNumber` está IMPLEMENTADO LOCALMENTE / NO DESPLEGADO.** La auditoría independiente de Grok cerró sin bloqueantes. `ShippingImportService` construye el contrato mínimo desde `order_shipping_imports` y `MiCorreoProvider.importShipment` ejecutó correctamente el POST manual validado. Sólo Classic se admite; Express queda bloqueado y no se asume CP/EP.
 
 Las observaciones bloqueantes de la primera revisión fueron corregidas localmente y la auditoría final las aprobó. Persisten observaciones no bloqueantes para T-022.4 sobre el antecedente de un POST 401 si falla la renovación, normalización explícita de `numeric` en el borde repository/worker, cobertura adicional de tipos/whitespace y la nueva exportación interna de `normalizeProvince`.
 
@@ -100,7 +100,7 @@ T-020 cerró su paid QA con un pago real y shipping incluido. Tras corregir DNS 
 
 Incidencia resuelta: `checkout.lemont01.com` apuntaba a la IP anterior del VPS. Se corrigió al EasyPanel actual, se comprobó el puerto 80 y Traefik regeneró un certificado válido de Let's Encrypt después de un estado inicial no confiable. HTTPS quedó operativo; un `POST /webhook` sin firma llegó a Express y respondió `401 {"error":"Webhook inválido"}`, y la notificación válida posterior fue procesada.
 
-T-021/DEC-026 permanecen cerradas. Continúan pendientes fuera de T-017: AGENCY Classic E2E, contrato/import Express, stock por SKU, catálogo dinámico, perfiles reales, precio comercial, `orderNumber`, tracking/labels, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
+T-021/DEC-026 permanecen cerradas. Continúan pendientes fuera de T-017: AGENCY Classic E2E, contrato/import Express, despliegue/validación de `orderNumber`, stock por SKU, catálogo dinámico, perfiles reales, precio comercial, tracking/labels, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
 
 La UX post-pago y el cleanup están COMPLETADOS / DESPLEGADOS / VALIDADOS EN PRODUCCIÓN. La implementación fue auditada por Grok, enviada al repositorio y desplegada en EasyPanel. El QA manual en navegador real confirmó que `/success` carga correctamente, presenta el diseño esperado, muestra “¡Gracias por tu compra!” y “Estamos preparando tu pedido”, y que “Volver al inicio” funciona. También confirmó que elimina solo `localStorage["lemont.cart"]` y `sessionStorage["lemont.checkoutAttempt.v1"]`, dejando el carrito vacío y sin attempt reutilizable. No lee query params como autoridad, no llama backend, Mercado Pago o Supabase y no modifica `orders`; el webhook continúa siendo la autoridad del pago. Visitar `/success` manualmente también limpia ambos records: este riesgo UX está aceptado en esta etapa y una protección futura mediante flag de `sessionStorage` queda como mejora no bloqueante.
 
@@ -360,7 +360,7 @@ No quedan tareas T-001 a T-015 pendientes. T-015 fue completada el 2026-08-21: `
 1. Ejecutar QA automático real de AGENCY Classic.
 2. Confirmar el contrato exacto de importación Express antes de volver a exponerlo públicamente.
 3. Reemplazar los perfiles TEMPORAL/QA por peso y dimensiones físicas reales de los paquetes y repetir QA.
-4. Resolver `orderNumber`, tracking y labels sin cambiar `extOrderId` como correlación técnica estable.
+4. Desplegar y validar `orderNumber` sin cambiar `extOrderId`; tracking y labels continúan como evoluciones separadas.
 5. Avanzar con catálogo y stock reales desde Supabase, incluidas imágenes y descripciones dinámicas.
 6. Completar el hardening comercial: precio definitivo, rotación de credenciales expuestas, auditoría npm y etapas posteriores de dominio/frontend/SEO.
 
