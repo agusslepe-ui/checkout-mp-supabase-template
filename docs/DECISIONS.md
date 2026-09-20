@@ -1,5 +1,44 @@
 # Decisiones técnicas
 
+## DEC-028 — Operación manual posterior al import: revisión, pago del envío, etiqueta y tracking
+
+**Fecha:** 2026-09-19.
+**Estado:** ACEPTADA.
+**Tarea:** T-022.
+
+### Contexto
+
+El núcleo Classic importa el envío en MiCorreo de forma automática (`/shipping/import` → `created`). Después de esa creación, el operador todavía debe revisar el envío en el portal, pagar el envío, obtener la etiqueta y ejecutar las acciones de despacho/tracking que el portal exige.
+
+### Decisión
+
+El proceso posterior al import permanece **MANUAL POR DISEÑO**:
+
+- revisar el envío en MiCorreo
+- pagar el envío
+- generar u obtener la etiqueta
+- acciones de despacho y tracking que requieran operación en el portal
+
+El pago del envío implica una acción económica. Se prefiere supervisión humana. Esto **no** se registra como “automatización pendiente”.
+
+La automatización mediante API de tracking o etiqueta no está confirmada y no es necesaria actualmente. El negocio puede operar con:
+
+```text
+MiCorreo import automático
+  → revisión humana
+  → pago manual
+  → etiqueta manual
+  → despacho
+```
+
+No automatizar estas acciones sin una decisión futura nueva. Esta decisión no bloquea el cierre del núcleo Classic ni el criterio de cierre de T-022 Classic.
+
+### Relación con decisiones previas
+
+DEC-023 dejó etiquetas/tracking fuera de alcance porque no estaban documentados en el PDF oficial vigente. DEC-027 resolvió la reconciliación administrativa de `unknown`. Esta decisión cubre el tramo operativo posterior a `created` y no modifica import, worker, `unknown` ni Express.
+
+Una consecuencia original de DEC-027 enumeraba tracking/labels (y Express) junto con pendientes que impedían cerrar T-022. Esa enumeración queda **señalada, no reescrita**: el criterio vigente de cierre Classic está en `docs/STATUS.md`. Express es mejora futura opcional; tracking/label/pago del envío son manuales por esta decisión.
+
 ## DEC-027 — Reconciliación operativa conservadora de shipping imports `unknown`
 
 **Fecha:** 2026-09-19.
@@ -61,7 +100,8 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 - Evita duplicados ante resultados externos ambiguos.
 - Puede dejar filas `unknown` indefinidamente; es una propiedad de seguridad aceptada.
 - Requiere verificación humana y habilitación temporal explícita; la variable nunca debe quedar activa permanentemente.
-- T-022 conserva el núcleo HOME Classic productivo, pero no queda completamente cerrado mientras falten AGENCY Classic E2E, Express, perfiles físicos, `orderNumber` y tracking/labels.
+- T-022 conserva el núcleo HOME Classic productivo. La redacción original de este punto enumeraba AGENCY Classic E2E, Express, perfiles físicos, `orderNumber` y tracking/labels como pendientes de cierre.
+- **Aclaración 2026-09-19:** esa enumeración no se borra. El criterio vigente de cierre Classic está en `docs/STATUS.md` y en DEC-028. Express es mejora futura opcional y no es obligatorio para cerrar T-022 Classic. Tracking, etiqueta y pago del envío son MANUAL POR DISEÑO (DEC-028) y tampoco son obligatorios. Siguen siendo requisitos de cierre Classic: AGENCY E2E, `orderNumber` productivo/verificado, perfiles físicos reales, QA final Classic y hardening/documentación.
 
 ## T-022.6-C — despliegue aislado mediante Dockerfile dedicado
 
@@ -92,7 +132,7 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 - Se acepta como evidencia suficiente una única ejecución productiva controlada: HOME Classic, pago/webhook, `paid + queued`, claim/lease, un POST, `createdAt` válido y cierre `created` con attempt 1.
 - La verificación visual del portal confirma el envío como **Validado** y la correspondencia del snapshot QA 0,3 kg / 35 × 25 × 5 cm.
 - La validación manual cerró T-022.6-A. Una compra posterior validó el flujo automático completo mediante el servicio aislado T-022.6-B/C, sin `shipping:process-once` ni intervención manual.
-- Express sigue bloqueado. Perfiles definitivos, tracking API, label API y hardening comercial requieren decisiones posteriores; la reconciliación administrativa de `unknown` quedó resuelta por DEC-027.
+- Express sigue bloqueado y se clasifica como mejora futura opcional. Perfiles definitivos y hardening comercial siguen pendientes. Tracking API y label API no son un requisito de cierre: DEC-028 deja revisión, pago del envío, etiqueta y tracking como MANUAL POR DISEÑO. La reconciliación administrativa de `unknown` quedó resuelta por DEC-027.
 - La evidencia documental se mantiene deliberadamente libre de PII, IDs de pago, referencias, credenciales y payloads.
 
 ## T-022.6-A — activación manual con doble consentimiento
@@ -114,7 +154,7 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 - Cuando el snapshot elegible existe, `paid + queued` comparte transacción. La cola se intenta después del pago en un subbloque para que una excepción logística no revierta la confirmación.
 - No hay backfill ni reconstrucción. `shipping_queued=false` representa legacy, estado logístico no elegible o anomalía; no convierte el pago en fallo.
 - PostgreSQL serializa webhooks concurrentes con `FOR UPDATE`; Node conserva las comparaciones previas y consume el resultado mínimo de la RPC.
-- La migración 010 y el flujo paid+queue están validados en producción; la automatización posterior quedó validada en T-022.6-B/C y la reconciliación administrativa en DEC-027. Quedan pendientes Express y perfiles reales.
+- La migración 010 y el flujo paid+queue están validados en producción; la automatización posterior quedó validada en T-022.6-B/C y la reconciliación administrativa en DEC-027. Quedan pendientes perfiles reales. Express es opcional y no bloquea Classic.
 
 ## T-022.4 — política del worker durable local
 
@@ -137,13 +177,13 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 - `shipping_apartment` no se trunca ni divide: floor/apartment se omiten temporalmente.
 - HOME usa el domicilio de la order; AGENCY usa `shipping_agency_code`. Ambos consumen medidas y declared value congelados.
 - Sólo 2xx + `createdAt` válido confirma creación; resultados inciertos quedan ambiguos para el worker futuro.
-- HOME Classic fue validado primero mediante llamada manual y después mediante worker automático real. Quedan pendientes AGENCY Classic E2E, contrato Express y perfiles reales; el CLI de DEC-027 ya está desplegado con guarda operativa validada.
+- HOME Classic fue validado primero mediante llamada manual y después mediante worker automático real. Quedan pendientes AGENCY Classic E2E y perfiles reales; el CLI de DEC-027 ya está desplegado con guarda operativa validada. Express es mejora futura opcional. `orderNumber` está en `main` con deploy pendiente.
 - La auditoría independiente de Grok aprobó con observaciones y sin bloqueantes las validaciones sin coerción, calendario estricto, HTTP 408 ambiguo y timeout separado sólo mediante opt-in de import; los contratos históricos de timeout de token/rates/agencies permanecen intactos.
 - Observaciones para T-022.4: interpretar conservadoramente el fallo de renovación posterior a un POST 401; normalizar de forma explícita un posible `numeric` string en el borde repository/worker; ampliar cobertura de tipos/whitespace; y considerar la exportación de `normalizeProvince` como API interna de riesgo bajo.
 
 ## T-022 — arquitectura durable aprobada (sin número DEC asignado)
 
-**Estado:** T-022 EN PROGRESO; T-022.2 DESPLEGADA / VALIDADA EN PRODUCCIÓN (2026-09-17).
+**Estado:** T-022 EN PROGRESO; T-022.2 DESPLEGADA / VALIDADA EN PRODUCCIÓN (2026-09-17). El núcleo HOME Classic, el worker y DEC-027 superaron el alcance original de este corte.
 
 - Estado financiero y logístico independientes; un error de importación nunca revierte una order `paid`.
 - Una fila por order y `ext_order_id = orders.external_reference`, estable e inmutable entre retries.
@@ -152,7 +192,7 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 - El claim es durable, concurrente-seguro y holder-only. Las RPC anteriores se conservan; v3 agrega el snapshot sin romper RPC 26/v2.
 - La migración 009 está aplicada y el runtime v3 desplegado. El QA real validó atomicidad, rollback, grants/RLS, state machine hasta claim y checkout productivo `pending/not_requested`, sin crear envíos.
 - Este cierre no autoriza ni activa provider, `/shipping/import`, worker o integración webhook paid+queue. Esta última requiere antes una solución legacy-safe para orders sin snapshot.
-- Pendientes de decisión/cierre: T-022.1, Classic/Express, reconciliación práctica de duplicados por `extOrderId`, perfiles reales y contrato final del proveedor. No se asumen tracking, shipment ID ni labels.
+- Pendientes originales de este corte: T-022.1, Classic/Express, reconciliación práctica de duplicados por `extOrderId`, perfiles reales y contrato final del proveedor. HOME Classic, worker y DEC-027 ya cerraron parte de ese alcance. Tracking/labels no se asumen; DEC-028 los deja manuales. Express es opcional.
 
 ## DEC-026 — Selección autoritativa de agencia
 

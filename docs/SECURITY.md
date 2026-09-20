@@ -17,6 +17,25 @@
 - `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no está configurada permanentemente. El smoke test sin variable, `--execute`, order ID ni acción devolvió `[shipping-reconciliation] disabled`, sin cargar una operación habilitada ni ejecutar RPC, mutar DB, llamar MiCorreo o reconciliar filas.
 - Una operación real exige habilitación temporal y consentimiento completo; al terminar debe retirarse la variable. El comando `shipping:process-once` nunca sustituye esta interfaz administrativa.
 
+## DEC-028 — operación manual posterior al import
+
+- Pagar el envío, obtener la etiqueta y operar tracking/despacho en el portal de MiCorreo permanecen MANUAL POR DISEÑO.
+- Motivo: el pago del envío es una acción económica y requiere supervisión humana.
+- No existe endpoint, worker ni API interna para etiqueta o tracking. No se debe automatizar sin una decisión futura.
+- Esta política no relaja DEC-027 ni autoriza retry de `unknown`.
+
+## Hardening comercial final — checklist, no ejecutar ahora
+
+Antes de uso comercial continuo, sin implementar en este cierre:
+
+- revisar y rotar credenciales que alguna vez pudieron quedar expuestas
+- confirmar secrets separados por servicio (web vs `shipping-worker`)
+- verificar que `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no quede permanente
+- smoke de web y de worker
+- pago real, webhook y shipping import
+- logs sin PII ni secrets
+- estado limpio de Git y documentación sincronizada
+
 ## T-022.6-C — aislamiento productivo del proceso
 
 - EasyPanel ejecuta web y shipping worker como servicios separados desde el mismo repositorio.
@@ -41,7 +60,7 @@
 - Se excluyen PII del destinatario, IDs de Mercado Pago, referencias de order/provider, direcciones, emails, teléfonos, JWT, customerId, payloads, bodies y secretos.
 - La ejecución fue manual, one-shot y con doble guarda. No se habilitó endpoint, scheduler, cron o polling.
 - Un resultado `unknown` continúa siendo no repetible manualmente sin reconciliación; el caso validado terminó inequívocamente en `created`.
-- La prueba real de Classic no autoriza Express, tracking, labels ni perfiles físicos definitivos.
+- La prueba real de Classic no autoriza Express ni perfiles físicos definitivos. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028) y no un hueco de automatización pendiente.
 
 ## T-022.6-A — guardas y salida CLI
 
@@ -89,7 +108,7 @@
 - La RPC paid+queue evita separar la confirmación financiera de la creación del trabajo. Está conectada al webhook y fue validada con un pago real; Mercado Pago conserva la autoridad financiera.
 - La verificación productiva confirmó 009 aplicada, cero policies públicas, denegación a `anon`/`authenticated`, grants columna por columna, EXECUTE exclusivo de `service_role`, claim/lease y rollback transaccional real. No hubo backfill.
 - Las orders legacy sin fila logística pueden confirmarse financieramente sin inventar snapshots; requieren tratamiento logístico operativo separado.
-- `/shipping/import` fue validado manualmente y después mediante worker automático para Classic. La reconciliación administrativa de `unknown` está productiva pero bloqueada por defecto mediante su guarda; Express continúa bloqueado y tampoco se declaran tracking, labels o perfiles físicos definitivos.
+- `/shipping/import` fue validado manualmente y después mediante worker automático para Classic. La reconciliación administrativa de `unknown` está productiva pero bloqueada por defecto mediante su guarda. Express continúa bloqueado como mejora opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028). Los perfiles físicos siguen TEMPORAL/QA.
 
 ## Post-pago UX — cleanup frontend no autoritativo
 

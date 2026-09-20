@@ -4,23 +4,44 @@
 
 **Estado: NÚCLEO LOGÍSTICO FUNCIONAL / VALIDADO EN PRODUCCIÓN; T-022 EN PROGRESO** (2026-09-19).
 
-- HOME Classic automático: VALIDADO E2E con pago/webhook, `paid → queued`, worker aislado, `/shipping/import`, `created`, attempt 1 y verificación en MiCorreo, sin intervención manual.
-- AGENCY Classic automático: IMPLEMENTADO; E2E real pendiente. No declararlo validado hasta ejecutar una compra/sucursal real controlada.
-- Express: soporte interno conservado, oculto temporalmente del checkout público e import bloqueado con `UNSUPPORTED_SERVICE`; contrato exacto pendiente.
-- Perfiles 1–4: TEMPORAL/QA; sustitución y repetición de QA pendientes.
-- `unknown`: protegido contra retry automático; DEC-027 productiva, desplegada y con guarda operativa validada. La reconciliación permanece humana, excepcional y deshabilitada por defecto.
-- MiCorreo `orderNumber`: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO. El mapping usa `String(snapshot.order_id)` sólo después de exigir un entero positivo seguro. `extOrderId` se conserva exactamente como correlación técnica/idempotente; no se deriva uno del otro.
+- HOME Classic automático: VALIDADO E2E REAL. Flujo: checkout → Mercado Pago → webhook → order `paid` → shipping `queued` → `shipping-worker` → `/shipping/import` MiCorreo → `created`. Worker aislado en EasyPanel, polling automático, producción validada.
+- AGENCY Classic automático: IMPLEMENTADO; E2E real pendiente. No declararlo validado hasta ejecutar una compra/sucursal real controlada. No confundir con HOME.
+- QA futuro AGENCY (no ejecutar ahora): compra real controlada con sucursal; aprobar pago; `paid → queued`; worker reclama; `/shipping/import` usa `deliveryType: S`; agency = sucursal seleccionada; MiCorreo recibe el envío; DB termina `created`; `attempt_count` esperado; `orderNumber` visible.
+- Express: MEJORA FUTURA / OPCIONAL. Soporte interno conservado, oculto del checkout público e import bloqueado con `UNSUPPORTED_SERVICE`. No bloquea Classic.
+- Perfiles 1–4: TEMPORAL/QA (`300 g`, `5 × 25 × 35 cm`); no son perfiles finales de producción.
+- `unknown`: protegido contra retry automático; DEC-027 productiva, desplegada y con guarda operativa validada. Reconciliación humana, excepcional y deshabilitada por defecto. No hay filas `unknown` reales actualmente.
+- MiCorreo `orderNumber`: IMPLEMENTADO / COMMIT + PUSH / DEPLOY PENDIENTE. `orderNumber = String(order_id)` (ejemplo: `orders.id = 72` → `"72"`). `extOrderId` es correlación técnica estable/idempotente. Suite local verde; commit `db889d0` en `main`. Sin evidencia de redeploy posterior: no productivo.
+- DEC-028: revisión, pago del envío, etiqueta y tracking posteriores al import son MANUAL POR DISEÑO. No entran en el camino crítico ni en el criterio de cierre Classic.
+
+### Criterio futuro de cierre Classic
+
+T-022 Classic puede cerrarse cuando: HOME Classic E2E (cumplido), worker productivo (cumplido), DEC-027 productiva (cumplido), AGENCY Classic E2E, `orderNumber` productivo/verificado, perfiles físicos reales, QA final Classic y hardening/documentación final. Express queda fuera. Tracking/label/pago del envío quedan fuera por DEC-028.
+
+### PRÓXIMOS PASOS DE LOGÍSTICA — ORDEN RECOMENDADO
+
+1. Redeploy `shipping-worker` con `orderNumber`.
+2. Verificar `orderNumber` en la próxima compra real HOME Classic.
+3. QA E2E real AGENCY Classic.
+4. Definir perfiles físicos reales 1–4 remeras.
+5. QA final Classic con perfiles reales.
+6. Hardening comercial final.
+7. Express sólo si se decide ofrecerlo.
+
+### Hardening comercial final — no ejecutar ahora
+
+Revisar/rotar credenciales que pudieron quedar expuestas; confirmar secrets separados por servicio; verificar que `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no quede permanente; smoke web; smoke worker; pago real; webhook; shipping import; logs sin PII/secrets; Git limpio; documentación sincronizada.
 
 ## T-022 — MiCorreo `orderNumber`
 
-**Estado: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO** (2026-09-19).
+**Estado: IMPLEMENTADO / COMMIT + PUSH / DEPLOY PENDIENTE** (2026-09-19).
 
-- Contrato adoptado: `extOrderId` continúa obligatorio y estable; `orderNumber` es el identificador visible en MiCorreo.
-- Decisión local: `orderNumber = String(snapshot.order_id)`, sin prefijo. Un `order_id` string, nulo, no entero, no positivo, no finito o fuera del rango seguro produce `ShippingImportError/VALIDATION` antes del provider.
+- Contrato adoptado: `extOrderId` continúa obligatorio y estable (correlación técnica/idempotente); `orderNumber` es la referencia humana simple para buscar la misma orden en Supabase.
+- Regla: `orderNumber = String(order_id)` tras validar `order_id` como entero positivo seguro, sin prefijo. Ejemplo: `orders.id = 72` → MiCorreo `orderNumber = "72"`. Un `order_id` string, nulo, no entero, no positivo, no finito o fuera del rango seguro produce `ShippingImportError/VALIDATION` antes del provider.
 - HOME y AGENCY Classic comparten la misma regla. No cambian recipient, shipping, perfil físico, snapshots, worker, webhook, Mercado Pago, DEC-027 ni Express.
 - Tests sin red cubren payloads HOME/AGENCY, preservación de `extOrderId`, matriz inválida, estabilidad entre reintentos y body completo del provider.
+- Implementación testeada localmente, suite completa verde, commit `db889d0` y push a `origin/main`. **No hay evidencia documental de redeploy de `shipping-worker` posterior a ese commit.**
 
-**Pendiente:** desplegar el runtime actualizado y validar visualmente el campo en una importación futura controlada. Esta implementación local no acredita producción.
+**Pendiente inmediato:** 1) redeploy `shipping-worker` con el último `main`; 2) próxima compra real; 3) confirmar que MiCorreo muestre Número de orden igual a `orders.id`. No declarar `orderNumber` desplegado/productivo hasta esa verificación.
 
 ## T-022 / DEC-027 — Implementar reconciliación administrativa de `unknown`
 
@@ -44,11 +65,11 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 
 **CLI administrativo productivo:** el runtime actualizado está desplegado en el servicio aislado `shipping-worker` y `npm run shipping:reconcile-unknown` está disponible. `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no está configurada permanentemente. El smoke test sin variable, `--execute`, order ID ni acción devolvió `[shipping-reconciliation] disabled`; no cargó una operación habilitada, no ejecutó RPC, no modificó DB, no llamó MiCorreo y no reconcilió filas reales.
 
-**Pendiente:** AGENCY Classic E2E; perfiles físicos reales; Express; tracking/labels. `orderNumber` está implementado localmente pero aún no desplegado. T-022 permanece EN PROGRESO.
+**Pendiente:** AGENCY Classic E2E; perfiles físicos reales; hardening comercial. `orderNumber` está en `main` con deploy pendiente. Express es opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028). T-022 permanece EN PROGRESO.
 
 ## T-022 — Ocultar Express temporalmente en checkout público
 
-**Estado: IMPLEMENTADA LOCALMENTE / NO DESPLEGADA** (2026-09-19).
+**Estado: IMPLEMENTADA EN MAIN / COMMIT + PUSH; REDEPLOY WEB NO DOCUMENTADO** (2026-09-19). Express se clasifica como MEJORA FUTURA / OPCIONAL y no bloquea Classic.
 
 - `public/js/envio.js` mantiene una allowlist pública con HOME Classic y AGENCY Classic, y filtra antes del render.
 - Express no muestra tarjeta, precio ni radio, y no puede seleccionarse. Si la API retorna sólo Express, se informa que no hay opciones disponibles.
@@ -56,7 +77,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - `/cotizar-envio` conserva exactamente su request. No se cambiaron backend, ShippingService, MiCorreoProvider, snapshots, worker, webhook, Mercado Pago, SQL o migraciones.
 - Tests frontend sin red cubren HOME mixto, AGENCY mixto, respuesta exclusivamente Express, selección HOME Classic, sucursales AGENCY Classic y contrato de cotización.
 
-**Pendiente:** confirmar el contrato exacto de importación Express con MiCorreo antes de volver a exponerlo. No interpretar esta restricción como eliminación de soporte interno.
+**Pendiente futuro, no bloqueante:** confirmar el contrato exacto de importación Express con MiCorreo, implementar mapping, tests y QA real **antes** de volver a exponerlo. No interpretar esta restricción como eliminación de soporte interno.
 
 ## T-022.6-C — Dockerfile dedicado para shipping worker
 
@@ -80,7 +101,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - `SIGTERM`/`SIGINT` cancelan futuros ciclos y esperan el activo hasta 30 s. Si vence, registran sólo `shutdown_timeout`, mantienen `stopping=true` y exit 1, sin afirmar cancelación ni `stopped`. Expiración de leases permanece exclusivamente en el comando manual separado.
 - Producción validó polling de 60 s durante horas con múltiples `outcome=idle`. Una nueva order HOME Classic fue reclamada y creada automáticamente en MiCorreo, sin CLI manual, retry ni resultado ambiguo.
 
-**Pendiente:** perfiles físicos finales; contrato Express; tracking API; label API. La reconciliación administrativa de DEC-027 está productiva; no existe reconciliación automática de `unknown`.
+**Pendiente:** perfiles físicos finales. Express es opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028). La reconciliación administrativa de DEC-027 está productiva; no existe reconciliación automática de `unknown`.
 
 ## T-022.6 — cierre QA real manual y automático
 
@@ -94,7 +115,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - **QA AUTOMÁTICO REAL VALIDADO END-TO-END** (2026-09-19): una nueva compra HOME Classic llegó de pago aprobado a `paid + queued`; el servicio `shipping-worker` la reclamó y ejecutó `/shipping/import` sin `shipping:process-once` ni intervención manual.
 - Estado final automático: order `paid`, shipping `created`, attempt 1, timestamps de provider/import presentes y error nulo. No hubo retry, `unknown`, `failed` ni `lease_lost`.
 
-**Pendientes:** perfiles físicos reales para 1–4 remeras; mantener Express bloqueado hasta confirmar contrato; tracking API; label API; hardening comercial final.
+**Pendientes de T-022 Classic:** AGENCY E2E; perfiles físicos reales para 1–4 remeras; `orderNumber` productivo; QA final; hardening comercial final. Express permanece oculto/bloqueado como mejora opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028) y no bloquean el cierre Classic.
 
 ## T-022.6-A — Activación manual one-shot y observabilidad segura
 
@@ -119,7 +140,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - El runtime desplegado usa la RPC nueva mediante `markOrderAsPaid`; duplicados siguen siendo no-op y los errores RPC continúan como indisponibilidad controlada.
 - T-022.4 es consumida en producción por el proceso aislado T-022.6-B/C. `/shipping/import` fue validado automáticamente.
 
-**Pendiente:** Express; perfiles físicos reales; tracking API; label API.
+**Pendiente:** perfiles físicos reales. Express es opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028).
 
 ## T-022 — MiCorreo shipping import post-pago
 
@@ -139,7 +160,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - `index.js`, `app.js` y webhook no importan el worker. La activación automática vive exclusivamente en el proceso EasyPanel separado de T-022.6-B/C; el one-shot manual previo permanece como antecedente.
 - Verificación real: claim/lease y cierre `created` con attempt 1, sin lease residual.
 
-**Pendiente:** Express; perfiles físicos reales; tracking API; label API.
+**Pendiente:** perfiles físicos reales. Express es opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028).
 
 ### T-022.3 — Provider + mapping para `/shipping/import`
 
@@ -156,7 +177,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - Errores: `VALIDATION`, `UNSUPPORTED_SERVICE`, `AUTH`, `RATE_LIMIT`, `PROVIDER_REJECTED`, `NETWORK`, `TIMEOUT`, `SERVER` y `AMBIGUOUS_RESPONSE`.
 - `app.js`, webhook e `index.js` no ejecutan el servicio. HOME Classic fue validado mediante one-shot y mediante el proceso automático aislado T-022.6-B/C; Express permanece bloqueado.
 
-**Pendiente:** confirmar Express y perfiles reales; tracking API; label API.
+**Pendiente:** perfiles reales. El agregado `orderNumber` está en `main` con deploy pendiente. Express es opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028).
 
 **Observaciones no bloqueantes para T-022.4:**
 
@@ -177,10 +198,10 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - Runtime v3 desplegado después de aplicar 009. Un checkout productivo real sin pago creó una order `pending` y su fila `not_requested` con snapshot 300/5/25/35, declared value correcto y ext order id coincidente; el checkout llegó a Mercado Pago.
 - QA PostgreSQL real: creación v3 y rollback atómicos; paid+queue y claim validados hasta `processing`, incluidos `attempt_count`, token, vencimiento y payload de snapshot. Sin llamada a MiCorreo.
 - Seguridad productiva verificada: RLS activa, cero policies públicas, sin acceso `anon`/`authenticated`, EXECUTE de RPC solo `service_role`, SELECT/INSERT y UPDATE exclusivo sobre las nueve columnas operativas. No hubo backfill; la tabla comenzó vacía.
-- Repositorio, provider HOME Classic y worker aislado están conectados y validados en producción. AGENCY Classic E2E y Express permanecen pendientes.
+- Repositorio, provider HOME Classic y worker aislado están conectados y validados en producción. AGENCY Classic E2E permanece pendiente. Express es opcional.
 - Verificación local previa al cutover: 402/402 tests, 11 suites, 0 fallos; en ese momento las pruebas de concurrencia/RLS eran estáticas y no se había aplicado SQL. La evidencia PostgreSQL productiva posterior está registrada arriba.
 
-**Pendiente:** AGENCY Classic E2E; contrato/import Express; perfiles físicos reales; tracking y labels.
+**Pendiente:** AGENCY Classic E2E; perfiles físicos reales. Express es opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028).
 
 **Riesgo histórico resuelto por T-022.5:** la RPC legacy-safe permite confirmar una order sin snapshot y encola sólo cuando existe una fila elegible.
 
@@ -268,7 +289,9 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - Prueba contra API real PROD: `POST /token` ejecutada por el usuario → `micorreo_auth_ok`. No se imprimió ni persistió JWT, contraseña, Basic Auth ni `customerId`. **No** se probaron `/rates` ni `/shipping/import`.
 - La etapa siguiente (Etapa B / T-019) se cerró el 2026-09-15. Este bloque permanece como histórico de T-018.
 
-## Estado vigente — 2026-09-17
+## HISTÓRICO — estado al 2026-09-17
+
+> Superado por el estado T-022 de 2026-09-19 al inicio de este archivo. Conservado como corte. En esta fecha `/shipping/import` todavía figuraba pendiente; después se validó HOME Classic E2E y DEC-027.
 
 ### COMPLETADO Y VALIDADO
 

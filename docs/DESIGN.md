@@ -2,11 +2,13 @@
 
 ## T-022 — núcleo productivo y estado real de variantes
 
-- **HOME Classic automático:** validado E2E en producción hasta `created`, con attempt 1 y sin intervención manual.
-- **AGENCY Classic automático:** selección, snapshot, checkout/backend y mapping implementados; E2E real pendiente.
-- **Express:** soporte interno conservado, oculto temporalmente de la UI pública e import bloqueado mediante `UNSUPPORTED_SERVICE` hasta confirmar contrato.
-- **Perfiles físicos:** valores TEMPORAL/QA; no se consideran resueltos.
-- **`unknown`:** estado terminal para automatización; DEC-027 está productiva y su CLI administrativo está desplegado con guarda validada y deshabilitación por defecto.
+- **T-022:** EN PROGRESO. Núcleo HOME Classic funcional y validado en producción.
+- **HOME Classic automático:** validado E2E en producción hasta `created`, con attempt 1 y sin intervención manual. Flujo: checkout → Mercado Pago → webhook → `paid` → `queued` → `shipping-worker` → `/shipping/import` → `created`.
+- **AGENCY Classic automático:** selección, snapshot, checkout/backend y mapping implementados; E2E real pendiente. No confundir con HOME.
+- **Express:** MEJORA FUTURA / OPCIONAL. Soporte interno conservado, oculto de la UI pública e import bloqueado mediante `UNSUPPORTED_SERVICE`. No bloquea Classic.
+- **Perfiles físicos:** TEMPORAL/QA (`300 g`, `5 × 25 × 35 cm`); no son perfiles finales de 1–4 remeras.
+- **`unknown`:** estado terminal para automatización; DEC-027 está productiva y su CLI administrativo está desplegado con guarda validada y deshabilitación por defecto. No hay filas `unknown` reales actualmente.
+- **Tras `created` (DEC-028):** revisión en MiCorreo, pago del envío, etiqueta y tracking en el portal son MANUAL POR DISEÑO. La automatización por API no está confirmada y no es necesaria. No bloquea el cierre Classic.
 
 ## Runbook — qué hacer si un envío queda `unknown`
 
@@ -25,9 +27,11 @@ buscar manualmente en MiCorreo usando ext_order_id
 
 `ext_order_id` copia `orders.external_reference` y es la correlación estable para la verificación. No se imprime su valor en documentación o logs ordinarios. La ausencia inmediata en el portal no prueba que el envío no exista.
 
-### MiCorreo `orderNumber` — implementado localmente / no desplegado
+### MiCorreo `orderNumber` — IMPLEMENTADO / COMMIT + PUSH / DEPLOY PENDIENTE
 
-El payload local de `/shipping/import` conserva `extOrderId` exactamente como correlación técnica/idempotente estable y agrega `orderNumber = String(snapshot.order_id)` como identificador visible en MiCorreo. No usa prefijo ni deriva un campo del otro. Antes de construir el string, `order_id` debe ser un `number` entero positivo seguro; no existe coerción desde strings. La regla es idéntica para HOME y AGENCY Classic y no modifica recipient, shipping ni el snapshot persistido. El cambio todavía no está desplegado.
+El payload de `/shipping/import` conserva `extOrderId` exactamente como correlación técnica/idempotente estable y agrega `orderNumber = String(snapshot.order_id)` como referencia humana visible en MiCorreo para buscar la misma orden en Supabase. No usa prefijo ni deriva un campo del otro. Ejemplo: `orders.id = 72` → `orderNumber = "72"`. Antes de construir el string, `order_id` debe ser un `number` entero positivo seguro; no existe coerción desde strings. La regla es idéntica para HOME y AGENCY Classic y no modifica recipient, shipping ni el snapshot persistido.
+
+Código y tests están en `origin/main` (`db889d0`). No hay evidencia documental de redeploy de `shipping-worker` posterior a ese commit: **no está productivo**. Pendiente: redeploy, próxima compra real y confirmar que MiCorreo muestre Número de orden igual a `orders.id`.
 
 Nunca ejecutar `shipping:process-once` intentando resolver `unknown`: el claim no lo selecciona y el CLI no es una interfaz de reconciliación. Si el resultado sigue ambiguo, la fila permanece `unknown` indefinidamente, sin retry ni conversión automática a `failed`.
 
@@ -65,6 +69,26 @@ La migración finaliza su DDL con `NOTIFY pgrst, 'reload schema'` antes de `COMM
 
 QA PostgreSQL real confirmó RLS, cero policies, grants append-only, EXECUTE restringido, `SECURITY INVOKER` y `search_path = pg_catalog, public`. Las transiciones sintéticas se ejecutaron dentro de `BEGIN/ROLLBACK`: `mark-created` preservó snapshot/correlación/attempt, no inventó `provider_created_at` y registró reconciliación local; `requeue` preservó snapshot/correlación/attempt y limpió lease/scheduling/error. Los eventos fueron correctos y el rollback dejó producción sin residuos (`created = 2`, `not_requested = 1`, `unknown = 0`).
 
+## DEC-028 — operación manual posterior al import
+
+Después de `created`, el flujo de negocio vigente es:
+
+```text
+import automático MiCorreo
+  → revisión humana en el portal
+  → pago manual del envío
+  → etiqueta manual
+  → despacho / tracking en el portal
+```
+
+No hay API de tracking ni de etiqueta confirmada ni necesaria. Automatizar este tramo requiere una decisión futura; no es un pendiente de T-022 Classic.
+
+## Criterio futuro de cierre Classic y retoma
+
+T-022 Classic puede cerrarse con HOME E2E (cumplido), worker (cumplido), DEC-027 (cumplido), AGENCY E2E, `orderNumber` productivo, perfiles reales, QA final y hardening/docs. Express queda fuera. DEC-028 deja fuera etiqueta/tracking/pago.
+
+Orden de retoma: 1) redeploy worker con `orderNumber`; 2) verificar HOME; 3) AGENCY E2E; 4) perfiles 1–4 remeras; 5) QA final Classic; 6) hardening comercial; 7) Express sólo si se ofrece.
+
 ## T-022 — restricción temporal de Express en la UI pública
 
 `POST /cotizar-envio` conserva su contrato y puede devolver Classic/Express para HOME/AGENCY. La UI aplica una allowlist antes de renderizar:
@@ -75,7 +99,7 @@ micorreo:agency:classic → visible y seleccionable; carga sucursales
 micorreo:*:express       → no se renderiza
 ```
 
-Si luego del filtro no queda ninguna opción, se reutiliza el estado controlado de ausencia de envío. No se dibujan tarjetas deshabilitadas ni precios Express. Esta frontera no elimina soporte interno: CP/EP, rates, snapshots, checkout backend y worker permanecen disponibles para completar la integración futura. El import de Express continúa bloqueado mediante `UNSUPPORTED_SERVICE`.
+Si luego del filtro no queda ninguna opción, se reutiliza el estado controlado de ausencia de envío. No se dibujan tarjetas deshabilitadas ni precios Express. Esta frontera no elimina soporte interno: CP/EP, rates, snapshots, checkout backend y worker permanecen disponibles para completar la integración futura. El import de Express continúa bloqueado mediante `UNSUPPORTED_SERVICE`. Express es mejora futura opcional; no bloquea la operación Classic. El código está en `main`; no hay evidencia documental de redeploy del servicio web para esta restricción.
 
 ## T-022.6-C — imagen dedicada del shipping worker
 
@@ -148,7 +172,7 @@ checkout HOME Classic
 
 La validación real confirmó una sola operación de provider y una sola transición final. El estado persistido terminó sin lease, retry ni error. La observación visual en MiCorreo confirmó estado **Validado** y correspondencia con el snapshot QA 0,3 kg / 35 × 25 × 5 cm.
 
-Este flujo manual conserva valor como antecedente. `npm start`, `index.js`, `app.js` y webhook no ejecutan el worker; la automatización posterior vive sólo en el proceso aislado. La reconciliación administrativa de `unknown` está disponible mediante DEC-027, siempre deshabilitada por defecto; Express, tracking, labels y perfiles definitivos requieren decisiones posteriores.
+Este flujo manual conserva valor como antecedente. `npm start`, `index.js`, `app.js` y webhook no ejecutan el worker; la automatización posterior vive sólo en el proceso aislado. La reconciliación administrativa de `unknown` está disponible mediante DEC-027, siempre deshabilitada por defecto. Express es opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028). Los perfiles definitivos siguen pendientes.
 
 ## T-022.6-A — composición manual one-shot
 
@@ -164,9 +188,13 @@ El formatter reconstruye la salida desde una allowlist, sin serializar resultado
 
 La cola es subordinada al pago. Su actualización vive en un subbloque PL/pgSQL: snapshot ausente, snapshot `queued`/`processing` u otra anomalía logística producen `shipping_queued=false` sin inventar filas y sin revertir la confirmación financiera. La respuesta mínima no contiene PII: `order_id`, `status`, `shipping_queued`.
 
-Dos webhooks simultáneos se serializan en PostgreSQL; sólo el primero puede observar `pending`. La RPC anterior queda preservada para un cutover reversible. La migración 010 y `paid + queued` fueron validados con un pago real. El worker no tiene activación automática; `/shipping/import` se validó mediante one-shot manual.
+Dos webhooks simultáneos se serializan en PostgreSQL; sólo el primero puede observar `pending`. La RPC anterior queda preservada para un cutover reversible. La migración 010 y `paid + queued` fueron validados con un pago real.
 
-## T-022.4 — worker durable desplegado y no activado
+> **HISTÓRICO de este corte T-022.5:** el worker aún no tenía activación automática y `/shipping/import` se validó después mediante one-shot y luego mediante T-022.6-B/C. El estado vigente usa el proceso aislado automático.
+
+## T-022.4 — worker durable (scheduling posterior en T-022.6-B)
+
+> **HISTÓRICO de este corte:** el módulo no tenía scheduler propio. La activación automática vigente vive en el proceso aislado T-022.6-B/C.
 
 ```text
 processNextShippingImport (máximo una fila)
@@ -181,19 +209,19 @@ El worker no construye payloads, recalcula paquetes, toca orders ni ejecuta SQL 
 
 Backoff determinista: 1, 5 y 15 minutos para attempts 1–3; el cuarto termina failed. No hay jitter en esta etapa para mantener operación y tests reproducibles. Red/timeout sólo son retryable con evidencia explícita de que ocurrieron antes del POST; errores ambiguos nunca entran en retry automático. El caso 401 + fallo de renovación y el segundo POST 401 terminan unknown conservadoramente.
 
-El módulo no es alcanzable desde el startup ni el webhook. Sólo es alcanzable desde el CLI interno con doble guarda; automatización y frecuencia pertenecen a etapas posteriores.
+El módulo no es alcanzable desde el startup web ni el webhook. El one-shot interno con doble guarda permanece como antecedente; el polling productivo pertenece a T-022.6-B.
 
 ## T-022.3 — importación desplegada y validada manualmente
 
 `claim/snapshot → ShippingImportService → ShippingProvider.importShipment → MiCorreoProvider → POST /shipping/import`.
 
-El servicio valida y arma el payload; el provider conoce autenticación, Bearer, timeout, retry único de 401 y clasificación HTTP/transporte. Ninguna pieza modifica SQL. El worker T-022.4 traduce resultados a `created|retryable|unknown|failed`. El mapping local agrega `orderNumber` desde `order_id` validado y conserva `extOrderId` sin cambios; este agregado aún no fue desplegado.
+El servicio valida y arma el payload; el provider conoce autenticación, Bearer, timeout, retry único de 401 y clasificación HTTP/transporte. Ninguna pieza modifica SQL. El worker T-022.4 traduce resultados a `created|retryable|unknown|failed`. El mapping agrega `orderNumber` desde `order_id` validado y conserva `extOrderId` sin cambios; ese agregado está en `main` y el redeploy del worker sigue pendiente.
 
 HOME usa `deliveryType: D`, domicilio y `AR-J → J`; no incluye agency. AGENCY usa `deliveryType: S` y `agency = shipping_agency_code`; no incluye domicilio. Ambos usan recipient mínimo y snapshot físico/económico. `shipping_apartment` se omite porque combina piso/departamento y no se separa heurísticamente.
 
 Sólo Classic atraviesa el mapping y el payload omite `productType`; Express retorna `UNSUPPORTED_SERVICE` antes de red. Un éxito exige 2xx y `createdAt` válido. Red, timeout o 5xx luego del POST y 2xx inválido son potencialmente ambiguos y no disparan retry logístico.
 
-El servicio no está enlazado a Express ni webhook. El CLI one-shot validó Classic en producción; no existe polling ni scheduler.
+El servicio no está enlazado a Express HTTP ni webhook. El CLI one-shot validó Classic en producción; el polling posterior vive en T-022.6-B.
 
 Corrección posterior a auditoría: `declared_value` acepta sólo `number` finito no negativo y el perfil físico sólo enteros positivos; `createdAt` valida componentes de calendario y offset sin depender de la normalización de `Date.parse`. El transporte compartido conserva por defecto `micorreo_network_error`; únicamente import opta por distinguir timeout. HTTP 408 se clasifica `TIMEOUT` ambiguo sin retry. Los errores no tipados se propagan como internos y no se inventa que el POST fue intentado.
 

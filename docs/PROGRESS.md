@@ -1,11 +1,21 @@
 # Progreso
 
-## 2026-09-19 — MiCorreo `orderNumber` implementado localmente
+## 2026-09-19 — Cierre documental y roadmap final de logística T-022
 
-- **Estado: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO.** `buildImportPayload` valida `snapshot.order_id` como entero positivo seguro y genera `orderNumber = String(order_id)` para HOME y AGENCY Classic.
+- T-022 permanece EN PROGRESO. Núcleo HOME Classic VALIDADO E2E REAL. Worker aislado productivo. DEC-027 PRODUCTIVA / DESPLEGADA / GUARDA VALIDADA. Migración 011 aplicada. No hay filas `unknown` reales.
+- `orderNumber`: IMPLEMENTADO / COMMIT + PUSH / DEPLOY PENDIENTE. Commit `db889d0` en `origin/main`. Regla `orderNumber = String(order_id)` (ejemplo 72 → `"72"`). `extOrderId` intacto. Sin evidencia de redeploy de `shipping-worker` posterior al commit: no productivo.
+- DEC-028 ACEPTADA: revisión, pago del envío, etiqueta y tracking posteriores al import son MANUAL POR DISEÑO. No es automatización pendiente. No bloquea cierre Classic.
+- Express reclasificado como MEJORA FUTURA / OPCIONAL. AGENCY: IMPLEMENTADO / E2E REAL PENDIENTE. Perfiles 300 g / 5 × 25 × 35 cm: TEMPORAL/QA, no definitivos.
+- Criterio futuro de cierre Classic: HOME (cumplido), worker (cumplido), DEC-027 (cumplido), AGENCY E2E, `orderNumber` productivo, perfiles reales, QA final, hardening/docs. Express y label/tracking API fuera.
+- Roadmap de retoma: 1 redeploy worker `orderNumber` → 2 verificar HOME → 3 AGENCY E2E → 4 perfiles reales → 5 QA final → 6 hardening → 7 Express sólo si se ofrece.
+- Cierre exclusivamente documental. Sin código, tests, SQL, workers, requests, commit, push ni deploy.
+
+## HISTÓRICO — 2026-09-19 — MiCorreo `orderNumber` implementado localmente (previo al commit)
+
+- En este corte el estado era IMPLEMENTADO LOCALMENTE / NO DESPLEGADO. `buildImportPayload` valida `snapshot.order_id` como entero positivo seguro y genera `orderNumber = String(order_id)` para HOME y AGENCY Classic.
 - `extOrderId` permanece byte por byte como llega desde `ext_order_id`; no se sustituye, no se deriva `orderNumber` desde él y no cambia la idempotencia.
 - Cobertura sin red: payload completo HOME, mapping AGENCY, IDs inválidos antes del provider, estabilidad entre reintentos y body completo de MiCorreo.
-- Sin cambios en snapshots SQL, migraciones, worker, webhook, Mercado Pago, DEC-027 o Express. Sin requests reales, commit, push ni deploy.
+- Este corte registró “sin commit, push ni deploy”. Después se hizo commit `db889d0` y push a `origin/main`. El deploy del worker sigue pendiente.
 
 ## 2026-09-19 — cierre productivo final DEC-027
 
@@ -13,7 +23,7 @@
 - El runtime actualizado fue desplegado en el servicio aislado `shipping-worker`; `npm run shipping:reconcile-unknown` está disponible en producción.
 - `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no permanece configurada. El smoke test sin variable, `--execute`, order ID ni acción produjo `[shipping-reconciliation] disabled`.
 - La prueba confirmó guarda activa y default seguro: cero RPC, cambios de DB, requests a MiCorreo o reconciliaciones reales. No existen actualmente filas `unknown`.
-- Permanece vigente el runbook humano conservador y la política A de attempts. T-022 sigue EN PROGRESO por AGENCY Classic E2E, Express, perfiles físicos y tracking/labels; `orderNumber` fue implementado localmente después de este cierre y aún no está desplegado.
+- Permanece vigente el runbook humano conservador y la política A de attempts. T-022 sigue EN PROGRESO por AGENCY Classic E2E, perfiles físicos, `orderNumber` productivo y hardening. Express es opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028). `orderNumber` quedó después en `main` con deploy pendiente.
 
 ## HISTÓRICO — 2026-09-19 — cutover PostgreSQL real DEC-027 previo al despliegue del CLI
 
@@ -54,7 +64,7 @@
 - T-022.6-B queda DESPLEGADA / VALIDADA EN PRODUCCIÓN - WORKER AUTOMÁTICO. T-022.6-C queda DESPLEGADA / VALIDADA EN PRODUCCIÓN - PROCESO AISLADO / `Dockerfile.worker`.
 - `SHIPPING_IMPORT_WORKER_ENABLED=true` está sólo en el servicio worker; `Dockerfile`, `npm start` y el servidor web permanecen separados.
 - Cierre exclusivamente documental: sin leer `.env`, ejecutar workers, hacer requests ni modificar código, tests, SQL o migraciones.
-- Pendientes al cierre vigente: AGENCY Classic E2E, perfiles físicos definitivos 1–4, Express, `orderNumber`, tracking API y label API. La reconciliación administrativa fue cerrada posteriormente mediante DEC-027; no existe reconciliación automática.
+- Pendientes de retoma al cierre de ese QA: AGENCY Classic E2E, perfiles físicos definitivos 1–4 y `orderNumber` productivo. Express es opcional. Tracking/label/pago del envío son MANUAL POR DISEÑO (DEC-028). La reconciliación administrativa fue cerrada posteriormente mediante DEC-027; no existe reconciliación automática.
 
 ## 2026-09-18 — HISTÓRICO: T-022.6-B worker automático aislado local
 
