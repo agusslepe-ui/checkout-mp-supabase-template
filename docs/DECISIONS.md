@@ -3,7 +3,7 @@
 ## DEC-027 — Reconciliación operativa conservadora de shipping imports `unknown`
 
 **Fecha:** 2026-09-19.
-**Estado:** MIGRACIÓN / RPC PRODUCTIVAS — CLI AÚN NO DESPLEGADO/VALIDADO OPERATIVAMENTE.
+**Estado:** PRODUCTIVA / DESPLEGADA / GUARDA OPERATIVA VALIDADA.
 **Tarea:** T-022.
 
 ### Contexto
@@ -20,7 +20,7 @@ La correlación estable para buscar el envío es `order_shipping_imports.ext_ord
 2. **Si no aparece inmediatamente:** la ausencia en el portal no prueba que no exista. Se mantiene `unknown`, no se agenda retry y el operador vuelve a verificar.
 3. **Si una persona confirma explícitamente que no existe:** la operación administrativa local reencola condicionalmente `unknown → queued`. No existe salida administrativa a `retryable`. Se preservan `ext_order_id`, snapshot y `attempt_count`.
 4. **Si sigue ambiguo:** permanece `unknown` indefinidamente. No se reintenta ni pasa automáticamente a `failed`.
-5. `shipping:process-once` no es una herramienta de reconciliación. El claim no tomará la fila `unknown`, y no se debe alterar su estado por fuera de la interfaz administrativa una vez auditada y desplegada.
+5. `shipping:process-once` no es una herramienta de reconciliación. El claim no tomará la fila `unknown`, y no se debe alterar su estado por fuera de la interfaz administrativa productiva de DEC-027.
 
 ### Política A — presupuesto de attempts
 
@@ -48,9 +48,11 @@ Esta política ya emerge de la combinación entre la migración 011, que preserv
 
 Se eligió `order_shipping_import_reconciliations`: UUID propio, order ID interno, acción, reason code, estado anterior/objetivo, attempt preservado y fecha. Constraints sólo admiten `mark_created/provider_found/unknown/created` y `requeue/provider_absence_confirmed/unknown/queued`. No almacena actor, texto libre, PII, `extOrderId`, payload ni respuesta provider. RLS y grants append-only reducen exposición; retención y un eventual actor administrativo autenticado quedan para una etapa futura.
 
-La migración 011 fue aplicada en producción y las RPC quedaron disponibles. El repositorio y CLI están versionados, pero el runtime que contiene `shipping:reconcile-unknown` **aún no fue desplegado ni validado operativamente**.
+La migración 011 fue aplicada en producción y las RPC quedaron disponibles. El runtime con `shipping:reconcile-unknown` está desplegado en el servicio aislado `shipping-worker`. `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no está configurada permanentemente.
 
 El QA PostgreSQL real verificó tabla, RLS, cero policies, grants mínimos, EXECUTE restringido, `SECURITY INVOKER` y `search_path` fijo. Ambas transiciones se validaron con datos sintéticos dentro de `BEGIN/ROLLBACK`; se comprobaron preservación, limpieza, timestamps y auditoría. El rollback eliminó toda evidencia QA y los conteos productivos permanecieron `created = 2`, `not_requested = 1`, `unknown = 0`.
+
+El smoke test seguro del CLI se ejecutó sin variable de habilitación, `--execute`, order ID ni acción. La salida `[shipping-reconciliation] disabled` validó despliegue y guarda sin ejecutar RPC, modificar DB, llamar MiCorreo ni reconciliar filas reales. No existían filas `unknown` al cierre.
 
 La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, sin bloqueantes. El hardening adopta formalmente la política A y agrega `NOTIFY pgrst, 'reload schema'` antes del commit de 011.
 
@@ -58,8 +60,8 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 
 - Evita duplicados ante resultados externos ambiguos.
 - Puede dejar filas `unknown` indefinidamente; es una propiedad de seguridad aceptada.
-- Requiere verificación humana. Aunque las RPC ya son productivas, no se habilita su operación ordinaria hasta desplegar y validar de forma segura el CLI administrativo.
-- T-022 conserva el núcleo HOME Classic productivo, pero no queda completamente cerrado mientras falten AGENCY Classic E2E, Express, perfiles físicos y el cutover auditado de esta reconciliación.
+- Requiere verificación humana y habilitación temporal explícita; la variable nunca debe quedar activa permanentemente.
+- T-022 conserva el núcleo HOME Classic productivo, pero no queda completamente cerrado mientras falten AGENCY Classic E2E, Express, perfiles físicos, `orderNumber` y tracking/labels.
 
 ## T-022.6-C — despliegue aislado mediante Dockerfile dedicado
 
@@ -90,7 +92,7 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 - Se acepta como evidencia suficiente una única ejecución productiva controlada: HOME Classic, pago/webhook, `paid + queued`, claim/lease, un POST, `createdAt` válido y cierre `created` con attempt 1.
 - La verificación visual del portal confirma el envío como **Validado** y la correspondencia del snapshot QA 0,3 kg / 35 × 25 × 5 cm.
 - La validación manual cerró T-022.6-A. Una compra posterior validó el flujo automático completo mediante el servicio aislado T-022.6-B/C, sin `shipping:process-once` ni intervención manual.
-- Express sigue bloqueado. Perfiles definitivos, reconciliación de `unknown`, tracking API, label API y hardening comercial requieren decisiones posteriores.
+- Express sigue bloqueado. Perfiles definitivos, tracking API, label API y hardening comercial requieren decisiones posteriores; la reconciliación administrativa de `unknown` quedó resuelta por DEC-027.
 - La evidencia documental se mantiene deliberadamente libre de PII, IDs de pago, referencias, credenciales y payloads.
 
 ## T-022.6-A — activación manual con doble consentimiento
@@ -112,7 +114,7 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 - Cuando el snapshot elegible existe, `paid + queued` comparte transacción. La cola se intenta después del pago en un subbloque para que una excepción logística no revierta la confirmación.
 - No hay backfill ni reconstrucción. `shipping_queued=false` representa legacy, estado logístico no elegible o anomalía; no convierte el pago en fallo.
 - PostgreSQL serializa webhooks concurrentes con `FOR UPDATE`; Node conserva las comparaciones previas y consume el resultado mínimo de la RPC.
-- La migración 010 y el flujo paid+queue están validados en producción; la automatización posterior quedó validada en T-022.6-B/C. Quedan pendientes Express, perfiles reales y reconciliación de `unknown`.
+- La migración 010 y el flujo paid+queue están validados en producción; la automatización posterior quedó validada en T-022.6-B/C y la reconciliación administrativa en DEC-027. Quedan pendientes Express y perfiles reales.
 
 ## T-022.4 — política del worker durable local
 
@@ -135,7 +137,7 @@ La auditoría independiente posterior resultó **APROBADO CON OBSERVACIONES**, s
 - `shipping_apartment` no se trunca ni divide: floor/apartment se omiten temporalmente.
 - HOME usa el domicilio de la order; AGENCY usa `shipping_agency_code`. Ambos consumen medidas y declared value congelados.
 - Sólo 2xx + `createdAt` válido confirma creación; resultados inciertos quedan ambiguos para el worker futuro.
-- HOME Classic fue validado primero mediante llamada manual y después mediante worker automático real. Quedan pendientes AGENCY Classic E2E, contrato Express, perfiles reales y despliegue/validación operativa del CLI de DEC-027.
+- HOME Classic fue validado primero mediante llamada manual y después mediante worker automático real. Quedan pendientes AGENCY Classic E2E, contrato Express y perfiles reales; el CLI de DEC-027 ya está desplegado con guarda operativa validada.
 - La auditoría independiente de Grok aprobó con observaciones y sin bloqueantes las validaciones sin coerción, calendario estricto, HTTP 408 ambiguo y timeout separado sólo mediante opt-in de import; los contratos históricos de timeout de token/rates/agencies permanecen intactos.
 - Observaciones para T-022.4: interpretar conservadoramente el fallo de renovación posterior a un POST 401; normalizar de forma explícita un posible `numeric` string en el borde repository/worker; ampliar cobertura de tipos/whitespace; y considerar la exportación de `normalizeProvince` como API interna de riesgo bajo.
 

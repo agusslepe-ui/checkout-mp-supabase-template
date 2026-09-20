@@ -1,6 +1,14 @@
 # Progreso
 
-## 2026-09-19 — cutover PostgreSQL real DEC-027
+## 2026-09-19 — cierre productivo final DEC-027
+
+- **Estado: PRODUCTIVA / DESPLEGADA / GUARDA OPERATIVA VALIDADA.** Migración 011, tabla de auditoría y ambas RPC productivas; QA PostgreSQL real completado con `BEGIN/ROLLBACK` y conteos sin cambios (`created = 2`, `not_requested = 1`, `unknown = 0`).
+- El runtime actualizado fue desplegado en el servicio aislado `shipping-worker`; `npm run shipping:reconcile-unknown` está disponible en producción.
+- `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no permanece configurada. El smoke test sin variable, `--execute`, order ID ni acción produjo `[shipping-reconciliation] disabled`.
+- La prueba confirmó guarda activa y default seguro: cero RPC, cambios de DB, requests a MiCorreo o reconciliaciones reales. No existen actualmente filas `unknown`.
+- Permanece vigente el runbook humano conservador y la política A de attempts. T-022 sigue EN PROGRESO por AGENCY Classic E2E, Express, perfiles físicos, `orderNumber` y tracking/labels.
+
+## HISTÓRICO — 2026-09-19 — cutover PostgreSQL real DEC-027 previo al despliegue del CLI
 
 - **Estado: MIGRACIÓN / RPC PRODUCTIVAS — CLI AÚN NO DESPLEGADO/VALIDADO OPERATIVAMENTE.** Migración 011 aplicada en producción; no se ejecutaron reconciliaciones reales.
 - Confirmadas tabla `order_shipping_import_reconciliations`, RLS activa y `policy_count = 0`.
@@ -22,7 +30,7 @@
 - No se modificaron checkout, webhook, Mercado Pago, MiCorreoProvider ni worker automático. No hubo requests, reconciliaciones, aplicación de migración, commit, push o deploy.
 - Pendientes: aplicar 011; QA PostgreSQL real/controlado; desplegar CLI administrativo; AGENCY Classic E2E; `orderNumber`; perfiles físicos reales y Express.
 
-## 2026-09-19 — cierre documental del núcleo T-022 y DEC-027
+## HISTÓRICO — 2026-09-19 — cierre documental del núcleo T-022 y DEC-027 previo a la implementación
 
 - **T-022 CORE / NÚCLEO LOGÍSTICO: FUNCIONAL Y VALIDADO EN PRODUCCIÓN.** HOME Classic completó el flujo automático real hasta `created`, attempt 1 y visibilidad en MiCorreo, sin intervención manual.
 - T-022 permanece EN PROGRESO: AGENCY Classic automático está implementado pero sin E2E real; Express conserva soporte interno y sigue oculto/bloqueado para import; perfiles físicos siguen TEMPORAL/QA.
@@ -39,7 +47,7 @@
 - T-022.6-B queda DESPLEGADA / VALIDADA EN PRODUCCIÓN - WORKER AUTOMÁTICO. T-022.6-C queda DESPLEGADA / VALIDADA EN PRODUCCIÓN - PROCESO AISLADO / `Dockerfile.worker`.
 - `SHIPPING_IMPORT_WORKER_ENABLED=true` está sólo en el servicio worker; `Dockerfile`, `npm start` y el servidor web permanecen separados.
 - Cierre exclusivamente documental: sin leer `.env`, ejecutar workers, hacer requests ni modificar código, tests, SQL o migraciones.
-- Pendientes: perfiles físicos definitivos 1–4, reconciliación operativa/automática de `unknown`, Express, tracking API y label API.
+- Pendientes al cierre vigente: AGENCY Classic E2E, perfiles físicos definitivos 1–4, Express, `orderNumber`, tracking API y label API. La reconciliación administrativa fue cerrada posteriormente mediante DEC-027; no existe reconciliación automática.
 
 ## 2026-09-18 — HISTÓRICO: T-022.6-B worker automático aislado local
 

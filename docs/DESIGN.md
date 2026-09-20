@@ -6,7 +6,7 @@
 - **AGENCY Classic automático:** selección, snapshot, checkout/backend y mapping implementados; E2E real pendiente.
 - **Express:** soporte interno conservado, oculto temporalmente de la UI pública e import bloqueado mediante `UNSUPPORTED_SERVICE` hasta confirmar contrato.
 - **Perfiles físicos:** valores TEMPORAL/QA; no se consideran resueltos.
-- **`unknown`:** estado terminal para automatización; las RPC humanas de DEC-027 están productivas, pero el CLI aún no fue desplegado ni validado operativamente.
+- **`unknown`:** estado terminal para automatización; DEC-027 está productiva y su CLI administrativo está desplegado con guarda validada y deshabilitación por defecto.
 
 ## Runbook — qué hacer si un envío queda `unknown`
 
@@ -40,11 +40,13 @@ Nunca ejecutar `shipping:process-once` intentando resolver `unknown`: el claim n
 - `complete`, `retry`, `unknown` y `fail` actuales exigen `processing`, lease token coincidente y lease vigente.
 - La migración 011 productiva agrega exclusivamente `unknown → created` y `unknown → queued`. No existe salida administrativa hacia `retryable|failed`.
 
-### Infraestructura productiva DEC-027 — CLI pendiente
+### DEC-027 productiva — CLI administrativo con guarda validada
 
 `011_add_shipping_unknown_reconciliation.sql` crea una tabla append-only sin PII y dos RPC `SECURITY INVOKER`. Ambas bloquean la fila `unknown`, vuelven a condicionar el UPDATE y escriben la transición y el evento en la misma transacción. Confirmar existencia ejecuta `unknown → created`, conserva `provider_created_at` nulo y usa `p_reconciled_at` como `imported_at` local; confirmar ausencia ejecuta `unknown → queued`. Ambas preservan `attempt_count`, `ext_order_id`, perfil físico y `declared_value`.
 
-`shipping:reconcile-unknown` es un CLI administrativo excepcional. Exige `SHIPPING_IMPORT_RECONCILIATION_ENABLED=true`, `--execute`, ID positivo canónico y una pareja exacta acción/confirmación. Carga Supabase sólo después de esas validaciones, realiza una RPC y termina. Un resultado sin transición produce `outcome=no_change` y exit 1. No hay endpoint, UI, búsqueda MiCorreo, loop ni conexión al worker. La migración/RPC ya están productivas; el runtime que contiene el CLI aún no fue desplegado ni validado operativamente.
+`shipping:reconcile-unknown` es un CLI administrativo excepcional. Exige `SHIPPING_IMPORT_RECONCILIATION_ENABLED=true`, `--execute`, ID positivo canónico y una pareja exacta acción/confirmación. Carga Supabase sólo después de esas validaciones, realiza una RPC y termina. Un resultado sin transición produce `outcome=no_change` y exit 1. No hay endpoint, UI, búsqueda MiCorreo, loop ni conexión al worker. La migración/RPC y el runtime están productivos en el servicio aislado `shipping-worker`; la variable de habilitación no queda configurada permanentemente.
+
+El smoke test de despliegue se ejecutó sin variable, `--execute`, order ID ni acción. La salida `[shipping-reconciliation] disabled` confirmó que el entrypoint está disponible y bloqueado por defecto, sin RPC, mutación de DB, request a MiCorreo o reconciliación real.
 
 #### Política A de `attempt_count`
 
@@ -146,7 +148,7 @@ checkout HOME Classic
 
 La validación real confirmó una sola operación de provider y una sola transición final. El estado persistido terminó sin lease, retry ni error. La observación visual en MiCorreo confirmó estado **Validado** y correspondencia con el snapshot QA 0,3 kg / 35 × 25 × 5 cm.
 
-Este flujo manual conserva valor como antecedente. `npm start`, `index.js`, `app.js` y webhook no ejecutan el worker; la automatización posterior vive sólo en el proceso aislado. Reconciliación de `unknown`, Express, tracking, labels y perfiles definitivos requieren decisiones posteriores.
+Este flujo manual conserva valor como antecedente. `npm start`, `index.js`, `app.js` y webhook no ejecutan el worker; la automatización posterior vive sólo en el proceso aislado. La reconciliación administrativa de `unknown` está disponible mediante DEC-027, siempre deshabilitada por defecto; Express, tracking, labels y perfiles definitivos requieren decisiones posteriores.
 
 ## T-022.6-A — composición manual one-shot
 

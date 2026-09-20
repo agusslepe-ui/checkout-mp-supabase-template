@@ -8,12 +8,12 @@
 - AGENCY Classic automático: IMPLEMENTADO; E2E real pendiente. No declararlo validado hasta ejecutar una compra/sucursal real controlada.
 - Express: soporte interno conservado, oculto temporalmente del checkout público e import bloqueado con `UNSUPPORTED_SERVICE`; contrato exacto pendiente.
 - Perfiles 1–4: TEMPORAL/QA; sustitución y repetición de QA pendientes.
-- `unknown`: protegido contra retry automático; migración y RPC de DEC-027 productivas, con CLI aún no desplegado ni validado operativamente.
+- `unknown`: protegido contra retry automático; DEC-027 productiva, desplegada y con guarda operativa validada. La reconciliación permanece humana, excepcional y deshabilitada por defecto.
 - MiCorreo `orderNumber`: PENDIENTE / NO IMPLEMENTADO. `extOrderId` debe conservarse como correlación técnica estable; `/shipping/import` actualmente no envía `orderNumber`, de modo que “Número de orden” puede aparecer vacío. Evaluar un identificador operativo legible como `LEMONT-<order_id>` sin sustituir `extOrderId`.
 
 ## T-022 / DEC-027 — Implementar reconciliación administrativa de `unknown`
 
-**Estado: MIGRACIÓN / RPC PRODUCTIVAS — CLI AÚN NO DESPLEGADO/VALIDADO OPERATIVAMENTE** (2026-09-19).
+**Estado: PRODUCTIVA / DESPLEGADA / GUARDA OPERATIVA VALIDADA** (2026-09-19).
 
 **Auditoría Grok:** APROBADO CON OBSERVACIONES / SIN BLOQUEANTES. Hardening final incorporado localmente.
 
@@ -31,7 +31,9 @@
 
 QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attempt/snapshot/`ext_order_id`, no inventó `provider_created_at`, registró `imported_at` local y audit row correcta; `unknown → queued` preservó attempt/snapshot/`ext_order_id`, limpió scheduling/lease/error y registró audit row correcta. Todos los datos QA fueron revertidos. El conteo productivo permaneció `created = 2`, `not_requested = 1`, `unknown = 0` antes y después.
 
-**Pendiente:** desplegar el runtime que contiene `shipping:reconcile-unknown`; smoke test seguro del guard del CLI; AGENCY Classic E2E; `orderNumber`; perfiles físicos reales; Express; tracking/labels. No declarar el CLI desplegado o validado operativamente todavía.
+**CLI administrativo productivo:** el runtime actualizado está desplegado en el servicio aislado `shipping-worker` y `npm run shipping:reconcile-unknown` está disponible. `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no está configurada permanentemente. El smoke test sin variable, `--execute`, order ID ni acción devolvió `[shipping-reconciliation] disabled`; no cargó una operación habilitada, no ejecutó RPC, no modificó DB, no llamó MiCorreo y no reconcilió filas reales.
+
+**Pendiente:** AGENCY Classic E2E; `orderNumber`; perfiles físicos reales; Express; tracking/labels. T-022 permanece EN PROGRESO.
 
 ## T-022 — Ocultar Express temporalmente en checkout público
 
@@ -67,7 +69,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - `SIGTERM`/`SIGINT` cancelan futuros ciclos y esperan el activo hasta 30 s. Si vence, registran sólo `shutdown_timeout`, mantienen `stopping=true` y exit 1, sin afirmar cancelación ni `stopped`. Expiración de leases permanece exclusivamente en el comando manual separado.
 - Producción validó polling de 60 s durante horas con múltiples `outcome=idle`. Una nueva order HOME Classic fue reclamada y creada automáticamente en MiCorreo, sin CLI manual, retry ni resultado ambiguo.
 
-**Pendiente:** reconciliación operativa/automática de `unknown`; perfiles físicos finales; contrato Express; tracking API; label API.
+**Pendiente:** perfiles físicos finales; contrato Express; tracking API; label API. La reconciliación administrativa de DEC-027 está productiva; no existe reconciliación automática de `unknown`.
 
 ## T-022.6 — cierre QA real manual y automático
 
@@ -81,7 +83,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - **QA AUTOMÁTICO REAL VALIDADO END-TO-END** (2026-09-19): una nueva compra HOME Classic llegó de pago aprobado a `paid + queued`; el servicio `shipping-worker` la reclamó y ejecutó `/shipping/import` sin `shipping:process-once` ni intervención manual.
 - Estado final automático: order `paid`, shipping `created`, attempt 1, timestamps de provider/import presentes y error nulo. No hubo retry, `unknown`, `failed` ni `lease_lost`.
 
-**Pendientes:** perfiles físicos reales para 1–4 remeras; política/reconciliación de `unknown`; mantener Express bloqueado hasta confirmar contrato; tracking API; label API; hardening comercial final.
+**Pendientes:** perfiles físicos reales para 1–4 remeras; mantener Express bloqueado hasta confirmar contrato; tracking API; label API; hardening comercial final.
 
 ## T-022.6-A — Activación manual one-shot y observabilidad segura
 
@@ -94,7 +96,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 
 **QA ejecutado:** una única order real Classic fue confirmada, procesada una vez y verificada en DB y MiCorreo. La regla futura se mantiene: no repetir manualmente un caso que quede `unknown`.
 
-**Pendiente:** perfiles físicos reales, contrato Classic/Express y reconciliación de `unknown`. La automatización fue validada posteriormente en T-022.6-B/C.
+**Pendiente:** perfiles físicos reales y contrato Classic/Express. La automatización fue validada posteriormente en T-022.6-B/C y la reconciliación administrativa quedó disponible mediante DEC-027.
 
 ## T-022.5 — Paid + queue legacy-safe (estado vigente)
 
@@ -106,7 +108,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - El runtime desplegado usa la RPC nueva mediante `markOrderAsPaid`; duplicados siguen siendo no-op y los errores RPC continúan como indisponibilidad controlada.
 - T-022.4 es consumida en producción por el proceso aislado T-022.6-B/C. `/shipping/import` fue validado automáticamente.
 
-**Pendiente:** Express; perfiles físicos reales; reconciliación de `unknown`; tracking API; label API.
+**Pendiente:** Express; perfiles físicos reales; tracking API; label API.
 
 ## T-022 — MiCorreo shipping import post-pago
 
@@ -126,7 +128,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - `index.js`, `app.js` y webhook no importan el worker. La activación automática vive exclusivamente en el proceso EasyPanel separado de T-022.6-B/C; el one-shot manual previo permanece como antecedente.
 - Verificación real: claim/lease y cierre `created` con attempt 1, sin lease residual.
 
-**Pendiente:** Express; perfiles físicos reales; reconciliación de `unknown`; tracking API; label API.
+**Pendiente:** Express; perfiles físicos reales; tracking API; label API.
 
 ### T-022.3 — Provider + mapping para `/shipping/import`
 
@@ -142,7 +144,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - Errores: `VALIDATION`, `UNSUPPORTED_SERVICE`, `AUTH`, `RATE_LIMIT`, `PROVIDER_REJECTED`, `NETWORK`, `TIMEOUT`, `SERVER` y `AMBIGUOUS_RESPONSE`.
 - `app.js`, webhook e `index.js` no ejecutan el servicio. HOME Classic fue validado mediante one-shot y mediante el proceso automático aislado T-022.6-B/C; Express permanece bloqueado.
 
-**Pendiente:** confirmar Express y perfiles reales; reconciliación de `unknown`; tracking API; label API.
+**Pendiente:** confirmar Express y perfiles reales; tracking API; label API.
 
 **Observaciones no bloqueantes para T-022.4:**
 
@@ -166,7 +168,7 @@ QA sintético dentro de `BEGIN/ROLLBACK`: `unknown → created` preservó attemp
 - Repositorio, provider HOME Classic y worker aislado están conectados y validados en producción. AGENCY Classic E2E y Express permanecen pendientes.
 - Verificación local previa al cutover: 402/402 tests, 11 suites, 0 fallos; en ese momento las pruebas de concurrencia/RLS eran estáticas y no se había aplicado SQL. La evidencia PostgreSQL productiva posterior está registrada arriba.
 
-**Pendiente:** AGENCY Classic E2E; contrato/import Express; perfiles físicos reales; despliegue/validación operativa del CLI administrativo de DEC-027; tracking y labels.
+**Pendiente:** AGENCY Classic E2E; contrato/import Express; perfiles físicos reales; tracking y labels.
 
 **Riesgo histórico resuelto por T-022.5:** la RPC legacy-safe permite confirmar una order sin snapshot y encola sólo cuando existe una fila elegible.
 

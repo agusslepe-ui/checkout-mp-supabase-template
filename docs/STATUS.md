@@ -9,8 +9,9 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 - **T-022: EN PROGRESO.**
 - **T-022 CORE / NÚCLEO LOGÍSTICO: FUNCIONAL Y VALIDADO EN PRODUCCIÓN.** HOME Classic completó automáticamente checkout real, pago, webhook, `paid → queued`, claim, `/shipping/import` y `created` con attempt 1, sin intervención manual; el envío fue visible en MiCorreo.
 - **AGENCY Classic automático: IMPLEMENTADO / E2E REAL PENDIENTE.** Existen selección de sucursal, checkout/backend y mapping, pero no se declara validación automática real.
-- **DEC-027: MIGRACIÓN / RPC PRODUCTIVAS — CLI AÚN NO DESPLEGADO/VALIDADO OPERATIVAMENTE** (2026-09-19). La migración 011 está aplicada en producción: existen la auditoría append-only y las RPC condicionales `unknown → created|queued`. `unknown` continúa fuera del claim automático. El runtime que contiene `shipping:reconcile-unknown` todavía no fue desplegado ni sometido a smoke test operativo.
+- **DEC-027: PRODUCTIVA / DESPLEGADA / GUARDA OPERATIVA VALIDADA** (2026-09-19). La migración 011, la tabla de auditoría y las RPC condicionales `unknown → created|queued` están productivas. El runtime con `npm run shipping:reconcile-unknown` está desplegado en `shipping-worker`; `unknown` continúa fuera del claim automático.
 - **QA PostgreSQL real DEC-027: COMPLETADO.** Se verificaron tabla, RLS activa, cero policies, grants append-only de `service_role`, ausencia de acceso para `anon`/`authenticated`, RPC `SECURITY INVOKER`, `search_path = pg_catalog, public` y EXECUTE restringido. Pruebas sintéticas transaccionales validaron ambas transiciones y fueron revertidas con `ROLLBACK`.
+- **Smoke test seguro del CLI: VALIDADO.** `SHIPPING_IMPORT_RECONCILIATION_ENABLED` no está configurada permanentemente. Una invocación sin variable, `--execute`, order ID ni acción terminó con `[shipping-reconciliation] disabled`: cero RPC, cambios de DB, requests a MiCorreo o reconciliaciones reales.
 - **Política A de attempts:** el máximo 4 limita sólo retries automáticos. Una requeue humana preserva el contador y autoriza un claim adicional; 4 pasa a 5 al reclamar. No recupera cuatro retries, y cada nueva requeue desde otro `unknown` exige nueva confirmación y auditoría.
 - **Checkout público Classic-only: IMPLEMENTADO LOCALMENTE / NO DESPLEGADO** (2026-09-19). La UI filtra antes del render y ofrece sólo `micorreo:home:classic` y `micorreo:agency:classic`; si MiCorreo devuelve exclusivamente Express, muestra la ausencia controlada de opciones. Express conserva soporte interno en rates, snapshots, backend y worker, pero queda oculto temporalmente hasta confirmar el contrato exacto de `/shipping/import`.
 - **T-022.6-C: DESPLEGADA / VALIDADA EN PRODUCCIÓN - PROCESO AISLADO / `Dockerfile.worker`** (2026-09-19). EasyPanel ejecuta el worker como servicio separado, sin puerto HTTP; `Dockerfile` y `npm start` continúan dedicados a la web.
@@ -25,7 +26,7 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 - **QA AUTOMÁTICO REAL: VALIDADO END-TO-END.** Una nueva compra HOME Classic recorrió `Mercado Pago → webhook → paid → queued → shipping-worker → MiCorreo → created` sin ejecutar `shipping:process-once` ni intervenir manualmente sobre el envío.
 - Estado final de esa nueva order: order `paid`, import `created`, attempt 1, timestamps de provider/import presentes y `last_error_type` nulo; no hubo retry, `unknown`, `failed` ni `lease_lost`.
 - **`POST /shipping/import`: VALIDADO REALMENTE mediante ejecución manual previa y posteriormente mediante worker automático.** `npm start` continúa sin worker; producción ejecuta `npm run shipping:worker` sólo en el servicio EasyPanel separado, con `SHIPPING_IMPORT_WORKER_ENABLED=true` exclusivamente allí.
-- Continúan pendientes desplegar el runtime con el CLI administrativo, ejecutar un smoke test seguro de su guarda, los perfiles físicos definitivos para 1–4 remeras, AGENCY Classic E2E, Express, `orderNumber`, tracking API y label API.
+- Continúan pendientes los perfiles físicos definitivos para 1–4 remeras, AGENCY Classic E2E, Express, `orderNumber`, tracking API y label API.
 
 ## Producción
 
@@ -57,7 +58,6 @@ Este archivo resume el estado real vigente. Los bloques históricos de otros doc
 
 - **MiCorreo `orderNumber`: PENDIENTE.** `extOrderId` sigue siendo la correlación técnica estable y no debe cambiarse. El payload actual de `/shipping/import` no envía `orderNumber`, por lo que “Número de orden” puede aparecer vacío en MiCorreo. Se evaluará un identificador operativo legible como `LEMONT-<order_id>`; no está implementado.
 - Sustituir los perfiles TEMPORAL/QA de `300 g / 5 × 25 × 35 cm` por medidas reales y repetir QA.
-- Desplegar el runtime que contiene `shipping:reconcile-unknown` y ejecutar únicamente un smoke test seguro de la guarda antes de cualquier uso operativo.
 - Completar T-022: validar AGENCY Classic E2E real, confirmar el contrato de importación Express, sustituir perfiles TEMPORAL/QA y cerrar el hardening comercial.
 - Implementar catálogo y stock reales desde Supabase, con imágenes y descripciones dinámicas.
 - Completar el hardening comercial: restaurar el precio definitivo, rotar credenciales privadas previamente expuestas, ejecutar la auditoría npm y abordar dominio definitivo, frontend final y SEO.
